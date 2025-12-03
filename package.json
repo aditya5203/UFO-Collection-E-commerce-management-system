@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "next-auth": "^4.24.13",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/passport": "^1.0.17",
+    "@types/passport-google-oauth20": "^2.0.17"
+  }
+}
