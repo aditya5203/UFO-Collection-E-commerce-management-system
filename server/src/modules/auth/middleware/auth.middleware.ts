@@ -6,7 +6,7 @@ import { JwtPayload } from "../types/auth.types";
 import { AppError } from "../../../middleware/error.middleware";
 
 // Local type for requests where we use req.user
-type AuthRequest = Request & {
+export type AuthRequest = Request & {
   user?: {
     userId?: string;
     email?: string;
@@ -45,7 +45,7 @@ export const authMiddleware = (
       throw new AppError("No token provided", 401);
     }
 
-    // 4) Verify token (use config.jwt.secret, not config.jwtSecret)
+    // 4) Verify token
     const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
 
     // 5) Attach user info to request
@@ -68,10 +68,9 @@ export const authMiddleware = (
 };
 
 /**
- * Authorization middleware for role-based access
+ * Role-based authorization
  * Usage:
- *   router.get(
- *     "/admin",
+ *   router.get("/admin",
  *     authMiddleware,
  *     authorize("admin", "superadmin"),
  *     handler

@@ -1,10 +1,12 @@
 // server/src/app.ts
+
 import express, {
   Application,
   Request,
   Response,
   NextFunction,
 } from "express";
+import path from "path"; // ⭐ For static uploads
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
@@ -14,15 +16,16 @@ import swaggerUi from "swagger-ui-express";
 
 import { swaggerSpec } from "./config/swagger";
 import { getConnectionStatus } from "./config/database";
+import apiRoutes from "./routes"; // ⭐ Central API router
 
-// Load environment variables
+// Load env variables
 dotenv.config();
 
 const app: Application = express();
 
-// ----------------------------------------------------
-// Core middleware / security
-// ----------------------------------------------------
+/* ----------------------------------------------------
+ * Security Middleware
+ * --------------------------------------------------*/
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -38,8 +41,8 @@ app.use(
 
 app.use(
   cors({
-    origin: true, // allow all origins in dev; restrict in prod
-    credentials: true, // allow cookies
+    origin: true,
+    credentials: true,
   })
 );
 
@@ -48,9 +51,18 @@ app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ----------------------------------------------------
-// Swagger documentation
-// ----------------------------------------------------
+/* ----------------------------------------------------
+ * Static: Serve Uploaded Images
+ * --------------------------------------------------*/
+// Files in server/public/uploads → http://localhost:8080/uploads/<filename>
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "../public/uploads"))
+);
+
+/* ----------------------------------------------------
+ * Swagger Documentation
+ * --------------------------------------------------*/
 app.use(
   "/ufo-docs",
   swaggerUi.serve,
@@ -60,21 +72,13 @@ app.use(
   })
 );
 
-// ----------------------------------------------------
-// Health check
-// ----------------------------------------------------
-/**
- * @swagger
- * /health:
- *   get:
- *     summary: Health check endpoint
- *     description: Returns the health status of the server and database
- *     tags: [Health]
- */
+/* ----------------------------------------------------
+ * Health Check
+ * --------------------------------------------------*/
 app.get("/health", (_req: Request, res: Response) => {
   const dbStatus = getConnectionStatus();
 
-  const healthStatus = {
+  const response = {
     status: dbStatus ? "OK" : "DEGRADED",
     message: dbStatus
       ? "Server and database are running"
@@ -86,18 +90,18 @@ app.get("/health", (_req: Request, res: Response) => {
     },
   };
 
-  res.status(dbStatus ? 200 : 503).json(healthStatus);
+  res.status(dbStatus ? 200 : 503).json(response);
 });
 
-// ----------------------------------------------------
-// API routes
-// ----------------------------------------------------
-import apiRoutes from "./routes";
+/* ----------------------------------------------------
+ * API Routes
+ * --------------------------------------------------*/
+// All module routes (auth, products, categories, etc.) are mounted here
 app.use("/api", apiRoutes);
 
-// ----------------------------------------------------
-// 404 handler
-// ----------------------------------------------------
+/* ----------------------------------------------------
+ * 404 Handler
+ * --------------------------------------------------*/
 app.use((_req: Request, res: Response) => {
   res.status(404).json({
     success: false,
@@ -105,9 +109,9 @@ app.use((_req: Request, res: Response) => {
   });
 });
 
-// ----------------------------------------------------
-// Global error handler
-// ----------------------------------------------------
+/* ----------------------------------------------------
+ * Global Error Handler
+ * --------------------------------------------------*/
 app.use(
   (err: Error, _req: Request, res: Response, _next: NextFunction) => {
     console.error("🔥 SERVER ERROR:", err);

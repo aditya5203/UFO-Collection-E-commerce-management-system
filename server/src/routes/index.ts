@@ -1,11 +1,27 @@
-import { Router } from 'express';
-import authRoutes from '../modules/auth/routes/auth.routes';
-import categoryRoutes from '../modules/category/routes/category.routes'; // 👈 add this
+import { Router } from "express";
+import authRoutes from "../modules/auth/routes/auth.routes";
+import categoryRoutes from "../modules/category/routes/category.routes";
+import productRoutes from "../modules/product/routes/product.routes";
 
 const router = Router();
 
-// API routes
-router.use('/auth', authRoutes);
-router.use('/category', categoryRoutes); // 👈 now valid
+/* -------------------- PUBLIC ENDPOINTS -------------------- */
+
+// Public products → /api/products/...
+router.use("/products", productRoutes.publicRouter);
+
+// Public categories → /api/categories/...
+router.use("/categories", categoryRoutes.publicRouter);
+
+// Auth → /api/auth/...
+router.use("/auth", authRoutes);
+
+/* -------------------- ADMIN ENDPOINTS -------------------- */
+
+// Admin products → /api/admin/products/...
+router.use("/admin/products", productRoutes.adminRouter);
+
+// Admin categories → /api/admin/categories/...
+router.use("/admin/categories", categoryRoutes.adminRouter);
 
 export default router;

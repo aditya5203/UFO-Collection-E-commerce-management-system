@@ -1,4 +1,7 @@
-import { Document, Schema, model, Types } from 'mongoose';
+import { Document, Schema, model, Types } from "mongoose";
+
+export type MainCategory = "Clothes" | "Shoes";
+export type CustomerType = "Men" | "Women" | "Boys" | "Girls";
 
 export interface ICategory extends Document {
   name: string;
@@ -7,6 +10,13 @@ export interface ICategory extends Document {
   imageUrl?: string;
   isActive: boolean;
   parent?: Types.ObjectId | null;
+
+  // Main parent category (Clothes / Shoes)
+  mainCategory: MainCategory;
+
+  // Customer group (Men / Women / Boys / Girls)
+  customer: CustomerType;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -30,13 +40,13 @@ const CategorySchema = new Schema<ICategory>(
 
     description: {
       type: String,
-      default: '',
+      default: "",
       trim: true,
     },
 
     imageUrl: {
       type: String,
-      default: '',
+      default: "",
       trim: true,
     },
 
@@ -47,13 +57,29 @@ const CategorySchema = new Schema<ICategory>(
 
     parent: {
       type: Schema.Types.ObjectId,
-      ref: 'Category',
+      ref: "Category",
       default: null,
+    },
+
+    // Main category (Clothes / Shoes)
+    mainCategory: {
+      type: String,
+      enum: ["Clothes", "Shoes"],
+      required: true,
+      index: true,
+    },
+
+    // Customer type (Men / Women / Boys / Girls)
+    customer: {
+      type: String,
+      enum: ["Men", "Women", "Boys", "Girls"],
+      required: true,
+      index: true,
     },
   },
   {
-    timestamps: true, // adds createdAt & updatedAt
+    timestamps: true,
   }
 );
 
-export const Category = model<ICategory>('Category', CategorySchema);
+export const Category = model<ICategory>("Category", CategorySchema);

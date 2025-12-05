@@ -4,303 +4,117 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 
+type CustomerType = "Men" | "Women" | "Boys" | "Girls";
+
 type Product = {
-  id: number;
+  id: string;
   name: string;
-  price: string;
+  price: number;
   image: string;
+  customer?: CustomerType;
+  subCategory?: string; // e.g. "T-Shirt", "Jean", "Jacket"
 };
 
-const products: Product[] = [
-  // ROW 1
-  {
-    id: 1,
-    name: "Women's Round Neck Green Top",
-    price: "$149",
-    image: "/images/collection/1.jpg",
-  },
-  {
-    id: 2,
-    name: "Men's Slim Fit Denim Jeans",
-    price: "$199",
-    image: "/images/collection/2.jpg",
-  },
-  {
-    id: 3,
-    name: "Women's Round Neck Cotton Top",
-    price: "$149",
-    image: "/images/collection/3.jpg",
-  },
-  {
-    id: 4,
-    name: "Men's Round Neck Pure Cotton T-Shirt",
-    price: "$149",
-    image: "/images/collection/4.jpg",
-  },
-
-  // ROW 2
-  {
-    id: 5,
-    name: "Men's Printed Check Cotton Shirt",
-    price: "$149",
-    image: "/images/collection/5.jpg",
-  },
-  {
-    id: 6,
-    name: "Boys Casual Check Shirt & Short Set",
-    price: "$149",
-    image: "/images/collection/6.jpg",
-  },
-  {
-    id: 7,
-    name: "Boys Navy Half-Sleeve Cotton Shirt",
-    price: "$149",
-    image: "/images/collection/7.jpg",
-  },
-  {
-    id: 8,
-    name: "Girls Denim Jacket With Printed Dress",
-    price: "$149",
-    image: "/images/collection/8.jpg",
-  },
-
-  // ROW 3
-  {
-    id: 9,
-    name: "Men's Denim Jacket & Black Jeans",
-    price: "$199",
-    image: "/images/collection/9.jpg",
-  },
-  {
-    id: 10,
-    name: "Men's Solid Casual Sweatshirt",
-    price: "$179",
-    image: "/images/collection/10.jpg",
-  },
-  {
-    id: 11,
-    name: "Men's Co-ord Set: Sweatshirt & Joggers",
-    price: "$199",
-    image: "/images/collection/11.jpg",
-  },
-  {
-    id: 12,
-    name: "Women's Mixed Bottom Wear Pack (4 Pcs)",
-    price: "$249",
-    image: "/images/collection/12.jpg",
-  },
-
-  // ROW 4
-  {
-    id: 13,
-    name: "Girls Pink Printed Anarkali Dress",
-    price: "$189",
-    image: "/images/collection/13.jpg",
-  },
-  {
-    id: 14,
-    name: "Men's Casual Green Shirt & White Sneaker Set",
-    price: "$229",
-    image: "/images/collection/14.jpg",
-  },
-  {
-    id: 15,
-    name: "Men's Multi-Pack Casual Trousers",
-    price: "$219",
-    image: "/images/collection/15.jpg",
-  },
-  {
-    id: 16,
-    name: "Women's Solid Long Sleeve Sweatshirt",
-    price: "$159",
-    image: "/images/collection/16.jpg",
-  },
-
-  // ROW 5
-  {
-    id: 17,
-    name: "Men's Winter Layered Outfit Set",
-    price: "$249",
-    image: "/images/collection/17.jpg",
-  },
-  {
-    id: 18,
-    name: "Men's Sky Blue Casual Shirt",
-    price: "$179",
-    image: "/images/collection/18.jpg",
-  },
-  {
-    id: 19,
-    name: "Men's Sleeveless Puffer Jacket & Shirt",
-    price: "$199",
-    image: "/images/collection/19.jpg",
-  },
-  {
-    id: 20,
-    name: "Men's Classic Crew Neck Sweatshirt",
-    price: "$169",
-    image: "/images/collection/20.jpg",
-  },
-
-  // ROW 6
-  {
-    id: 21,
-    name: "Women's Oversized Pink Sweatshirt",
-    price: "$159",
-    image: "/images/collection/21.jpg",
-  },
-  {
-    id: 22,
-    name: "Women's Straight Fit Light Blue Jeans",
-    price: "$199",
-    image: "/images/collection/22.jpg",
-  },
-  {
-    id: 23,
-    name: "Women's Co-ord Set: Crop Top & Pants",
-    price: "$219",
-    image: "/images/collection/23.jpg",
-  },
-  {
-    id: 24,
-    name: "Girls Floral Printed Casual Frock",
-    price: "$149",
-    image: "/images/collection/24.jpg",
-  },
-
-  // ROW 7
-  {
-    id: 25,
-    name: "Women's Graphic Black T-Shirt",
-    price: "$129",
-    image: "/images/collection/25.jpg",
-  },
-  {
-    id: 26,
-    name: "Women's Multi-Pack Solid Tops (5 Pcs)",
-    price: "$259",
-    image: "/images/collection/26.jpg",
-  },
-  {
-    id: 27,
-    name: "Men's Slim Fit Dark Wash Jeans",
-    price: "$199",
-    image: "/images/collection/27.jpg",
-  },
-  {
-    id: 28,
-    name: "Women's Relaxed Fit Mint T-Shirt",
-    price: "$139",
-    image: "/images/collection/28.jpg",
-  },
-
-  // ROW 8
-  {
-    id: 29,
-    name: "Girls Golden Floral Frock",
-    price: "$149",
-    image: "/images/collection/29.jpg",
-  },
-  {
-    id: 30,
-    name: "Boys Casual Polo T-Shirt",
-    price: "$129",
-    image: "/images/collection/30.jpg",
-  },
-  {
-    id: 31,
-    name: "Girls Black Front-Printed Dress",
-    price: "$149",
-    image: "/images/collection/31.jpg",
-  },
-  {
-    id: 32,
-    name: "Men's Sky Blue Formal Shirt",
-    price: "$179",
-    image: "/images/collection/32.jpg",
-  },
-
-  // ROW 9
-  {
-    id: 33,
-    name: "Men's Multi-Pack Round Neck T-Shirts",
-    price: "$189",
-    image: "/images/collection/33.jpg",
-  },
-  {
-    id: 34,
-    name: "Men's Ripped Slim Fit Jeans",
-    price: "$219",
-    image: "/images/collection/34.jpg",
-  },
-  {
-    id: 35,
-    name: "Women's Solid Sky Blue Top",
-    price: "$149",
-    image: "/images/collection/35.jpg",
-  },
-  {
-    id: 36,
-    name: "Girls Beige Crop Top & Skirt Set",
-    price: "$179",
-    image: "/images/collection/36.jpg",
-  },
-
-  // ROW 10
-  {
-    id: 37,
-    name: "Women's Casual Navy Crop Top",
-    price: "$149",
-    image: "/images/collection/37.jpg",
-  },
-  {
-    id: 38,
-    name: "Men's Full Sleeve Indigo Shirt",
-    price: "$189",
-    image: "/images/collection/38.jpg",
-  },
-  {
-    id: 39,
-    name: "Men's Maroon Regular Fit T-Shirt",
-    price: "$129",
-    image: "/images/collection/39.jpg",
-  },
-  {
-    id: 40,
-    name: "Men's Black Straight Fit Jeans",
-    price: "$199",
-    image: "/images/collection/40.jpg",
-  },
-
-  // LAST ROW
-  {
-    id: 41,
-    name: "Women's Powder Blue Overshirt",
-    price: "$169",
-    image: "/images/collection/41.jpg",
-  },
-  {
-    id: 42,
-    name: "Women's White Tie-Front Shirt",
-    price: "$169",
-    image: "/images/collection/42.jpg",
-  },
-  {
-    id: 43,
-    name: "Women's Solid White Casual Shirt",
-    price: "$169",
-    image: "/images/collection/43.jpg",
-  },
-  {
-    id: 44,
-    name: "Girls Sky Blue School Dress",
-    price: "$139",
-    image: "/images/collection/44.jpg",
-  },
-];
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
 export default function CollectionPage() {
   const [sortValue, setSortValue] = React.useState("low-high");
+
+  const [products, setProducts] = React.useState<Product[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Filters
+  const [selectedCustomers, setSelectedCustomers] = React.useState<
+    CustomerType[]
+  >([]);
+  const [selectedTypes, setSelectedTypes] = React.useState<string[]>([]);
+
+  // ---------- Fetch products from backend ----------
+  React.useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const res = await fetch(`${API_BASE}/products`, {
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          throw new Error(`Failed to load products (status ${res.status})`);
+        }
+
+        const raw = await res.json();
+
+        // Map API response → Product type
+        const mapped: Product[] = (raw || []).map((p: any) => ({
+          id: String(p.id || p._id),
+          name: p.name,
+          price:
+            typeof p.price === "string" ? Number(p.price) || 0 : p.price ?? 0,
+          image: p.image || "/images/collection/1.jpg",
+          customer: p.customer as CustomerType | undefined,
+          subCategory: p.subCategory || p.category, // fallback
+        }));
+
+        setProducts(mapped);
+      } catch (err: any) {
+        console.error("Error fetching collection products:", err);
+        setError(err.message || "Failed to load products.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+  }, []);
+
+  // ---------- Filter helpers ----------
+  const toggleCustomer = (value: CustomerType) => {
+    setSelectedCustomers((prev) =>
+      prev.includes(value) ? prev.filter((c) => c !== value) : [...prev, value]
+    );
+  };
+
+  const toggleType = (value: string) => {
+    setSelectedTypes((prev) =>
+      prev.includes(value) ? prev.filter((t) => t !== value) : [...prev, value]
+    );
+  };
+
+  // ---------- Apply filters + sort ----------
+  const filteredAndSortedProducts = React.useMemo(() => {
+    let list = [...products];
+
+    // Filter by customer
+    if (selectedCustomers.length > 0) {
+      list = list.filter((p) =>
+        p.customer ? selectedCustomers.includes(p.customer) : true
+      );
+    }
+
+    // Filter by type / subCategory
+    if (selectedTypes.length > 0) {
+      const lowerTypes = selectedTypes.map((t) => t.toLowerCase());
+      list = list.filter((p) => {
+        const typeSource =
+          (p.subCategory || "").toLowerCase() || (p.name || "").toLowerCase();
+        return lowerTypes.some((t) => typeSource.includes(t));
+      });
+    }
+
+    // Sort by price (or extend for newest using createdAt)
+    list.sort((a, b) => {
+      if (sortValue === "low-high") return a.price - b.price;
+      if (sortValue === "high-low") return b.price - a.price;
+      // "newest" – you can change to use createdAt when available
+      return 0;
+    });
+
+    return list;
+  }, [products, selectedCustomers, selectedTypes, sortValue]);
 
   return (
     <>
@@ -684,40 +498,39 @@ export default function CollectionPage() {
           </nav>
 
           <div className="icons">
-  {/* Search -> collection */}
-  <Link href="/collection">
-    <Image
-      src="/images/search.png"
-      width={26}
-      height={26}
-      alt="Search"
-      className="nav-icon"
-    />
-  </Link>
+            {/* Search -> collection */}
+            <Link href="/collection">
+              <Image
+                src="/images/search.png"
+                width={26}
+                height={26}
+                alt="Search"
+                className="nav-icon"
+              />
+            </Link>
 
-  {/* Profile -> profile page */}
-  <Link href="/profile">
-    <Image
-      src="/images/profile.png"
-      width={26}
-      height={26}
-      alt="Profile"
-      className="nav-icon"
-    />
-  </Link>
+            {/* Profile -> profile page */}
+            <Link href="/profile">
+              <Image
+                src="/images/profile.png"
+                width={26}
+                height={26}
+                alt="Profile"
+                className="nav-icon"
+              />
+            </Link>
 
-  {/* Wishlist (optional route) */}
-  <Link href="/wishlist">
-    <Image
-      src="/images/wishlist.png"
-      width={26}
-      height={26}
-      alt="Wishlist"
-      className="nav-icon"
-    />
-  </Link>
-</div>
-
+            {/* Wishlist */}
+            <Link href="/wishlist">
+              <Image
+                src="/images/wishlist.png"
+                width={26}
+                height={26}
+                alt="Wishlist"
+                className="nav-icon"
+              />
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -755,60 +568,75 @@ export default function CollectionPage() {
                 <div className="filters-group">
                   <div className="filters-group-title">CATEGORIES</div>
                   <div className="checkbox-list">
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>Men</span>
-                    </label>
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>Women</span>
-                    </label>
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>Boys</span>
-                    </label>
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>Girls</span>
-                    </label>
+                    {(["Men", "Women", "Boys", "Girls"] as CustomerType[]).map(
+                      (c) => (
+                        <label className="checkbox-item" key={c}>
+                          <input
+                            type="checkbox"
+                            checked={selectedCustomers.includes(c)}
+                            onChange={() => toggleCustomer(c)}
+                          />{" "}
+                          <span>{c}</span>
+                        </label>
+                      )
+                    )}
                   </div>
                 </div>
 
                 <div className="filters-group">
                   <div className="filters-group-title">TYPES</div>
                   <div className="checkbox-list">
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>T-Shirt</span>
-                    </label>
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>Jean</span>
-                    </label>
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>Jacket</span>
-                    </label>
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>Formal Shirt</span>
-                    </label>
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>Frock</span>
-                    </label>
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>Wide-leg</span>
-                    </label>
-                    <label className="checkbox-item">
-                      <input type="checkbox" /> <span>Shorts</span>
-                    </label>
+                    {[
+                      "T-Shirt",
+                      "Jean",
+                      "Jacket",
+                      "Formal Shirt",
+                      "Frock",
+                      "Wide-leg",
+                      "Shorts",
+                    ].map((t) => (
+                      <label className="checkbox-item" key={t}>
+                        <input
+                          type="checkbox"
+                          checked={selectedTypes.includes(t)}
+                          onChange={() => toggleType(t)}
+                        />{" "}
+                        <span>{t}</span>
+                      </label>
+                    ))}
                   </div>
                 </div>
               </aside>
 
               {/* PRODUCTS GRID */}
               <div className="products-grid">
-                {products.map((product) => (
-                  <div key={product.id} className="product-card">
-                    <div className="product-image-wrap">
-                      <Image src={product.image} alt={product.name} fill />
-                    </div>
-                    <div className="product-name">{product.name}</div>
-                    <div className="product-price">{product.price}</div>
+                {loading ? (
+                  <div style={{ gridColumn: "1 / -1" }}>Loading products…</div>
+                ) : error ? (
+                  <div
+                    style={{ gridColumn: "1 / -1", color: "#fca5a5" }}
+                  >{`Error: ${error}`}</div>
+                ) : filteredAndSortedProducts.length === 0 ? (
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    No products match your filters.
                   </div>
-                ))}
+                ) : (
+                  filteredAndSortedProducts.map((product) => (
+                    <div key={product.id} className="product-card">
+                      <div className="product-image-wrap">
+                        <Image
+                          src={product.image}
+                          alt={product.name}
+                          fill
+                        />
+                      </div>
+                      <div className="product-name">{product.name}</div>
+                      <div className="product-price">
+                        Rs. {product.price.toFixed(2)}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

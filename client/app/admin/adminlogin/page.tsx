@@ -21,15 +21,15 @@ export default function AdminLoginPage() {
     try {
       setLoading(true);
 
-      // Change this if your API base is different
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+      const baseUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
 
       const res = await fetch(`${baseUrl}/auth/admin/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include", // so backend can set httpOnly cookie
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
@@ -40,10 +40,6 @@ export default function AdminLoginPage() {
         return;
       }
 
-      // Optional: you can store role/client info if needed
-      // localStorage.setItem("ufo_admin", JSON.stringify(data.user));
-
-      // Redirect to admin dashboard
       router.push("/admin/dashboard");
     } catch (err) {
       console.error(err);
@@ -55,16 +51,21 @@ export default function AdminLoginPage() {
 
   return (
     <>
-      {/* Page styles only for this admin page */}
-      <style jsx>{`
+      {/* GLOBAL CSS USED HERE */}
+      <style jsx global>{`
+        body {
+          margin: 0;
+          padding: 0;
+          background: #070514;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont,
+            "Segoe UI", sans-serif;
+          color: #ffffff;
+        }
+
         .page {
           min-height: 100vh;
           display: flex;
           flex-direction: column;
-          background: #070514;
-          color: #ffffff;
-          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-            sans-serif;
         }
 
         .topbar {
@@ -178,12 +179,10 @@ export default function AdminLoginPage() {
       `}</style>
 
       <div className="page">
-        {/* Top bar */}
         <header className="topbar">
           <div className="topbar-title">Admin Panel</div>
         </header>
 
-        {/* Centered login card */}
         <main className="main">
           <div className="card">
             <h1 className="title">Admin Login</h1>

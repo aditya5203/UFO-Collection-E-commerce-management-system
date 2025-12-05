@@ -1,4 +1,6 @@
-import { Category, ICategory } from "../../../models";
+import { Category } from "../../../models/Category.model";
+import { ICategory } from "../../../models/Category.model";
+
 import {
   CreateCategoryDTO,
   UpdateCategoryDTO,
@@ -7,7 +9,6 @@ import {
 
 class CategoryService {
   async createCategory(payload: CreateCategoryDTO): Promise<ICategory> {
-    // generate slug from name if not provided
     const slug =
       payload.slug ??
       payload.name.toLowerCase().trim().replace(/\s+/g, "-");
@@ -19,6 +20,10 @@ class CategoryService {
       imageUrl: payload.imageUrl ?? "",
       parent: payload.parentId ?? null,
       isActive: payload.isActive ?? true,
+
+      // ✅ IMPORTANT
+      mainCategory: payload.mainCategory,
+      customer: payload.customer,
     });
 
     return category;
@@ -27,15 +32,27 @@ class CategoryService {
   async getCategories(query: CategoryQueryDTO): Promise<ICategory[]> {
     const filter: any = {};
 
+    // 🔍 TEXT SEARCH
     if (query.search) {
       filter.name = { $regex: query.search, $options: "i" };
     }
 
+    // ✅ ACTIVE FILTER
     if (typeof query.isActive === "boolean") {
       filter.isActive = query.isActive;
     }
 
-    return Category.find(filter).sort({ createdAt: -1 });
+    // ✅ MAIN CATEGORY FILTER
+    if (query.mainCategory) {
+      filter.mainCategory = query.mainCategory;
+    }
+
+    // ✅ CUSTOMER FILTER
+    if (query.customer) {
+      filter.customer = query.customer;
+    }
+
+    return Category.find(filter).sort({ createdAt: -1 }).exec();
   }
 
   async getCategoryById(id: string): Promise<ICategory | null> {
@@ -67,8 +84,16 @@ class CategoryService {
     if (payload.isActive !== undefined)
       updateData.isActive = payload.isActive;
 
+    // ✅ NEW FIELDS
+    if (payload.mainCategory !== undefined)
+      updateData.mainCategory = payload.mainCategory;
+
+    if (payload.customer !== undefined)
+      updateData.customer = payload.customer;
+
     return Category.findByIdAndUpdate(id, updateData, {
       new: true,
+      runValidators: true,
     });
   }
 

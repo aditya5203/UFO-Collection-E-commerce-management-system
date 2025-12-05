@@ -7,7 +7,8 @@ import Link from "next/link";
 export default function AdminDashboardPage() {
   return (
     <>
-      <style jsx>{`
+      {/* GLOBAL CSS */}
+      <style jsx global>{`
         .admin-root {
           min-height: 100vh;
           display: flex;
@@ -17,7 +18,7 @@ export default function AdminDashboardPage() {
             sans-serif;
         }
 
-        /* SIDEBAR */
+        /* --- SIDEBAR --- */
         .sidebar {
           width: 260px;
           background: #020617;
@@ -29,36 +30,9 @@ export default function AdminDashboardPage() {
         }
 
         .sidebar-header {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .store-avatar {
-          width: 44px;
-          height: 44px;
-          border-radius: 999px;
-          background: #0f172a;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 22px;
-        }
-
-        .store-meta {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .store-name {
           font-size: 14px;
           font-weight: 600;
           color: #f9fafb;
-        }
-
-        .store-role {
-          font-size: 12px;
-          color: #9ca3af;
         }
 
         .nav-list {
@@ -67,42 +41,46 @@ export default function AdminDashboardPage() {
           padding: 0;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 8px;
         }
 
-        .nav-item {
+        .nav-link {
           display: flex;
           align-items: center;
-          gap: 10px;
-          padding: 9px 10px;
-          border-radius: 10px;
+          gap: 14px;
+          padding: 10px 14px;
+          border-radius: 12px;
           font-size: 14px;
-          color: #d1d5db;
+          font-weight: 400;
+          color: #e5e7eb;
+          text-decoration: none;
           cursor: pointer;
         }
 
-        .nav-item span.icon {
-          width: 22px;
-          height: 22px;
-          border-radius: 6px;
-          background: #0f172a;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 13px;
-        }
-
-        .nav-item.active {
-          background: #111827;
-          color: #f9fafb;
-        }
-
-        .nav-item:hover {
+        .nav-link:hover:not(.active) {
           background: #0b1220;
         }
 
+        .nav-link.active {
+          background: #1f2937;
+        }
+
+        .nav-icon-wrapper {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+        }
+
+        .nav-icon {
+          width: 18px;
+          height: 18px;
+          object-fit: contain;
+        }
+
         .nav-label {
-          font-size: 14px;
+          white-space: nowrap;
         }
 
         .sidebar-footer {
@@ -111,7 +89,7 @@ export default function AdminDashboardPage() {
           color: #6b7280;
         }
 
-        /* MAIN AREA */
+        /* --- MAIN AREA --- */
         .main {
           flex: 1;
           display: flex;
@@ -260,7 +238,6 @@ export default function AdminDashboardPage() {
           color: #9ca3af;
         }
 
-        /* Fake chart area */
         .chart-area {
           margin-top: 6px;
           height: 180px;
@@ -325,7 +302,6 @@ export default function AdminDashboardPage() {
           color: #6b7280;
         }
 
-        /* Orders by status */
         .status-bars {
           margin-top: 6px;
           display: flex;
@@ -367,7 +343,6 @@ export default function AdminDashboardPage() {
           height: 40px;
         }
 
-        /* Recent Orders table */
         .orders-table {
           width: 100%;
           border-collapse: collapse;
@@ -381,26 +356,19 @@ export default function AdminDashboardPage() {
           text-align: left;
         }
 
-        .orders-table thead {
-          background: #020617;
-        }
-
         .orders-table th {
           font-size: 12px;
           color: #9ca3af;
           border-bottom: 1px solid #111827;
         }
 
-        .orders-table tbody tr:nth-child(odd) {
-          background: #020617;
-        }
-
-        .orders-table tbody tr:nth-child(even) {
-          background: #020617;
-        }
-
         .orders-table tbody tr + tr td {
           border-top: 1px solid #111827;
+        }
+
+        .orders-table tbody tr:nth-child(odd),
+        .orders-table tbody tr:nth-child(even) {
+          background: #020617;
         }
 
         .badge {
@@ -453,7 +421,6 @@ export default function AdminDashboardPage() {
           .stats-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
-
           .two-column {
             grid-template-columns: 1fr;
           }
@@ -463,14 +430,12 @@ export default function AdminDashboardPage() {
           .admin-root {
             flex-direction: column;
           }
-
           .sidebar {
             width: 100%;
             flex-direction: row;
             align-items: center;
             overflow-x: auto;
           }
-
           .sidebar-footer {
             display: none;
           }
@@ -480,89 +445,121 @@ export default function AdminDashboardPage() {
       <div className="admin-root">
         {/* SIDEBAR */}
         <aside className="sidebar">
-          <div className="sidebar-header">
-            <div className="store-avatar">🛒</div>
-            <div className="store-meta">
-              <span className="store-name">Store Admin</span>
-              <span className="store-role">UFO Collection</span>
-            </div>
-          </div>
+          <div className="sidebar-header">Store Admin</div>
 
           <ul className="nav-list">
-  <li className="nav-item active">
-    <span className="icon">
-      <Image
-        src="/images/admin/dashboard.png"
-        alt="Dashboard"
-        width={18}
-        height={18}
-      />
-    </span>
-    <span className="nav-label">Dashboard</span>
-  </li>
+            {/* Dashboard (active on this page) */}
+            <li>
+              <Link href="/admin/dashboard" className="nav-link active">
+                <span className="nav-icon-wrapper">
+                  <Image
+                    src="/images/admin/dashboard.png"
+                    alt="Dashboard"
+                    width={18}
+                    height={18}
+                    className="nav-icon"
+                  />
+                </span>
+                <span className="nav-label">Dashboard</span>
+              </Link>
+            </li>
 
-  <li className="nav-item">
-    <span className="icon">
-      <Image
-        src="/images/admin/orders.png"
-        alt="Orders"
-        width={18}
-        height={18}
-      />
-    </span>
-    <span className="nav-label">Orders</span>
-  </li>
+            {/* Category */}
+            <li>
+              <Link href="/admin/category" className="nav-link">
+                <span className="nav-icon-wrapper">
+                  <Image
+                    src="/images/admin/category.png"
+                    alt="Category"
+                    width={18}
+                    height={18}
+                    className="nav-icon"
+                  />
+                </span>
+                <span className="nav-label">Category</span>
+              </Link>
+            </li>
 
-  <li className="nav-item" onClick={() => window.location.href = "/admin/product"}>
-  <span className="icon">
-    <Image
-      src="/images/admin/products.png"
-      alt="Products"
-      width={18}
-      height={18}
-    />
-  </span>
-  <span className="nav-label">Products</span>
-</li>
+            {/* Products */}
+            <li>
+              <Link href="/admin/products" className="nav-link">
+                <span className="nav-icon-wrapper">
+                  <Image
+                    src="/images/admin/products.png"
+                    alt="Products"
+                    width={18}
+                    height={18}
+                    className="nav-icon"
+                  />
+                </span>
+                <span className="nav-label">Products</span>
+              </Link>
+            </li>
 
+            {/* Orders */}
+            <li>
+              <Link href="/admin/orders" className="nav-link">
+                <span className="nav-icon-wrapper">
+                  <Image
+                    src="/images/admin/order.png"
+                    alt="Orders"
+                    width={18}
+                    height={18}
+                    className="nav-icon"
+                  />
+                </span>
+                <span className="nav-label">Orders</span>
+              </Link>
+            </li>
 
-  <li className="nav-item">
-    <span className="icon">
-      <Image
-        src="/images/admin/customers.png"
-        alt="Customers"
-        width={18}
-        height={18}
-      />
-    </span>
-    <span className="nav-label">Customers</span>
-  </li>
+            {/* Customers */}
+            <li>
+              <Link href="/admin/customers" className="nav-link">
+                <span className="nav-icon-wrapper">
+                  <Image
+                    src="/images/admin/customers.png"
+                    alt="Customers"
+                    width={18}
+                    height={18}
+                    className="nav-icon"
+                  />
+                </span>
+                <span className="nav-label">Customers</span>
+              </Link>
+            </li>
 
-  <li className="nav-item">
-    <span className="icon">
-      <Image
-        src="/images/admin/analytics.png"
-        alt="Analytics"
-        width={18}
-        height={18}
-      />
-    </span>
-    <span className="nav-label">Analytics</span>
-  </li>
+            {/* Discounts */}
+            <li>
+              <Link href="/admin/discounts" className="nav-link">
+                <span className="nav-icon-wrapper">
+                  <Image
+                    src="/images/admin/discount.png"
+                    alt="Discounts"
+                    width={18}
+                    height={18}
+                    className="nav-icon"
+                  />
+                </span>
+                <span className="nav-label">Discounts</span>
+              </Link>
+            </li>
 
-  <li className="nav-item">
-    <span className="icon">
-      <Image
-        src="/images/admin/marketing.png"
-        alt="Marketing"
-        width={18}
-        height={18}
-      />
-    </span>
-    <span className="nav-label">Marketing</span>
-  </li>
-</ul>
-
+            {/* Settings */}
+            <li>
+              <Link href="/admin/settings" className="nav-link">
+                <span className="nav-icon-wrapper">
+                  <Image
+                    src="/images/admin/setting.png"
+                    alt="Settings"
+                    width={18}
+                    height={18}
+                    className="nav-icon"
+                  />
+                </span>
+                <span className="nav-label">Settings</span>
+              </Link>
+            </li>
+          </ul>
 
           <div className="sidebar-footer">
             © {new Date().getFullYear()} UFO Collection
@@ -594,11 +591,18 @@ export default function AdminDashboardPage() {
                   placeholder="Search"
                 />
               </div>
-              <div className="bell">🔔</div>
+              <div className="bell">
+                <Image
+                  src="/images/admin/notification.png"
+                  alt="Notifications"
+                  width={16}
+                  height={16}
+                />
+              </div>
             </div>
           </header>
 
-          {/* CONTENT */}
+          {/* CONTENT (unchanged) */}
           <main className="content">
             <h1 className="page-title">Dashboard</h1>
 
@@ -624,19 +628,25 @@ export default function AdminDashboardPage() {
 
             {/* Sales overview + Orders by status */}
             <section className="two-column">
-              {/* Sales overview */}
               <div className="section-card">
                 <div className="section-header">
                   <div>
                     <div className="section-title">Sales Overview</div>
                     <div className="section-sub">
-                      Sales last 7 days · Last 7 days <span style={{ color: "#4ade80" }}>+15%</span>
+                      Sales last 7 days · Last 7 days{" "}
+                      <span style={{ color: "#4ade80" }}>+15%</span>
                     </div>
                   </div>
                   <div className="section-sub">This Week</div>
                 </div>
 
-                <div style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>
+                <div
+                  style={{
+                    fontSize: 24,
+                    fontWeight: 600,
+                    marginBottom: 8,
+                  }}
+                >
                   $12,345
                 </div>
 
@@ -663,13 +673,13 @@ export default function AdminDashboardPage() {
                 </div>
               </div>
 
-              {/* Orders by status */}
               <div className="section-card">
                 <div className="section-header">
                   <div>
                     <div className="section-title">Orders by Status</div>
                     <div className="section-sub">
-                      1,234 total · <span style={{ color: "#4ade80" }}>+10%</span>
+                      1,234 total ·{" "}
+                      <span style={{ color: "#4ade80" }}>+10%</span>
                     </div>
                   </div>
                 </div>
@@ -697,7 +707,6 @@ export default function AdminDashboardPage() {
 
             {/* Recent Orders + side cards */}
             <section className="two-column">
-              {/* Recent Orders */}
               <div className="section-card">
                 <div className="section-header">
                   <div className="section-title">Recent Orders</div>
@@ -782,7 +791,6 @@ export default function AdminDashboardPage() {
                 </table>
               </div>
 
-              {/* Side column: Low stock + new users */}
               <div className="section-card">
                 <div className="section-title">Low Stock Alerts</div>
                 <div className="small-list">

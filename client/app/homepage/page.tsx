@@ -5,38 +5,21 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
-type Product = {
-  id: number;
-  name: string;
-  price: string;
-  image: string;
-};
-
 type User = {
   id: string;
   name: string;
   email: string;
-  avatarUrl?: string; // should contain Google profile picture URL from backend
+  avatarUrl?: string;
 };
 
-const latestProducts: Product[] = [
-  { id: 1, name: "Women Round Neck Cotton Top", price: "$149", image: "/images/home/latest-1.jpg" },
-  { id: 2, name: "Women Floral Midi Dress", price: "$149", image: "/images/home/latest-2.jpg" },
-  { id: 3, name: "Men Pure Cotton T-Shirt", price: "$149", image: "/images/home/latest-3.jpg" },
-  { id: 4, name: "Men Casual Raglan Tee", price: "$149", image: "/images/home/latest-4.jpg" },
-  { id: 5, name: "Men Printed Cotton Shirt", price: "$149", image: "/images/home/latest-5.jpg" },
-  { id: 6, name: "Women Slim Fit Tee", price: "$149", image: "/images/home/latest-6.jpg" },
-  { id: 7, name: "Men Crew Neck T-Shirt", price: "$149", image: "/images/home/latest-7.jpg" },
-  { id: 8, name: "Men Curved Hem Tee", price: "$149", image: "/images/home/latest-8.jpg" },
-];
-
-const bestSellerProducts: Product[] = [
-  { id: 9, name: "Women Round Neck Cotton Top", price: "$149", image: "/images/home/best-1.jpg" },
-  { id: 10, name: "Men Classic Logo Tee", price: "$149", image: "/images/home/best-2.jpg" },
-  { id: 11, name: "Women Casual Crop Tee", price: "$149", image: "/images/home/best-3.jpg" },
-  { id: 12, name: "Men Raglan Sleeve Tee", price: "$149", image: "/images/home/best-4.jpg" },
-  { id: 13, name: "Men Pure Crew Neck Tee", price: "$149", image: "/images/home/best-5.jpg" },
-];
+type Product = {
+  id: string;
+  sku: string;
+  name: string;
+  category: string;
+  price: number;
+  image: string;
+};
 
 export default function HomePage() {
   const router = useRouter();
@@ -44,6 +27,14 @@ export default function HomePage() {
   const [user, setUser] = React.useState<User | null>(null);
   const [loadingUser, setLoadingUser] = React.useState(true);
 
+  // 🔹 homepage products (from backend)
+  const [latestProducts, setLatestProducts] = React.useState<Product[]>([]);
+  const [bestSellerProducts, setBestSellerProducts] = React.useState<Product[]>(
+    []
+  );
+  const [loadingProducts, setLoadingProducts] = React.useState(true);
+
+  // ---------- Fetch /auth/me ----------
   React.useEffect(() => {
     const fetchMe = async () => {
       try {
@@ -51,7 +42,7 @@ export default function HomePage() {
           process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
         const res = await fetch(`${apiBase}/auth/me`, {
-          credentials: "include", // send cookies (Google login)
+          credentials: "include",
         });
 
         if (!res.ok) {
@@ -60,9 +51,6 @@ export default function HomePage() {
         }
 
         const data = await res.json();
-
-        // Adjust based on your backend response structure
-        // e.g. { user: {...} } or { data: { user: {...} } }
         const me = data.user || data.data?.user || null;
         setUser(me);
       } catch (err) {
@@ -74,6 +62,43 @@ export default function HomePage() {
     };
 
     fetchMe();
+  }, []);
+
+  // ---------- Fetch products for homepage ----------
+  React.useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        setLoadingProducts(true);
+        const apiBase =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+
+        const res = await fetch(`${apiBase}/products`, {
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          throw new Error("Failed to load products");
+        }
+
+        const all: Product[] = await res.json();
+
+        // 🟣 HomePage requirement:
+        //   - total 50 products
+        //   - first 25 → Latest
+        //   - next 25 → Best Seller
+        const limited = all.slice(0, 50);
+        setLatestProducts(limited.slice(0, 25));
+        setBestSellerProducts(limited.slice(25, 50));
+      } catch (err) {
+        console.error("Error loading homepage products:", err);
+        setLatestProducts([]);
+        setBestSellerProducts([]);
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+
+    fetchProducts();
   }, []);
 
   return (
@@ -402,7 +427,7 @@ export default function HomePage() {
           max-width: 220px;
         }
 
-        /* SUBSCRIBE SECTION – SAME VIBE AS LOGIN/SIGNUP */
+        /* SUBSCRIBE SECTION */
         .sub {
           margin-top: 10px;
           padding: 46px 0;
@@ -458,7 +483,7 @@ export default function HomePage() {
           color: #050616;
         }
 
-        /* FOOTER – SAME FAMILY AS OTHER PAGES */
+        /* FOOTER */
         .footer {
           padding: 40px 0 18px;
           background: #050611;
@@ -619,33 +644,29 @@ export default function HomePage() {
               />
             </Link>
 
-            {/* PROFILE:
-                - If NOT logged in: /signup with default icon
-                - If logged in: Google photo, click → /profile
-            */}
+            {/* Profile (with Google avatar if logged in) */}
             {user ? (
               <button
-  type="button"
-  aria-label="Open user profile"
-  title="Profile"
-  onClick={() => router.push("/profile")}
-  style={{
-    border: "none",
-    background: "transparent",
-    padding: 0,
-    cursor: "pointer",
-  }}
->
-  <Image
-    src={user.avatarUrl || "/images/profile.png"}
-    width={32}
-    height={32}
-    alt={user.name || "Profile picture"}
-    className="nav-icon"
-    style={{ borderRadius: "999px" }}
-  />
-</button>
-
+                type="button"
+                aria-label="Open user profile"
+                title="Profile"
+                onClick={() => router.push("/profile")}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  cursor: "pointer",
+                }}
+              >
+                <Image
+                  src={user.avatarUrl || "/images/profile.png"}
+                  width={32}
+                  height={32}
+                  alt={user.name || "Profile picture"}
+                  className="nav-icon"
+                  style={{ borderRadius: "999px" }}
+                />
+              </button>
             ) : (
               <Link href="/signup">
                 <Image
@@ -728,17 +749,25 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div className="products-grid">
-              {latestProducts.map((p) => (
-                <div key={p.id} className="product-card">
-                  <div className="product-image-wrap">
-                    <Image src={p.image} alt={p.name} fill />
+            {loadingProducts ? (
+              <div>Loading products…</div>
+            ) : latestProducts.length === 0 ? (
+              <div>No products available.</div>
+            ) : (
+              <div className="products-grid">
+                {latestProducts.map((p) => (
+                  <div key={p.id} className="product-card">
+                    <div className="product-image-wrap">
+                      <Image src={p.image} alt={p.name} fill />
+                    </div>
+                    <div className="product-name">{p.name}</div>
+                    <div className="product-price">
+                      Rs. {p.price.toFixed(2)}
+                    </div>
                   </div>
-                  <div className="product-name">{p.name}</div>
-                  <div className="product-price">{p.price}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
@@ -756,17 +785,25 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div className="products-grid">
-              {bestSellerProducts.map((p) => (
-                <div key={p.id} className="product-card">
-                  <div className="product-image-wrap">
-                    <Image src={p.image} alt={p.name} fill />
+            {loadingProducts ? (
+              <div>Loading products…</div>
+            ) : bestSellerProducts.length === 0 ? (
+              <div>No products available.</div>
+            ) : (
+              <div className="products-grid">
+                {bestSellerProducts.map((p) => (
+                  <div key={p.id} className="product-card">
+                    <div className="product-image-wrap">
+                      <Image src={p.image} alt={p.name} fill />
+                    </div>
+                    <div className="product-name">{p.name}</div>
+                    <div className="product-price">
+                      Rs. {p.price.toFixed(2)}
+                    </div>
                   </div>
-                  <div className="product-name">{p.name}</div>
-                  <div className="product-price">{p.price}</div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
@@ -839,7 +876,6 @@ export default function HomePage() {
       {/* FOOTER */}
       <footer className="footer">
         <div className="footwrap">
-          {/* LEFT: UFO Collection */}
           <div>
             <div className="foot-logo">UFO Collection</div>
             <p className="footp">
@@ -849,7 +885,6 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* MIDDLE: COMPANY */}
           <div>
             <div className="foothead">COMPANY</div>
             <ul className="list">
@@ -868,7 +903,6 @@ export default function HomePage() {
             </ul>
           </div>
 
-          {/* RIGHT: GET IN TOUCH */}
           <div>
             <div className="foothead">GET IN TOUCH</div>
             <ul className="list">

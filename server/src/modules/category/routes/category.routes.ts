@@ -1,3 +1,4 @@
+//modules/auth/category/routes/category.routes.ts
 import { Router } from "express";
 import {
   createCategory,
@@ -6,22 +7,49 @@ import {
   updateCategory,
   deleteCategory,
 } from "../controllers/category.controller";
+import authMiddleware, {
+  authorize,
+} from "../../auth/middleware/auth.middleware";
 
-const categoryRouter = Router();
+const publicRouter = Router();
+const adminRouter = Router();
 
-// GET /categories
-categoryRouter.get("/", getCategories);
+/* ---------------------------------------------------
+ * Public routes (for frontend dropdowns / filters)
+ * Base path: /api/categories
+ * --------------------------------------------------*/
 
-// GET /categories/:id
-categoryRouter.get("/:id", getCategoryById);
+// GET /api/categories
+publicRouter.get("/", getCategories);
 
-// POST /categories
-categoryRouter.post("/", createCategory);
+// GET /api/categories/:id
+publicRouter.get("/:id", getCategoryById);
 
-// PUT /categories/:id
-categoryRouter.put("/:id", updateCategory);
+/* ---------------------------------------------------
+ * Admin routes (dashboard CRUD)
+ * Base path: /api/admin/categories
+ * Protected by auth + role
+ * --------------------------------------------------*/
 
-// DELETE /categories/:id
-categoryRouter.delete("/:id", deleteCategory);
+adminRouter.use(authMiddleware);
+adminRouter.use(authorize("admin", "superadmin"));
 
-export default categoryRouter;
+// GET /api/admin/categories  (admin listing – reuse same handler)
+adminRouter.get("/", getCategories);
+
+// POST /api/admin/categories
+adminRouter.post("/", createCategory);
+
+// GET /api/admin/categories/:id
+adminRouter.get("/:id", getCategoryById);
+
+// PUT /api/admin/categories/:id
+adminRouter.put("/:id", updateCategory);
+
+// DELETE /api/admin/categories/:id
+adminRouter.delete("/:id", deleteCategory);
+
+export default {
+  publicRouter,
+  adminRouter,
+};
