@@ -13,11 +13,32 @@ const nextConfig: NextConfig = {
         port: "8080",
         pathname: "/uploads/**",
       },
-      // Google avatars (if using Google OAuth)
+
+      // ✅ Cloudinary images
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+        pathname: "/**",
+      },
+
+      // Google avatars (Google OAuth)
       {
         protocol: "https",
         hostname: "lh3.googleusercontent.com",
-        port: "",
+        pathname: "/**",
+      },
+
+      // Example domain used in docs/samples
+      {
+        protocol: "https",
+        hostname: "example.com",
+        pathname: "/**",
+      },
+
+      // Stock image (ftcdn)
+      {
+        protocol: "https",
+        hostname: "t3.ftcdn.net",
         pathname: "/**",
       },
     ],

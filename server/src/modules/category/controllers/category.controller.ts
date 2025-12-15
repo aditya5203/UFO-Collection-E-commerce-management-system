@@ -1,4 +1,4 @@
-//modules/auth/category/controllers/category.controller.ts
+// modules/auth/category/controllers/category.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { categoryService } from "../services/category.service";
 import {
@@ -11,10 +11,51 @@ import {
  * @swagger
  * tags:
  *   - name: Categories
- *     description: Public category endpoints (for dropdowns, filters, etc.)
+ *     description: Public category endpoints
  *   - name: Categories - Admin
  *     description: Admin category management (CRUD from dashboard)
  */
+
+/**
+ * @swagger
+ * /api/admin/categories:
+ *   get:
+ *     security:
+ *       - bearerAuth: []
+ *     tags: [Categories - Admin]
+ *     summary: List categories
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search by category name
+ *       - in: query
+ *         name: isActive
+ *         schema:
+ *           type: boolean
+ *     responses:
+ *       200:
+ *         description: List of categories
+ */
+export const getCategories = async (
+  req: Request<{}, {}, {}, CategoryQueryDTO>,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const query: CategoryQueryDTO = { ...req.query };
+
+    const categories = await categoryService.getCategories(query);
+
+    return res.status(200).json({
+      success: true,
+      data: categories,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
 
 /**
  * @swagger
@@ -32,38 +73,23 @@ import {
  *         name: isActive
  *         schema:
  *           type: boolean
- *       - in: query
- *         name: mainCategory
- *         schema:
- *           type: string
- *           enum: [Clothes, Shoes]
- *       - in: query
- *         name: customer
- *         schema:
- *           type: string
- *           enum: [Men, Women, Boys, Girls]
+ *           default: true
  *     responses:
  *       200:
  *         description: List of categories
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/Category'
  */
-export const getCategories = async (
+export const getPublicCategories = async (
   req: Request<{}, {}, {}, CategoryQueryDTO>,
   res: Response,
   next: NextFunction
 ) => {
   try {
-    const categories = await categoryService.getCategories(req.query);
+    const query: CategoryQueryDTO = { ...req.query };
+    if (typeof query.isActive !== "boolean") {
+      query.isActive = true;
+    }
+
+    const categories = await categoryService.getCategories(query);
 
     return res.status(200).json({
       success: true,
@@ -81,7 +107,10 @@ export const getCategories = async (
  *     security:
  *       - bearerAuth: []
  *     tags: [Categories - Admin]
- *     summary: Create a new category (sub-category)
+ *     summary: Create a new category
+ *     description: |
+ *       Creates a category; slug will be auto-generated from name when omitted.
+ *       Use different names to represent sub-categories as needed (e.g. "Sneakers", "Hoodies").
  *     requestBody:
  *       required: true
  *       content:
@@ -91,17 +120,6 @@ export const getCategories = async (
  *     responses:
  *       201:
  *         description: Category created
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   $ref: '#/components/schemas/Category'
- *       400:
- *         description: Validation error
  */
 export const createCategory = async (
   req: Request<{}, {}, CreateCategoryDTO>,
@@ -109,12 +127,12 @@ export const createCategory = async (
   next: NextFunction
 ) => {
   try {
-    const { name, mainCategory, customer } = req.body;
+    const { name } = req.body;
 
-    if (!name || !mainCategory || !customer) {
+    if (!name) {
       return res.status(400).json({
         success: false,
-        message: "name, mainCategory and customer are required",
+        message: "name is required",
       });
     }
 
@@ -131,40 +149,15 @@ export const createCategory = async (
 
 /**
  * @swagger
- * /api/categories/{id}:
- *   get:
- *     tags: [Categories]
- *     summary: Get a single category by ID (public)
- *     parameters:
- *       - name: id
- *         in: path
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Category details
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   $ref: '#/components/schemas/Category'
- *       404:
- *         description: Category not found
- *
  * /api/admin/categories/{id}:
  *   get:
  *     security:
  *       - bearerAuth: []
  *     tags: [Categories - Admin]
- *     summary: Get a single category by ID (admin)
+ *     summary: Get category by ID
  *     parameters:
- *       - name: id
- *         in: path
+ *       - in: path
+ *         name: id
  *         required: true
  *         schema:
  *           type: string
@@ -200,15 +193,57 @@ export const getCategoryById = async (
 
 /**
  * @swagger
+ * /api/categories/{id}:
+ *   get:
+ *     tags: [Categories]
+ *     summary: Get category by ID (public)
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Category details
+ *       404:
+ *         description: Category not found
+ */
+export const getPublicCategoryById = async (
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const category = await categoryService.getCategoryById(req.params.id);
+
+    if (!category || category.isActive === false) {
+      return res.status(404).json({
+        success: false,
+        message: "Category not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: category,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+/**
+ * @swagger
  * /api/admin/categories/{id}:
  *   put:
  *     security:
  *       - bearerAuth: []
  *     tags: [Categories - Admin]
- *     summary: Update an existing category
+ *     summary: Update category by ID
  *     parameters:
- *       - name: id
- *         in: path
+ *       - in: path
+ *         name: id
  *         required: true
  *         schema:
  *           type: string
@@ -230,10 +265,7 @@ export const updateCategory = async (
   next: NextFunction
 ) => {
   try {
-    const category = await categoryService.updateCategory(
-      req.params.id,
-      req.body
-    );
+    const category = await categoryService.updateCategory(req.params.id, req.body);
 
     if (!category) {
       return res.status(404).json({
@@ -258,18 +290,16 @@ export const updateCategory = async (
  *     security:
  *       - bearerAuth: []
  *     tags: [Categories - Admin]
- *     summary: Delete a category
+ *     summary: Delete category by ID
  *     parameters:
- *       - name: id
- *         in: path
+ *       - in: path
+ *         name: id
  *         required: true
  *         schema:
  *           type: string
  *     responses:
  *       204:
  *         description: Category deleted
- *       404:
- *         description: Category not found
  */
 export const deleteCategory = async (
   req: Request<{ id: string }>,
@@ -278,7 +308,6 @@ export const deleteCategory = async (
 ) => {
   try {
     await categoryService.deleteCategory(req.params.id);
-
     return res.status(204).send();
   } catch (error) {
     return next(error);

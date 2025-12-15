@@ -1,4 +1,4 @@
-// config/swagger.ts
+// server/src/config/swagger.ts
 import swaggerJsdoc from "swagger-jsdoc";
 import { config } from "./index";
 
@@ -190,21 +190,17 @@ const swaggerDefinition = {
             type: "string",
             example: "65f0b5d8c8f4c81234567890",
           },
-          sku: {
-            type: "string",
-            example: "SKU-1001",
-          },
           name: {
             type: "string",
             example: "Oversized Cotton T-Shirt",
           },
+          slug: {
+            type: "string",
+            example: "oversized-cotton-t-shirt",
+          },
           description: {
             type: "string",
             example: "Relaxed fit unisex cotton tee with soft feel.",
-          },
-          category: {
-            type: "string",
-            example: "T-Shirt",
           },
           price: {
             type: "number",
@@ -216,21 +212,38 @@ const swaggerDefinition = {
           },
           status: {
             type: "string",
-            enum: ["Active", "Draft", "Archived"],
+            enum: ["Active", "Inactive"],
             example: "Active",
+          },
+          gender: {
+            type: "string",
+            enum: ["Male", "Female"],
+            example: "Male",
+          },
+          colors: {
+            type: "array",
+            items: { type: "string", example: "#1f1f1f" },
+            example: ["#1f1f1f", "#ffffff"],
+          },
+          sizes: {
+            type: "array",
+            items: { type: "string", enum: ["S", "M", "L", "XL", "XXL"] },
+            example: ["M", "L", "XL"],
           },
           image: {
             type: "string",
-            example: "/images/products/oversized-tee.png",
+            example:
+              "https://res.cloudinary.com/your_cloud_name/image/upload/v1/ufo-collection/products/main.png",
           },
           images: {
             type: "array",
             items: { type: "string" },
             example: [
-              "/images/products/oversized-tee.png",
-              "/images/products/oversized-tee-back.png",
+              "https://res.cloudinary.com/your_cloud_name/image/upload/v1/ufo-collection/products/a.png",
+              "https://res.cloudinary.com/your_cloud_name/image/upload/v1/ufo-collection/products/b.png",
             ],
           },
+          categoryId: { type: "string", example: "65f1c4b9e3b6f27c0d1a1234" },
           createdAt: {
             type: "string",
             format: "date-time",
@@ -241,25 +254,23 @@ const swaggerDefinition = {
           },
         },
       },
+
       CreateProductRequest: {
         type: "object",
-        required: ["sku", "name", "category", "price", "stock", "image"],
+        required: ["name", "price", "stock", "image", "gender", "colors", "sizes", "categoryId"],
         properties: {
-          sku: {
-            type: "string",
-            example: "SKU-2001",
-          },
           name: {
             type: "string",
             example: "Chunky Sneakers",
           },
+          slug: {
+            type: "string",
+            example: "chunky-sneakers",
+            description: "Optional. If missing, generated from name.",
+          },
           description: {
             type: "string",
             example: "Comfortable chunky sneakers for everyday wear.",
-          },
-          category: {
-            type: "string",
-            example: "Shoes",
           },
           price: {
             type: "number",
@@ -271,37 +282,71 @@ const swaggerDefinition = {
           },
           status: {
             type: "string",
-            enum: ["Active", "Draft", "Archived"],
+            enum: ["Active", "Inactive"],
             example: "Active",
+          },
+          gender: {
+            type: "string",
+            enum: ["Male", "Female"],
+            example: "Male",
+          },
+          colors: {
+            type: "array",
+            items: { type: "string", example: "#000000" },
+            example: ["#000000", "#ffffff"],
+          },
+          sizes: {
+            type: "array",
+            items: { type: "string", enum: ["S", "M", "L", "XL", "XXL"] },
+            example: ["M", "L"],
           },
           image: {
             type: "string",
-            example: "/images/products/chunky-sneaker.png",
+            example:
+              "https://res.cloudinary.com/your_cloud_name/image/upload/v1/ufo-collection/products/chunky-sneaker.png",
           },
           images: {
             type: "array",
             items: { type: "string" },
           },
+
+          categoryId: { type: "string", example: "65f1c4b9e3b6f27c0d1a1234" },
         },
       },
+
       UpdateProductRequest: {
         type: "object",
         properties: {
-          sku: { type: "string" },
           name: { type: "string" },
+          slug: {
+            type: "string",
+            description: "If omitted but name is provided, backend will regenerate.",
+          },
           description: { type: "string" },
-          category: { type: "string" },
           price: { type: "number" },
           stock: { type: "number" },
           status: {
             type: "string",
-            enum: ["Active", "Draft", "Archived"],
+            enum: ["Active", "Inactive"],
+          },
+          gender: {
+            type: "string",
+            enum: ["Male", "Female"],
+          },
+          colors: {
+            type: "array",
+            items: { type: "string" },
+          },
+          sizes: {
+            type: "array",
+            items: { type: "string", enum: ["S", "M", "L", "XL", "XXL"] },
           },
           image: { type: "string" },
           images: {
             type: "array",
             items: { type: "string" },
           },
+          categoryId: { type: "string" },
         },
       },
 
@@ -318,27 +363,18 @@ const swaggerDefinition = {
           },
           imageUrl: {
             type: "string",
-            example: "/images/categories/hoodie.png",
+            example:
+              "https://res.cloudinary.com/your_cloud_name/image/upload/v1/ufo-collection/categories/hoodie.png",
           },
           isActive: { type: "boolean", example: true },
-          parent: { type: "string", nullable: true },
-          mainCategory: {
-            type: "string",
-            enum: ["Clothes", "Shoes"],
-            example: "Clothes",
-          },
-          customer: {
-            type: "string",
-            enum: ["Men", "Women", "Boys", "Girls"],
-            example: "Men",
-          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },
       },
+
       CreateCategoryRequest: {
         type: "object",
-        required: ["name", "mainCategory", "customer"],
+        required: ["name"],
         properties: {
           name: { type: "string", example: "Hoodie" },
           slug: {
@@ -352,22 +388,13 @@ const swaggerDefinition = {
           },
           imageUrl: {
             type: "string",
-            example: "/images/categories/hoodie.png",
+            example:
+              "https://res.cloudinary.com/your_cloud_name/image/upload/v1/ufo-collection/categories/hoodie.png",
           },
-          parentId: { type: "string", nullable: true },
           isActive: { type: "boolean", example: true },
-          mainCategory: {
-            type: "string",
-            enum: ["Clothes", "Shoes"],
-            example: "Clothes",
-          },
-          customer: {
-            type: "string",
-            enum: ["Men", "Women", "Boys", "Girls"],
-            example: "Men",
-          },
         },
       },
+
       UpdateCategoryRequest: {
         type: "object",
         properties: {
@@ -375,29 +402,14 @@ const swaggerDefinition = {
           slug: { type: "string" },
           description: { type: "string" },
           imageUrl: { type: "string" },
-          parentId: { type: "string", nullable: true },
           isActive: { type: "boolean" },
-          mainCategory: {
-            type: "string",
-            enum: ["Clothes", "Shoes"],
-          },
-          customer: {
-            type: "string",
-            enum: ["Men", "Women", "Boys", "Girls"],
-          },
         },
       },
     },
   },
   tags: [
-    {
-      name: "Health",
-      description: "Health check endpoints",
-    },
-    {
-      name: "Auth",
-      description: "Authentication endpoints",
-    },
+    { name: "Health", description: "Health check endpoints" },
+    { name: "Auth", description: "Authentication endpoints" },
     {
       name: "Products",
       description: "Public product catalog endpoints (homepage, collection, PDP)",
@@ -408,7 +420,7 @@ const swaggerDefinition = {
     },
     {
       name: "Categories",
-      description: "Public category endpoints (filters, dropdowns, etc.)",
+      description: "Public category endpoints",
     },
     {
       name: "Categories - Admin",

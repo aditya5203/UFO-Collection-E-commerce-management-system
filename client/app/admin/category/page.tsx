@@ -1,266 +1,237 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 
-type MainCategory = "Clothes" | "Shoes";
-
-const MAIN_CATEGORIES: MainCategory[] = ["Clothes", "Shoes"];
-
-const SUB_CATEGORIES: Record<MainCategory, string[]> = {
-  Clothes: [
-    "T-Shirt",
-    "Shirt",
-    "Jeans",
-    "Hoodie",
-    "Jacket",
-    "Windcheater",
-    "Combination Set",
-    "Frock",
-    "Formal Shirt",
-    "Formal Pant",
-    "Wide-Leg",
-    "Long Coat",
-    "Track",
-  ],
-  Shoes: [
-    "Loafer",
-    "Boot",
-    "Sneaker",
-    "Running Shoes",
-    "Hiking & Trekking Shoes",
-  ],
+type Category = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  isActive: boolean;
+  createdAt?: string;
 };
-
-const CUSTOMER_OPTIONS = ["Men", "Women", "Boys", "Girls"] as const;
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
 export default function AdminCategoryPage() {
-  const router = useRouter();
+  const [categories, setCategories] = React.useState<Category[]>([]);
+  const [loadingList, setLoadingList] = React.useState(false);
 
-  const [mainCategory, setMainCategory] = React.useState<MainCategory | "">("");
-  const [subCategory, setSubCategory] = React.useState<string>("");
-  const [customer, setCustomer] = React.useState<string>("");
-  const [imageFile, setImageFile] = React.useState<File | null>(null);
+  const [name, setName] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [isActive, setIsActive] = React.useState(true);
 
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [showModal, setShowModal] = React.useState(false);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
+  const [toast, setToast] = React.useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const availableSubCategories =
-    mainCategory === "" ? [] : SUB_CATEGORIES[mainCategory];
+  React.useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
-  function handleMainCategoryChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const value = e.target.value as MainCategory | "";
-    setMainCategory(value);
-    setSubCategory("");
-  }
+  React.useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      setLoadingList(true);
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/categories`, {
+          credentials: "include",
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.message || "Failed to load categories");
+        const data = (body.data ?? body) as any[];
+        const mapped: Category[] = data.map((c: any) => ({
+          id: c._id || c.id,
+          name: c.name,
+          slug: c.slug,
+          description: c.description,
+          isActive: c.isActive,
+          createdAt: c.createdAt,
+        }));
+        if (mounted) setCategories(mapped);
+      } catch (err: any) {
+        if (mounted) setError(err.message || "Failed to load categories");
+      } finally {
+        if (mounted) setLoadingList(false);
+      }
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) setImageFile(file);
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
 
-    if (!mainCategory || !subCategory || !customer) {
-      setError("Please select main category, sub-category, and customer.");
+    const cleanName = name.trim();
+    const cleanDesc = description.trim();
+
+    if (!cleanName) {
+      setError("Please provide a category name.");
       return;
     }
 
     try {
       setSubmitting(true);
+      const isEditing = Boolean(editingId);
 
-      // 🔹 Build payload for backend
       const payload = {
-        name: subCategory, // e.g. "Hoodie"
-        mainCategory, // "Clothes" | "Shoes"
-        customer, // "Men" | "Women" | "Boys" | "Girls"
-        // slug optional → backend will generate if missing
-        // description, imageUrl, parentId can be added later if needed
+        name: cleanName,
+        description: cleanDesc || undefined,
+        isActive,
       };
 
-      const res = await fetch(`${API_BASE_URL}/api/admin/categories`, {
-        method: "POST",
-        credentials: "include", // 🔐 send auth cookie
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const endpoint = isEditing
+        ? `${API_BASE_URL}/api/admin/categories/${editingId}`
+        : `${API_BASE_URL}/api/admin/categories`;
+
+      const res = await fetch(endpoint, {
+        method: isEditing ? "PUT" : "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(
-          body.message || `Failed to create category (status ${res.status})`
-        );
+        throw new Error(body.message || "Failed to save category");
       }
 
       const json = await res.json();
-      const created = json.data ?? json; // depending on controller response
+      const created = json.data ?? json;
       const categoryId = created._id || created.id;
 
-      // 🔹 Build query params for redirect
-      const params = new URLSearchParams({
-        mainCategory,
-        subCategory,
-        customer,
+      setCategories((prev) => {
+        if (isEditing && editingId) {
+          return prev.map((c) =>
+            c.id === editingId
+              ? {
+                  ...c,
+                  name: created.name,
+                  slug: created.slug,
+                  description: created.description,
+                  isActive: created.isActive,
+                }
+              : c
+          );
+        }
+        return [
+          {
+            id: categoryId,
+            name: created.name,
+            slug: created.slug,
+            description: created.description,
+            isActive: created.isActive,
+          },
+          ...prev,
+        ];
       });
 
-      if (categoryId) {
-        params.set("categoryId", String(categoryId));
-      }
-
-      // 🔹 Redirect to Add Product page with context
-      router.push(`/admin/products/newproduct?${params.toString()}`);
+      setName("");
+      setDescription("");
+      setIsActive(true);
+      setEditingId(null);
+      setShowModal(false);
+      setToast({ type: "success", message: isEditing ? "Category updated" : "Category created" });
     } catch (err: any) {
-      console.error("Create category error:", err);
-      setError(err.message || "Something went wrong while creating category.");
+      setError(err.message || "Something went wrong");
+      setToast({ type: "error", message: err.message || "Something went wrong" });
     } finally {
       setSubmitting(false);
     }
   }
 
+  function openCreateModal() {
+    setError(null);
+    setEditingId(null);
+    setName("");
+    setDescription("");
+    setIsActive(true);
+    setShowModal(true);
+  }
+
+  function openEditModal(c: Category) {
+    setError(null);
+    setEditingId(c.id);
+    setName(c.name ?? "");
+    setDescription(c.description ?? "");
+    setIsActive(Boolean(c.isActive));
+    setShowModal(true);
+  }
+
+  function requestDelete(id: string) {
+    setConfirmDeleteId(id);
+  }
+
+  async function handleDeleteConfirmed(id: string | null) {
+    if (!id) {
+      setConfirmDeleteId(null);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/categories/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || "Failed to delete category");
+      }
+      setCategories((prev) => prev.filter((c) => c.id !== id));
+      setToast({ type: "success", message: "Category deleted" });
+    } catch (err: any) {
+      setToast({ type: "error", message: err.message || "Failed to delete category" });
+    } finally {
+      setConfirmDeleteId(null);
+    }
+  }
+
   return (
     <>
-      {/* GLOBAL CSS */}
       <style jsx global>{`
-        .admin-root {
-          min-height: 100vh;
-          display: flex;
-          background: #020817;
-          color: #e5e7eb;
-          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-            sans-serif;
-        }
-
-        /* SIDEBAR */
-        .sidebar {
-          width: 260px;
-          background: #020617;
-          border-right: 1px solid #111827;
-          padding: 20px 18px;
-          display: flex;
-          flex-direction: column;
-          gap: 24px;
-        }
-
-        .sidebar-header {
-          font-size: 14px;
-          font-weight: 600;
-          color: #f9fafb;
-        }
-
-        .nav-list {
-          list-style: none;
-          margin: 0;
-          padding: 0;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .nav-link {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          padding: 10px 14px;
-          border-radius: 12px;
-          font-size: 14px;
-          font-weight: 400;
-          color: #e5e7eb;
-          text-decoration: none;
-          cursor: pointer;
-        }
-
-        .nav-link:hover:not(.active) {
-          background: #0b1220;
-        }
-
-        .nav-link.active {
-          background: #1f2937;
-        }
-
-        .nav-icon-wrapper {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 20px;
-          height: 20px;
-        }
-
-        .nav-icon {
-          width: 18px;
-          height: 18px;
-          object-fit: contain;
-        }
-
-        .sidebar-footer {
-          margin-top: auto;
-          font-size: 11px;
-          color: #6b7280;
-        }
-
-        /* MAIN */
-        .main {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-        }
-
-        .header {
-          height: 72px;
-          border-bottom: 1px solid #111827;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 0 28px;
-          background: #020617;
-        }
-
-        .brand {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-        }
-
-        .brand-logo-wrap {
-          width: 46px;
-          height: 46px;
-          border-radius: 999px;
-          overflow: hidden;
-          border: 1px solid #374151;
-        }
-
-        .brand-title {
-          font-size: 26px;
-          font-weight: 700;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          color: #f9fafb;
-        }
-
-        /* CONTENT */
-        .content {
-          padding: 24px 28px 40px;
-          display: flex;
-          flex-direction: column;
-          gap: 22px;
-        }
-
         .page-title {
           font-size: 22px;
           font-weight: 600;
+          margin-bottom: 16px;
+        }
+
+        .page-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 16px;
+        }
+
+        .add-btn {
+          padding: 10px 16px;
+          border-radius: 10px;
+          background: #22c55e;
+          border: none;
+          color: #0f172a;
+          font-weight: 600;
+          cursor: pointer;
+        }
+
+        .add-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .category-form-wrap {
           max-width: 720px;
-          margin-top: 8px;
+          margin-bottom: 28px;
+          border: 1px solid #111827;
+          border-radius: 16px;
+          padding: 18px 18px 10px;
+          background: #0b1220;
         }
 
         .field-group {
@@ -272,7 +243,6 @@ export default function AdminCategoryPage() {
 
         .field-label {
           font-size: 13px;
-          color: #e5e7eb;
         }
 
         .field-description {
@@ -280,16 +250,12 @@ export default function AdminCategoryPage() {
           color: #9ca3af;
         }
 
-        .select-input,
-        .file-input {
-          width: 100%;
+        .text-input {
           padding: 10px 12px;
           border-radius: 10px;
           border: 1px solid #1f2937;
           background: #020617;
           color: #e5e7eb;
-          font-size: 14px;
-          outline: none;
         }
 
         .actions {
@@ -301,10 +267,9 @@ export default function AdminCategoryPage() {
         .save-btn {
           padding: 10px 22px;
           border-radius: 999px;
-          border: none;
           background: #8b5cf6;
-          color: #f9fafb;
-          font-size: 14px;
+          border: none;
+          color: #fff;
           cursor: pointer;
         }
 
@@ -314,252 +279,301 @@ export default function AdminCategoryPage() {
         }
 
         .error-text {
-          margin-bottom: 10px;
+          margin-bottom: 12px;
           font-size: 13px;
           color: #fca5a5;
         }
 
-        .file-name {
-          font-size: 12px;
+        .modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+        }
+
+        .modal {
+          background: #0b1220;
+          border: 1px solid #111827;
+          border-radius: 16px;
+          padding: 20px;
+          width: min(720px, 90vw);
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+        }
+
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 14px;
+        }
+
+        .modal-title {
+          font-size: 18px;
+          font-weight: 700;
+        }
+
+        .close-btn {
+          background: none;
+          border: none;
           color: #9ca3af;
+          font-size: 22px;
+          cursor: pointer;
+        }
+
+        .table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-top: 10px;
+        }
+
+        .table th,
+        .table td {
+          border-bottom: 1px solid #111827;
+          padding: 10px 8px;
+          text-align: left;
+          font-size: 13px;
+        }
+
+        .badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 8px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+
+        .badge.active {
+          background: rgba(34, 197, 94, 0.12);
+          color: #4ade80;
+        }
+
+        .badge.inactive {
+          background: rgba(248, 113, 113, 0.12);
+          color: #fca5a5;
+        }
+
+        .action-btn {
+          padding: 6px 10px;
+          border-radius: 8px;
+          border: 1px solid #1f2937;
+          background: #0b1220;
+          color: #e5e7eb;
+          cursor: pointer;
+          font-size: 12px;
+          margin-right: 8px;
+        }
+
+        .action-btn.delete {
+          border-color: #7f1d1d;
+          color: #fca5a5;
+        }
+
+        .confirm-card {
+          background: #0b1220;
+          border: 1px solid #111827;
+          border-radius: 14px;
+          padding: 18px;
+          width: min(420px, 90vw);
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+        }
+
+        .confirm-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+          margin-top: 16px;
+        }
+
+        .btn {
+          padding: 8px 14px;
+          border-radius: 10px;
+          border: 1px solid #1f2937;
+          background: #0b1220;
+          color: #e5e7eb;
+          cursor: pointer;
+        }
+
+        .btn.primary {
+          background: #ef4444;
+          border-color: #b91c1c;
+          color: #fff;
+        }
+
+        .toast {
+          position: fixed;
+          right: 20px;
+          bottom: 20px;
+          padding: 12px 14px;
+          border-radius: 12px;
+          color: #0f172a;
+          font-size: 13px;
+          font-weight: 600;
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+          z-index: 1200;
+        }
+
+        .toast.success {
+          background: #bbf7d0;
+          border: 1px solid #22c55e;
+        }
+
+        .toast.error {
+          background: #fecdd3;
+          border: 1px solid #f43f5e;
         }
       `}</style>
 
-      <div className="admin-root">
-        {/* SIDEBAR */}
-        <aside className="sidebar">
-          <div className="sidebar-header">Store Admin</div>
+      <div>
+        <div className="page-header">
+          <h1 className="page-title">Categories</h1>
+          <button type="button" className="add-btn" onClick={openCreateModal}>
+            Add Category
+          </button>
+        </div>
 
-          <ul className="nav-list">
-            <li>
-              <Link href="/admin/dashboard" className="nav-link">
-                <span className="nav-icon-wrapper">
-                  <Image
-                    src="/images/admin/dashboard.png"
-                    alt="Dashboard"
-                    width={18}
-                    height={18}
-                    className="nav-icon"
-                  />
-                </span>
-                Dashboard
-              </Link>
-            </li>
+        {error && <div className="error-text">{error}</div>}
 
-            <li>
-              <Link href="/admin/category" className="nav-link active">
-                <span className="nav-icon-wrapper">
-                  <Image
-                    src="/images/admin/category.png"
-                    alt="Category"
-                    width={18}
-                    height={18}
-                    className="nav-icon"
-                  />
-                </span>
-                Category
-              </Link>
-            </li>
-
-            <li>
-              <Link href="/admin/products" className="nav-link">
-                <span className="nav-icon-wrapper">
-                  <Image
-                    src="/images/admin/products.png"
-                    alt="Products"
-                    width={18}
-                    height={18}
-                    className="nav-icon"
-                  />
-                </span>
-                Products
-              </Link>
-            </li>
-
-            <li>
-              <Link href="/admin/orders" className="nav-link">
-                <span className="nav-icon-wrapper">
-                  <Image
-                    src="/images/admin/order.png"
-                    alt="Orders"
-                    width={18}
-                    height={18}
-                    className="nav-icon"
-                  />
-                </span>
-                Orders
-              </Link>
-            </li>
-
-            <li>
-              <Link href="/admin/customers" className="nav-link">
-                <span className="nav-icon-wrapper">
-                  <Image
-                    src="/images/admin/customers.png"
-                    alt="Customers"
-                    width={18}
-                    height={18}
-                    className="nav-icon"
-                  />
-                </span>
-                Customers
-              </Link>
-            </li>
-
-            <li>
-              <Link href="/admin/discounts" className="nav-link">
-                <span className="nav-icon-wrapper">
-                  <Image
-                    src="/images/admin/discount.png"
-                    alt="Discounts"
-                    width={18}
-                    height={18}
-                    className="nav-icon"
-                  />
-                </span>
-                Discounts
-              </Link>
-            </li>
-
-            <li>
-              <Link href="/admin/settings" className="nav-link">
-                <span className="nav-icon-wrapper">
-                  <Image
-                    src="/images/admin/setting.png"
-                    alt="Settings"
-                    width={18}
-                    height={18}
-                    className="nav-icon"
-                  />
-                </span>
-                Settings
-              </Link>
-            </li>
-          </ul>
-
-          <div className="sidebar-footer">
-            © {new Date().getFullYear()} UFO Collection
-          </div>
-        </aside>
-
-        {/* MAIN */}
-        <div className="main">
-          {/* HEADER */}
-          <header className="header">
-            <div className="brand">
-              <div className="brand-logo-wrap">
-                <Image
-                  src="/images/admin/logo.png"
-                  alt="UFO Collection"
-                  width={46}
-                  height={46}
-                />
+        {showModal && (
+          <div className="modal-overlay">
+            <div className="modal">
+              <div className="modal-header">
+                <div className="modal-title">{editingId ? "Edit Category" : "Add Category"}</div>
+                <button
+                  type="button"
+                  className="close-btn"
+                  aria-label="Close"
+                  onClick={() => setShowModal(false)}
+                >
+                  ×
+                </button>
               </div>
-              <div className="brand-title">UFO Collection</div>
+              <div className="category-form-wrap" style={{ marginBottom: 0, border: "none", padding: 0 }}>
+                <form onSubmit={handleSubmit}>
+                  <div className="field-group">
+                    <label htmlFor="name" className="field-label">
+                      Category Name *
+                    </label>
+                    <input
+                      id="name"
+                      name="name"
+                      className="text-input"
+                      placeholder="e.g. Hoodie, Sneakers"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="field-group">
+                    <label htmlFor="description" className="field-label">
+                      Description
+                    </label>
+                    <textarea
+                      id="description"
+                      name="description"
+                      className="text-input"
+                      placeholder="Optional short description"
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="field-group">
+                    <label htmlFor="isActive" className="field-label">
+                      Active
+                    </label>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <input
+                        id="isActive"
+                        name="isActive"
+                        type="checkbox"
+                        checked={isActive}
+                        onChange={(e) => setIsActive(e.target.checked)}
+                      />
+                      <span className="field-description">Keep enabled to show in public listings.</span>
+                    </label>
+                  </div>
+
+                  <div className="actions">
+                    <button type="submit" className="save-btn" disabled={submitting}>
+                      {submitting ? "Saving..." : "Save Category"}
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
-            <div className="header-right"></div>
-          </header>
+          </div>
+        )}
 
-          {/* CONTENT – CATEGORY FORM */}
-          <main className="content">
-            <h1 className="page-title">Category Management Form</h1>
-
-            <div className="category-form-wrap">
-              {error && <div className="error-text">{error}</div>}
-
-              <form onSubmit={handleSubmit}>
-                {/* MAIN CATEGORY */}
-                <div className="field-group">
-                  <label className="field-label" htmlFor="mainCategory">
-                    Main Category
-                  </label>
-                  <select
-                    id="mainCategory"
-                    className="select-input"
-                    value={mainCategory}
-                    onChange={handleMainCategoryChange}
-                  >
-                    <option value="">Select</option>
-                    {MAIN_CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* SUB CATEGORY */}
-                <div className="field-group">
-                  <label className="field-label" htmlFor="subCategory">
-                    Sub-Category
-                  </label>
-                  <select
-                    id="subCategory"
-                    className="select-input"
-                    value={subCategory}
-                    onChange={(e) => setSubCategory(e.target.value)}
-                    disabled={!mainCategory}
-                  >
-                    <option value="">
-                      {mainCategory
-                        ? "Select"
-                        : "Select main category first"}
-                    </option>
-                    {availableSubCategories.map((sub) => (
-                      <option key={sub} value={sub}>
-                        {sub}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* CUSTOMER */}
-                <div className="field-group">
-                  <label className="field-label" htmlFor="customer">
-                    Customer Selection
-                  </label>
-                  <select
-                    id="customer"
-                    className="select-input"
-                    value={customer}
-                    onChange={(e) => setCustomer(e.target.value)}
-                  >
-                    <option value="">Select</option>
-                    {CUSTOMER_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* OPTIONAL IMAGE (not sent yet, but UI kept) */}
-                <div className="field-group">
-                  <label className="field-label" htmlFor="categoryImage">
-                    Category Image (Optional)
-                  </label>
-                  <input
-                    id="categoryImage"
-                    type="file"
-                    accept="image/*"
-                    className="file-input"
-                    onChange={handleImageChange}
-                  />
-                  {imageFile && (
-                    <p className="file-name">Selected: {imageFile.name}</p>
-                  )}
-                </div>
-
-                <div className="actions">
-                  <button className="save-btn" type="submit" disabled={submitting}>
-                    {submitting ? "Saving..." : "Save & Add Product"}
-                  </button>
-                </div>
-              </form>
+        {confirmDeleteId && (
+          <div className="modal-overlay">
+            <div className="confirm-card">
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>Delete category?</div>
+              <div className="field-description" style={{ marginBottom: 8 }}>
+                This action cannot be undone.
+              </div>
+              <div className="confirm-actions">
+                <button type="button" className="btn" onClick={() => setConfirmDeleteId(null)}>
+                  Cancel
+                </button>
+                <button type="button" className="btn primary" onClick={() => handleDeleteConfirmed(confirmDeleteId)}>
+                  Delete
+                </button>
+              </div>
             </div>
-          </main>
+          </div>
+        )}
+
+        <div>
+          {loadingList ? (
+            <p className="field-description">Loading categories...</p>
+          ) : categories.length === 0 ? (
+            <p className="field-description">No categories yet.</p>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Slug</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {categories.map((c) => (
+                  <tr key={c.id}>
+                    <td>{c.name}</td>
+                    <td>{c.slug}</td>
+                    <td>
+                      <span className={`badge ${c.isActive ? "active" : "inactive"}`}>
+                        {c.isActive ? "Active" : "Inactive"}
+                      </span>
+                    </td>
+                    <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "--"}</td>
+                    <td>
+                      <button type="button" className="action-btn" onClick={() => openEditModal(c)}>
+                        Edit
+                      </button>
+                      <button type="button" className="action-btn delete" onClick={() => requestDelete(c.id)}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
+
+      {toast && <div className={`toast ${toast.type}`}>{toast.message}</div>}
     </>
   );
 }

@@ -9,7 +9,7 @@ export const config = Object.freeze({
 
   mongoUrl:
     process.env.MONGO_URL ||
-    "mongodb+srv://adit:adit123456@cluster0.yizviok.mongodb.net/?appName=Cluster0",
+    "mongodb+srv://adit:adit123456@cluster0.yizviok.mongodb.net/ufo-collection?appName=Cluster0",
 
   jwt: {
     secret: process.env.JWT_SECRET || "dev-secret-key",

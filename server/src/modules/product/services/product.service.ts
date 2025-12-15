@@ -1,9 +1,12 @@
-import { Product, IProduct } from "../../../models/Product.model";
+//modules/auth/product/services/product.service.ts
+import { Product } from "../../../models/Product.model";
 import {
   CreateProductDto,
   UpdateProductDto,
   ProductQueryDto,
 } from "../types/product.types";
+import { generateProductSlug } from "../utils/slug.util";
+import cloudinary from "../../../config/cloudinary";
 
 export const productService = {
   // For admin – can see all, with filters
@@ -12,27 +15,17 @@ export const productService = {
 
     if (query.search) {
       const regex = new RegExp(query.search, "i");
-      filter.$or = [{ name: regex }, { sku: regex }];
-    }
-
-    if (query.category && query.category !== "All") {
-      filter.category = query.category;
+      filter.$or = [{ name: regex }, { slug: regex }];
     }
 
     if (query.status && query.status !== "All") {
       filter.status = query.status;
     }
 
-    // 🔹 optional filters (not used by UI yet, but ready)
-    if (query.mainCategory) {
-      filter.mainCategory = query.mainCategory;
-    }
-    if (query.subCategory) {
-      filter.subCategory = query.subCategory;
-    }
-    if (query.customer) {
-      filter.customer = query.customer;
-    }
+    if (query.gender) filter.gender = query.gender;
+    if (query.size) filter.sizes = query.size;
+
+    if (query.categoryId) filter.categoryId = query.categoryId;
 
     return Product.find(filter).sort({ createdAt: -1 }).lean().exec();
   },
@@ -43,23 +36,12 @@ export const productService = {
 
     if (query.search) {
       const regex = new RegExp(query.search, "i");
-      filter.$or = [{ name: regex }, { sku: regex }];
+      filter.$or = [{ name: regex }, { slug: regex }];
     }
 
-    if (query.category) {
-      filter.category = query.category;
-    }
-
-    // optional
-    if (query.mainCategory) {
-      filter.mainCategory = query.mainCategory;
-    }
-    if (query.subCategory) {
-      filter.subCategory = query.subCategory;
-    }
-    if (query.customer) {
-      filter.customer = query.customer;
-    }
+    if (query.gender) filter.gender = query.gender;
+    if (query.size) filter.sizes = query.size;
+    if (query.categoryId) filter.categoryId = query.categoryId;
 
     return Product.find(filter).sort({ createdAt: -1 }).lean().exec();
   },
@@ -69,27 +51,50 @@ export const productService = {
   },
 
   async create(data: CreateProductDto) {
+    const slug = data.slug ?? generateProductSlug(data.name);
+
+    const uploadIfNeeded = async (src?: string) => {
+      if (!src) return src;
+      if (src.includes("res.cloudinary.com")) return src;
+      const uploaded = await cloudinary.uploader.upload(src, {
+        folder: "ufo-collection/products",
+        resource_type: "image",
+      });
+      return uploaded.secure_url || uploaded.url;
+    };
+
+    const mainImageUrl = await uploadIfNeeded(data.image);
+    const galleryUrls = data.images?.length
+      ? (await Promise.all(data.images.map(uploadIfNeeded))).filter(
+          (u): u is string => Boolean(u)
+        )
+      : [];
+
     const product = await Product.create({
-      sku: data.sku,
       name: data.name,
+      slug,
       description: data.description,
-      category: data.category,
       price: data.price,
       stock: data.stock,
       status: data.status ?? "Active",
-      image: data.image,
-      images: data.images ?? [],
-
-      // 🔹 ensure these are stored
-      mainCategory: data.mainCategory,
-      subCategory: data.subCategory,
-      customer: data.customer,
+      image: mainImageUrl ?? data.image,
+      images: galleryUrls ?? [],
+      gender: data.gender,
+      colors: data.colors,
+      sizes: data.sizes,
+      categoryId: data.categoryId,
     });
+
     return product.toObject();
   },
 
   async update(id: string, data: UpdateProductDto) {
-    return Product.findByIdAndUpdate(id, data, {
+    const update: any = { ...data };
+    if (data.name && !data.slug) {
+      update.slug = generateProductSlug(data.name);
+    }
+
+    return Product.findByIdAndUpdate(id, update, {
       new: true,
       runValidators: true,
     })

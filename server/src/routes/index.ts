@@ -10,13 +10,13 @@ const router = Router();
 // Public products → /api/products/...
 router.use("/products", productRoutes.publicRouter);
 
-// Public categories → /api/categories/...
-router.use("/categories", categoryRoutes.publicRouter);
-
 // Auth → /api/auth/...
 router.use("/auth", authRoutes);
 
 /* -------------------- ADMIN ENDPOINTS -------------------- */
+
+// Public categories → /api/categories/...
+router.use("/categories", categoryRoutes.publicRouter);
 
 // Admin products → /api/admin/products/...
 router.use("/admin/products", productRoutes.adminRouter);
