@@ -1,515 +1,353 @@
 "use client";
 
-import React, { useState } from "react";
+import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 type CartItem = {
   id: string;
   name: string;
   size: string;
   price: number;
-  quantity: number;
+  qty: number;
   image: string;
 };
 
-const initialCart: CartItem[] = [
-  {
-    id: "1",
-    name: "Women’s Black Jacket",
-    size: "M",
-    price: 120,
-    quantity: 1,
-    image: "/cart-jacket.png",
-  },
-  {
-    id: "2",
-    name: "Men’s Blue Jeans",
-    size: "32",
-    price: 160,
-    quantity: 1,
-    image: "/cart-jeans.png",
-  },
-];
-
 export default function CartPage() {
-  const [cartItems, setCartItems] = useState<CartItem[]>(initialCart);
+  const router = useRouter();
 
-  const handleIncrease = (id: string) => {
-    setCartItems((items) =>
-      items.map((item) =>
-        item.id === id
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      )
-    );
-  };
-
-  const handleDecrease = (id: string) => {
-    setCartItems((items) =>
-      items.map((item) =>
-        item.id === id && item.quantity > 1
-          ? { ...item, quantity: item.quantity - 1 }
-          : item
-      )
-    );
-  };
-
-  const handleRemove = (id: string) => {
-    setCartItems((items) => items.filter((item) => item.id !== id));
-  };
-
-  const subtotal = cartItems.reduce(
-    (sum, item) => sum + item.price * item.quantity,
-    0
-  );
+  const [items, setItems] = React.useState<CartItem[]>([]);
+  const [discount, setDiscount] = React.useState("");
   const shipping = 10;
-  const total = subtotal + shipping;
+
+  // ✅ Load cart from localStorage
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem("ufo_cart");
+      const parsed = raw ? (JSON.parse(raw) as CartItem[]) : [];
+      setItems(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setItems([]);
+    }
+  }, []);
+
+  const saveCart = (next: CartItem[]) => {
+    setItems(next);
+    localStorage.setItem("ufo_cart", JSON.stringify(next));
+  };
+
+  const subtotal = React.useMemo(
+    () => items.reduce((sum, it) => sum + it.price * it.qty, 0),
+    [items]
+  );
+
+  const total = subtotal + (items.length ? shipping : 0);
+
+  const updateQty = (id: string, size: string, qty: number) => {
+    const safe = Math.max(1, Math.min(99, qty || 1));
+    const next = items.map((it) =>
+      it.id === id && it.size === size ? { ...it, qty: safe } : it
+    );
+    saveCart(next);
+  };
+
+  const removeItem = (id: string, size: string) => {
+    const next = items.filter((it) => !(it.id === id && it.size === size));
+    saveCart(next);
+  };
 
   return (
     <>
-      {/* ===== GLOBAL STYLES FOR THIS PAGE ===== */}
-      <style jsx global>{`
-        * {
-          box-sizing: border-box;
-        }
+      {/* HEADER */}
+      <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
+        <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => router.push("/collection")}
+              className="group flex items-center gap-2 rounded-full border border-[#2b2f45] px-3 py-[7px] text-[11px] uppercase tracking-[0.16em] text-white hover:bg-white hover:text-[#050611]"
+              aria-label="Back to collection"
+              title="Back to collection"
+            >
+              <Image
+                src="/images/backarrow.png"
+                width={18}
+                height={18}
+                alt="Back icon"
+                className="brightness-0 invert group-hover:invert-0"
+              />
+              <span className="hidden sm:inline">Back</span>
+            </button>
 
-        body {
-          margin: 0;
-          background: #050816;
-          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-            sans-serif;
-          color: #e5e7eb;
-        }
-
-        a {
-          text-decoration: none;
-          color: inherit;
-        }
-
-        /* ---------- HEADER ---------- */
-        .cart-header {
-          background: #050816;
-          border-bottom: 1px solid #111827;
-          padding: 12px 32px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-
-        .cart-header-left {
-          display: flex;
-          align-items: center;
-          gap: 24px;
-        }
-
-        .back-link {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 14px;
-          color: #f9fafb;
-        }
-
-        .back-link img {
-          width: 18px;
-          height: 18px;
-        }
-
-        .logo-group {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-        }
-
-        .logo-group img {
-          width: 72px;
-          height: 72px;
-          object-fit: cover;
-        }
-
-        .logo-text {
-          font-size: 28px;
-          font-weight: 600;
-          letter-spacing: 0.18em;
-        }
-
-        .nav-links {
-          display: flex;
-          gap: 32px;
-          font-size: 14px;
-        }
-
-        .nav-links a {
-          color: #9ca3af;
-        }
-
-        .nav-links a:hover {
-          color: #ffffff;
-        }
-
-        .nav-links .active-link {
-          color: #ffffff;
-          border-bottom: 2px solid #ffffff;
-          padding-bottom: 6px;
-        }
-
-        .cart-header-right img {
-          width: 22px;
-          height: 22px;
-        }
-
-        /* ---------- MAIN LAYOUT ---------- */
-        .cart-page {
-          max-width: 1120px;
-          margin: 0 auto;
-          padding: 24px 32px 56px;
-        }
-
-        .cart-title {
-          font-size: 26px;
-          font-weight: 600;
-          margin-bottom: 16px;
-        }
-
-        .divider-line {
-          height: 1px;
-          background: #111827;
-          margin-bottom: 28px;
-        }
-
-        .cart-layout {
-          display: grid;
-          grid-template-columns: minmax(0, 2.4fr) minmax(280px, 1.3fr);
-          gap: 40px;
-          align-items: flex-start;
-        }
-
-        @media (max-width: 960px) {
-          .cart-layout {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        /* ---------- CART TABLE CARD ---------- */
-        .cart-table-card {
-          background: #050816;
-          border-radius: 10px;
-          border: 1px solid #1f2937;
-          overflow: hidden;
-        }
-
-        .cart-header-row,
-        .cart-row {
-          display: grid;
-          grid-template-columns: 3.4fr 1.1fr 1.5fr 1.2fr 0.6fr;
-          align-items: center;
-          padding: 12px 18px;
-        }
-
-        .cart-header-row {
-          background: #020617;
-          font-size: 13px;
-          font-weight: 600;
-          color: #cbd5e1;
-          border-bottom: 1px solid #1f2937;
-        }
-
-        .cart-row {
-          background: #050816;
-          border-top: 1px solid #1f2937;
-          font-size: 14px;
-        }
-
-        /* Product cell */
-        .product-cell {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .product-thumb {
-          width: 48px;
-          height: 48px;
-          border-radius: 999px;
-          object-fit: cover;
-          background: #111827;
-        }
-
-        .product-name {
-          font-size: 14px;
-          color: #e5e7eb;
-        }
-
-        /* Size cell */
-        .size-cell {
-          font-size: 13px;
-          color: #9ca3af;
-        }
-
-        /* Quantity cell – custom control */
-        .qty-cell {
-          display: flex;
-          align-items: center;
-        }
-
-        .qty-box {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          border: 1px solid #d1d5db;
-          padding: 6px 10px 6px 12px;
-          border-radius: 3px;
-          width: 150px;
-          background: #050816;
-        }
-
-        .qty-label {
-          font-size: 14px;
-          color: #cbd5e1;
-        }
-
-        .qty-buttons {
-          display: flex;
-          flex-direction: column;
-          gap: 3px;
-          margin-left: 8px;
-        }
-
-        .qty-btn {
-          width: 16px;
-          height: 10px;
-          border: none;
-          background: transparent;
-          padding: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-        }
-
-        .qty-btn img {
-          width: 14px;
-          height: 10px;
-        }
-
-        /* Price cell */
-        .price-cell {
-          text-align: left;
-          font-size: 14px;
-          color: #e5e7eb;
-        }
-
-        /* Delete icon cell */
-        .delete-cell {
-          display: flex;
-          justify-content: center;
-        }
-
-        .delete-btn {
-          border: none;
-          background: transparent;
-          cursor: pointer;
-          padding: 0;
-        }
-
-        .delete-btn img {
-          width: 20px;
-          height: 20px;
-        }
-
-        /* ---------- ORDER SUMMARY CARD ---------- */
-        .summary-card {
-          background: #050816;
-          border-radius: 10px;
-          border: 1px solid #1f2937;
-          padding: 22px 24px;
-        }
-
-        .summary-title {
-          font-size: 18px;
-          font-weight: 600;
-          margin-bottom: 16px;
-        }
-
-        .summary-row {
-          display: flex;
-          justify-content: space-between;
-          font-size: 14px;
-          color: #cbd5e1;
-          margin: 6px 0;
-        }
-
-        .summary-row.total-row {
-          margin-top: 10px;
-          font-weight: 600;
-        }
-
-        .checkout-btn {
-          margin-top: 18px;
-          width: 100%;
-          padding: 11px 0;
-          border-radius: 6px;
-          border: none;
-          background: #1d9bf0;
-          color: #ffffff;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-        }
-
-        .checkout-btn:hover {
-          background: #1580c5;
-        }
-
-        /* ---------- FOOTER ---------- */
-        .cart-footer {
-          text-align: center;
-          padding: 40px 0 26px;
-          color: #9ca3af;
-          font-size: 12px;
-        }
-
-        .footer-icons {
-          margin-bottom: 10px;
-          display: flex;
-          justify-content: center;
-          gap: 18px;
-        }
-
-        .footer-icons img {
-          width: 18px;
-          height: 18px;
-        }
-      `}</style>
-
-      {/* ---------- HEADER ---------- */}
-      <header className="cart-header">
-        <div className="cart-header-left">
-          <Link href="/collection" className="back-link">
-            <img src="/images/backarrow.png" alt="Back" />
-            <span>Back</span>
-          </Link>
-
-          <div className="logo-group">
-            <Link href="/">
-              <img src="/images/logo.png" alt="UFO Collection logo" />
+            <Link href="/homepage" className="flex items-center gap-2">
+              <div className="h-[48px] w-[48px] overflow-hidden rounded-full border-2 border-white">
+                <Image
+                  src="/images/logo.png"
+                  alt="UFO Collection logo"
+                  width={48}
+                  height={48}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <span className="text-[26px] font-bold uppercase tracking-[0.18em] text-white">
+                UFO Collection
+              </span>
             </Link>
-            <span className="logo-text">UFO Collection</span>
           </div>
-        </div>
 
-        <nav className="nav-links">
-          <Link href="/">HOME</Link>
-          <Link href="/collection" className="active-link">
-            COLLECTION
+          <nav className="hidden md:flex gap-10">
+            <Link
+              href="/homepage"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              HOME
+            </Link>
+            <Link
+              href="/collection"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              COLLECTION
+            </Link>
+            <Link
+              href="/about"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              ABOUT
+            </Link>
+            <Link
+              href="/contact"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              CONTACT
+            </Link>
+          </nav>
+
+          <Link href="/wishlist" aria-label="Wishlist" title="Wishlist">
+            <Image
+              src="/images/wishlist.png"
+              width={26}
+              height={26}
+              alt="Wishlist icon"
+              className="brightness-0 invert"
+            />
           </Link>
-          <Link href="/about">ABOUT</Link>
-          <Link href="/contact">CONTACT</Link>
-        </nav>
-
-        <div className="cart-header-right">
-          <img src="/images/wishlist.png" alt="Cart" />
         </div>
       </header>
 
-      {/* ---------- MAIN CONTENT ---------- */}
-      <main className="cart-page">
-        <h1 className="cart-title">Shopping Cart</h1>
-        <div className="divider-line" />
+      {/* PAGE */}
+      <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
+        <div className="mx-auto max-w-[1280px] px-6 py-10">
+          <h1 className="text-[36px] font-semibold">Shopping Cart</h1>
+          <div className="mt-6 h-px bg-[#2b2f45]" />
 
-        <div className="cart-layout">
-          {/* LEFT: cart table */}
-          <section className="cart-table-card">
-            <div className="cart-header-row">
-              <span>Product</span>
-              <span>Size</span>
-              <span>Quantity</span>
-              <span>Price</span>
-              <span></span>
+          {/* EMPTY CART */}
+          {items.length === 0 ? (
+            <div className="mt-10 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-8 text-[#9aa3cc]">
+              Your cart is empty.
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => router.push("/collection")}
+                  className="rounded bg-white px-4 py-2 text-[#050611]"
+                  aria-label="Go to collection"
+                  title="Go to collection"
+                >
+                  Go to Collection
+                </button>
+              </div>
             </div>
-
-            {cartItems.map((item) => (
-              <div key={item.id} className="cart-row">
-                <div className="product-cell">
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="product-thumb"
-                  />
-                  <span className="product-name">{item.name}</span>
+          ) : (
+            <>
+              {/* CART TABLE */}
+              <section className="mt-10 rounded-[10px] border border-[#2b2f45] bg-[#0b0f1a]/60">
+                <div className="hidden md:grid grid-cols-[1.2fr_0.6fr_0.9fr_0.6fr_0.25fr] px-6 py-4 border-b border-[#2b2f45] text-[#dfe3ff]">
+                  <div>Product</div>
+                  <div>Size</div>
+                  <div className="text-center">Quantity</div>
+                  <div>Price</div>
+                  <div />
                 </div>
 
-                <div className="size-cell">Size: {item.size}</div>
+                {items.map((it) => (
+                  <div
+                    key={`${it.id}-${it.size}`}
+                    className="border-b border-[#1b2034] px-6 py-6 last:border-0"
+                  >
+                    {/* Desktop Row */}
+                    <div className="hidden md:grid grid-cols-[1.2fr_0.6fr_0.9fr_0.6fr_0.25fr] items-center gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className="relative h-[46px] w-[46px] overflow-hidden rounded-full border border-[#2b2f45]">
+                          <Image
+                            src={it.image}
+                            alt={it.name}
+                            fill
+                            className="object-cover"
+                          />
+                        </div>
+                        <span>{it.name}</span>
+                      </div>
 
-                <div className="qty-cell">
-                  <div className="qty-box">
-                    <span className="qty-label">Quantity: {item.quantity}</span>
-                    <div className="qty-buttons">
+                      <span>{it.size}</span>
+
+                      <div className="flex justify-center">
+                        <label
+                          htmlFor={`qty-${it.id}-${it.size}`}
+                          className="sr-only"
+                        >
+                          Quantity for {it.name}
+                        </label>
+                        <input
+                          id={`qty-${it.id}-${it.size}`}
+                          type="number"
+                          min={1}
+                          max={99}
+                          value={it.qty}
+                          onChange={(e) =>
+                            updateQty(it.id, it.size, Number(e.target.value))
+                          }
+                          aria-label={`Quantity for ${it.name}`}
+                          title={`Quantity for ${it.name}`}
+                          className="w-[80px] rounded border border-[#3a3f58] bg-transparent px-3 py-2 text-white"
+                        />
+                      </div>
+
+                      <span>Rs. {it.price}</span>
+
                       <button
-                        className="qty-btn"
                         type="button"
-                        onClick={() => handleIncrease(item.id)}
+                        onClick={() => removeItem(it.id, it.size)}
+                        aria-label={`Remove ${it.name}`}
+                        title={`Remove ${it.name}`}
+                        className="flex justify-center"
                       >
-                        <img src="/images/qtyup.png" alt="Increase quantity" />
-                      </button>
-                      <button
-                        className="qty-btn"
-                        type="button"
-                        onClick={() => handleDecrease(item.id)}
-                      >
-                        <img src="/images/qtydown.png" alt="Decrease quantity" />
+                        <Image
+                          src="/images/delete.png"
+                          width={28}
+                          height={28}
+                          alt="Remove icon"
+                          className="brightness-0 invert"
+                        />
                       </button>
                     </div>
+
+                    {/* Mobile Row */}
+                    <div className="md:hidden flex gap-4">
+                      <div className="relative h-[62px] w-[62px] overflow-hidden rounded-[12px] border border-[#2b2f45]">
+                        <Image
+                          src={it.image}
+                          alt={it.name}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+
+                      <div className="flex-1">
+                        <div className="font-medium">{it.name}</div>
+                        <div className="mt-1 text-[#9aa3cc] text-sm">
+                          Size: {it.size}
+                        </div>
+                        <div className="mt-1 text-[#9aa3cc] text-sm">
+                          Price: Rs. {it.price}
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-3">
+                          <label
+                            htmlFor={`qty-m-${it.id}-${it.size}`}
+                            className="sr-only"
+                          >
+                            Quantity for {it.name}
+                          </label>
+                          <input
+                            id={`qty-m-${it.id}-${it.size}`}
+                            type="number"
+                            min={1}
+                            max={99}
+                            value={it.qty}
+                            onChange={(e) =>
+                              updateQty(it.id, it.size, Number(e.target.value))
+                            }
+                            aria-label={`Quantity for ${it.name}`}
+                            title={`Quantity for ${it.name}`}
+                            className="w-[90px] rounded border border-[#3a3f58] bg-transparent px-3 py-2 text-white"
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => removeItem(it.id, it.size)}
+                            aria-label={`Remove ${it.name}`}
+                            title={`Remove ${it.name}`}
+                            className="rounded border border-[#2b2f45] px-3 py-2 text-sm text-white"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ))}
+              </section>
 
-                <div className="price-cell">${item.price * item.quantity}</div>
+              {/* ORDER SUMMARY */}
+              <aside className="mt-12 max-w-[460px] ml-auto">
+                <h2 className="text-[22px] font-semibold">Order Summary</h2>
 
-                <div className="delete-cell">
+                <div className="mt-6 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6">
+                  <label htmlFor="discount-code" className="sr-only">
+                    Discount code
+                  </label>
+                  <input
+                    id="discount-code"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    placeholder="Discount code"
+                    aria-label="Discount code"
+                    title="Discount code"
+                    className="w-full rounded-[10px] border border-[#2b2f45] bg-[#070a12] px-4 py-3 text-white placeholder:text-[#7c86b1]"
+                  />
+
+                  <div className="mt-8 space-y-4 text-[#9aa3cc]">
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span className="text-white">Rs. {subtotal}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Shipping</span>
+                      <span className="text-white">Rs. {shipping}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total</span>
+                      <span className="text-white">Rs. {total}</span>
+                    </div>
+                  </div>
+
                   <button
-                    className="delete-btn"
                     type="button"
-                    onClick={() => handleRemove(item.id)}
+                    onClick={() => {
+  const orderSummary = {
+    subtotal,
+    shipping: items.length ? shipping : 0,
+    total,
+    currency: "NPR",
+    updatedAt: new Date().toISOString(),
+  };
+
+  localStorage.setItem("ufo_order_summary", JSON.stringify(orderSummary));
+  router.push("/checkout");
+}}
+
+                    className="mt-8 w-full rounded-[10px] bg-[#1f7cff] py-3 font-semibold"
+                    aria-label="Proceed to checkout"
+                    title="Proceed to checkout"
                   >
-                    <img src="/images/delete.png" alt="Remove item" />
+                    Proceed to Checkout
                   </button>
                 </div>
-              </div>
-            ))}
-          </section>
-
-          {/* RIGHT: order summary */}
-          <aside className="summary-card">
-            <div className="summary-title">Order Summary</div>
-
-            <div className="summary-row">
-              <span>Subtotal</span>
-              <span>${subtotal}</span>
-            </div>
-            <div className="summary-row">
-              <span>Estimated Shipping</span>
-              <span>${shipping}</span>
-            </div>
-            <div className="summary-row total-row">
-              <span>Total</span>
-              <span>${total}</span>
-            </div>
-
-            <button className="checkout-btn" type="button">
-              Proceed to Checkout
-            </button>
-          </aside>
+              </aside>
+            </>
+          )}
         </div>
       </main>
-
-      {/* ---------- FOOTER ---------- */}
-      <footer className="cart-footer">
-        <div className="footer-icons">
-          <img src="/instagram.png" alt="Instagram" />
-          <img src="/facebook.png" alt="Facebook" />
-        </div>
-        <p>© 2025 UFO Collection — All Rights Reserved</p>
-      </footer>
     </>
   );
 }

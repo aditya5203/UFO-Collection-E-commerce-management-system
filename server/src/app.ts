@@ -1,11 +1,6 @@
 // server/src/app.ts
 
-import express, {
-  Application,
-  Request,
-  Response,
-  NextFunction,
-} from "express";
+import express, { Application } from "express";
 import path from "path"; // ⭐ For static uploads
 import cors from "cors";
 import helmet from "helmet";
@@ -17,6 +12,7 @@ import swaggerUi from "swagger-ui-express";
 import { swaggerSpec } from "./config/swagger";
 import { getConnectionStatus } from "./config/database";
 import apiRoutes from "./routes"; // ⭐ Central API router
+import { errorHandler } from "./middleware/error.middleware";
 
 // Load env variables
 dotenv.config();
@@ -112,19 +108,6 @@ app.use((_req: Request, res: Response) => {
 /* ----------------------------------------------------
  * Global Error Handler
  * --------------------------------------------------*/
-app.use(
-  (err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    console.error("🔥 SERVER ERROR:", err);
-
-    res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      ...(process.env.NODE_ENV === "development" && {
-        error: err.message,
-        stack: err.stack,
-      }),
-    });
-  }
-);
+app.use(errorHandler);
 
 export default app;

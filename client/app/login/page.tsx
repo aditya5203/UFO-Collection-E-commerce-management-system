@@ -4,564 +4,69 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = React.useState(false);
 
   return (
-    <>
-      {/* GLOBAL STYLES – DARK THEME + LOGIN LAYOUT */}
-      <style jsx global>{`
-        @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
-
-        :root {
-          --bg-main: #050611;
-          --bg-card: #101223;
-          --bg-subscribe: #0a1020;
-          --bg-input: #181a2c;
-          --border-soft: #23253a;
-          --text-main: #f5f5f7;
-          --text-muted: #8b90ad;
-          --brand: #b49cff;
-          --brand-soft: #c9b9ff;
-          --max: 1160px;
-        }
-
-        * {
-          box-sizing: border-box;
-        }
-
-        html,
-        body {
-          margin: 0;
-          padding: 0;
-          font-family: Poppins, system-ui, -apple-system, BlinkMacSystemFont,
-            "Segoe UI", sans-serif;
-          background: var(--bg-main);
-          color: var(--text-main);
-        }
-
-        a {
-          text-decoration: none;
-          color: inherit;
-        }
-
-        .container {
-          max-width: var(--max);
-          margin: 0 auto;
-          padding: 0 16px;
-        }
-
-        /* HEADER (NAVBAR) */
-        .topbar {
-          height: 80px;
-          display: flex;
-          align-items: center;
-          border-bottom: 1px solid #191b2d;
-          background: rgba(5, 6, 17, 0.96);
-          backdrop-filter: blur(12px);
-          position: sticky;
-          top: 0;
-          z-index: 40;
-        }
-
-        .row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          width: 100%;
-        }
-
-        .brand-wrap {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .brand-logo {
-          border-radius: 999px;
-          overflow: hidden;
-          border: 2px solid #ffffff;
-          width: 44px;
-          height: 44px;
-          flex-shrink: 0;
-        }
-
-        .brand-logo :global(img) {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .logo-text {
-          font-weight: 700;
-          letter-spacing: 0.18em;
-          font-size: 28px;
-          text-transform: uppercase;
-          color: #ffffff;
-        }
-
-        .nav {
-          display: flex;
-          gap: 42px;
-        }
-
-        .nav a {
-          font-size: 15px;
-          font-weight: 500;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          color: var(--text-muted);
-        }
-
-        .nav a:hover {
-          color: var(--brand-soft);
-        }
-
-        .icons {
-          display: flex;
-          gap: 20px;
-          align-items: center;
-        }
-
-        .nav-icon {
-          filter: brightness(0) invert(1) contrast(280%) saturate(260%);
-          opacity: 1;
-        }
-
-        /* PAGE LAYOUT */
-        .page {
-          background: radial-gradient(
-              circle at top left,
-              rgba(102, 76, 255, 0.14),
-              transparent 55%
-            ),
-            var(--bg-main);
-          min-height: calc(100vh - 80px);
-        }
-
-        .hero {
-          padding: 40px 0 60px;
-        }
-
-        .hero-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-          gap: 48px;
-          align-items: center;
-        }
-
-        /* LEFT IMAGE BLOCK */
-        .hero-image {
-          position: relative;
-          border-radius: 18px;
-          overflow: hidden;
-          background: #111324;
-          border: 1px solid #20233a;
-          min-height: 420px;
-        }
-
-        .hero-image :global(img) {
-          object-fit: cover;
-        }
-
-        /* RIGHT FORM CARD */
-        .hero-card {
-          background: var(--bg-card);
-          border-radius: 18px;
-          padding: 40px 40px 34px;
-          border: 1px solid #22253a;
-          box-shadow: 0 18px 40px rgba(0, 0, 0, 0.65);
-        }
-
-        .hero-title {
-          font-size: 40px;
-          line-height: 1.15;
-          margin: 0 0 4px;
-          font-weight: 600;
-        }
-
-        .hero-sub {
-          margin: 0 0 26px;
-          font-size: 14px;
-          color: var(--text-muted);
-          max-width: 340px;
-        }
-
-        form.login-form {
-          display: grid;
-          gap: 14px;
-        }
-
-        .form-label-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 6px;
-          font-size: 12px;
-        }
-
-        .form-label {
-          color: #daddff;
-          font-weight: 500;
-        }
-
-        .forgot-link {
-          color: var(--brand-soft);
-          font-size: 11px;
-          cursor: pointer;
-        }
-
-        .forgot-link:hover {
-          text-decoration: underline;
-        }
-
-        .login-form input {
-          width: 100%;
-          padding: 11px 12px;
-          font-size: 13px;
-          border-radius: 8px;
-          border: 1px solid var(--border-soft);
-          background: var(--bg-input);
-          color: var(--text-main);
-          outline: none;
-        }
-
-        .login-form input::placeholder {
-          color: #787e99;
-        }
-
-        .login-form input:focus {
-          border-color: var(--brand-soft);
-          box-shadow: 0 0 0 1px rgba(180, 156, 255, 0.4);
-        }
-
-        /* PASSWORD SPECIAL STYLES */
-        .password-wrapper {
-          margin-top: 6px;
-        }
-
-        .password-input-box {
-          position: relative;
-          width: 100%;
-        }
-
-        .password-input-box input {
-          width: 100%;
-          padding: 12px 42px 12px 12px;
-          font-size: 13px;
-          border-radius: 8px;
-          border: 1px solid var(--border-soft);
-          background: var(--bg-input);
-          color: var(--text-main);
-          outline: none;
-        }
-
-        .password-input-box input::placeholder {
-          color: #787e99;
-        }
-
-        .password-input-box input:focus {
-          border-color: var(--brand-soft);
-          box-shadow: 0 0 0 1px rgba(180, 156, 255, 0.4);
-        }
-
-        .eye-toggle {
-          position: absolute;
-          right: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          cursor: pointer;
-          opacity: 0.9;
-          border: none;
-          background: transparent;
-          padding: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .eye-toggle:hover {
-          opacity: 1;
-        }
-
-        .primary-btn {
-          margin-top: 10px;
-          width: 100%;
-          border: none;
-          border-radius: 999px;
-          padding: 12px 16px;
-          font-size: 14px;
-          font-weight: 500;
-          background: #b49cff;
-          color: #070818;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 8px;
-          transition: transform 0.08s ease, box-shadow 0.08s ease,
-            filter 0.08s ease;
-          box-shadow: 0 10px 26px rgba(116, 92, 255, 0.5);
-        }
-
-        .primary-btn:hover {
-          filter: brightness(1.05);
-        }
-
-        .primary-btn:active {
-          transform: translateY(1px);
-          box-shadow: 0 6px 18px rgba(116, 92, 255, 0.4);
-        }
-
-        .google-btn {
-          margin-top: 12px;
-          width: 100%;
-          border-radius: 999px;
-          border: 1px solid var(--border-soft);
-          background: transparent;
-          padding: 10px 16px;
-          font-size: 13px;
-          color: var(--text-main);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          cursor: pointer;
-          transition: background 0.12s ease, border-color 0.12s ease;
-        }
-
-        .google-btn:hover {
-          background: #15182a;
-          border-color: #2b3050;
-        }
-
-        .or-row {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          margin-top: 12px;
-          margin-bottom: 4px;
-          font-size: 11px;
-          color: var(--text-muted);
-        }
-
-        .or-row span {
-          white-space: nowrap;
-        }
-
-        .or-line {
-          flex: 1;
-          height: 1px;
-          background: #292c45;
-        }
-
-        .signup-text {
-          margin-top: 16px;
-          font-size: 12px;
-          color: var(--text-muted);
-          text-align: center;
-        }
-
-        .signup-text a {
-          color: var(--brand-soft);
-          font-weight: 500;
-        }
-
-        /* SUBSCRIBE STRIP */
-        .sub {
-          margin-top: 40px;
-          padding: 46px 0;
-          background: var(--bg-subscribe);
-          border-top: 1px solid #171a32;
-          border-bottom: 1px solid #171a32;
-          text-align: center;
-        }
-
-        .sub h3 {
-          margin: 0 0 6px;
-          font-size: 20px;
-          font-weight: 600;
-        }
-
-        .sub p {
-          margin: 0 0 18px;
-          font-size: 13px;
-          color: var(--text-muted);
-        }
-
-        .subform {
-          display: flex;
-          justify-content: center;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .sub-input {
-          min-width: 260px;
-          width: 420px;
-          max-width: 80vw;
-          border-radius: 999px;
-          border: 1px solid var(--border-soft);
-          padding: 10px 14px;
-          font-size: 13px;
-          background: #090c1a;
-          color: var(--text-main);
-        }
-
-        .sub-input::placeholder {
-          color: #787e99;
-        }
-
-        .subbtn {
-          border-radius: 999px;
-          border: none;
-          padding: 10px 20px;
-          font-size: 13px;
-          font-weight: 500;
-          cursor: pointer;
-          background: #ffffff;
-          color: #050616;
-        }
-
-        /* FOOTER */
-        .footer {
-          padding: 40px 0 18px;
-          background: #050611;
-        }
-
-        .footwrap {
-          display: grid;
-          grid-template-columns: 1.4fr 0.8fr 0.8fr;
-          gap: 40px;
-          border-bottom: 1px solid #191b2e;
-          padding-bottom: 24px;
-        }
-
-        .foot-logo {
-          font-weight: 600;
-          font-size: 16px;
-          letter-spacing: 0.11em;
-          margin-bottom: 8px;
-        }
-
-        .footp {
-          font-size: 12px;
-          color: var(--text-muted);
-          line-height: 1.9;
-          max-width: 420px;
-        }
-
-        .foothead {
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 0.14em;
-          font-weight: 600;
-          margin-bottom: 10px;
-          color: var(--text-muted);
-        }
-
-        .list {
-          list-style: none;
-          margin: 0;
-          padding: 0;
-          display: grid;
-          gap: 8px;
-          font-size: 12px;
-          color: #d4d6ea;
-        }
-
-        .copy {
-          font-size: 11px;
-          color: #6d7192;
-          text-align: center;
-          padding-top: 14px;
-        }
-
-        /* RESPONSIVE */
-        @media (max-width: 900px) {
-          .hero-grid {
-            grid-template-columns: 1fr;
-          }
-
-          .hero-image {
-            min-height: 320px;
-          }
-
-          .hero-card {
-            padding: 28px 22px 24px;
-          }
-
-          .hero-title {
-            font-size: 30px;
-          }
-
-          .footwrap {
-            grid-template-columns: 1fr;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .row {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 10px;
-          }
-
-          .nav {
-            gap: 20px;
-            flex-wrap: wrap;
-          }
-
-          .icons {
-            margin-top: 4px;
-          }
-
-          .logo-text {
-            font-size: 22px;
-          }
-
-          .sub {
-            padding: 36px 0;
-          }
-        }
-      `}</style>
-
+    <div className="min-h-screen bg-[#050611] text-[#f5f5f7]">
       {/* HEADER */}
-      <header className="topbar">
-        <div className="container row">
+      <header className="sticky top-0 z-40 h-20 border-b border-[#191b2d] bg-[#050611]/95 backdrop-blur-[12px]">
+        <div className="mx-auto flex h-full w-full max-w-[1160px] items-center justify-between px-4 max-[640px]:flex-col max-[640px]:items-start max-[640px]:gap-2 max-[640px]:py-3">
           {/* LEFT – ROUND LOGO + TEXT */}
-          <div className="brand-wrap">
-            <div className="brand-logo">
+          <div className="flex items-center gap-[10px]">
+            <div className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white">
               <Image
                 src="/images/logo.png"
                 alt="UFO Collection logo"
                 width={44}
                 height={44}
+                className="h-full w-full object-cover"
               />
             </div>
-            <div className="logo-text">UFO Collection</div>
+            <div className="text-[28px] font-bold uppercase tracking-[0.18em] text-white max-[640px]:text-[22px]">
+              UFO Collection
+            </div>
           </div>
 
           {/* CENTER – NAV LINKS */}
-          <nav className="nav">
-            <Link href="/">HOME</Link>
-            <Link href="/collection">COLLECTION</Link>
-            <Link href="/about">ABOUT</Link>
-            <Link href="/contact">CONTACT</Link>
+          <nav className="flex gap-[42px] max-[640px]:flex-wrap max-[640px]:gap-5">
+            <Link
+              href="/"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              HOME
+            </Link>
+            <Link
+              href="/collection"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              COLLECTION
+            </Link>
+            <Link
+              href="/about"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              ABOUT
+            </Link>
+            <Link
+              href="/contact"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              CONTACT
+            </Link>
           </nav>
 
           {/* RIGHT – ICONS */}
-          <div className="icons">
+          <div className="flex items-center gap-5 max-[640px]:mt-1">
             <Link href="/collection">
               <Image
                 src="/images/search.png"
                 width={26}
                 height={26}
                 alt="Search"
-                className="nav-icon"
+                className="opacity-100 brightness-0 invert contrast-[2.8] saturate-[2.6]"
               />
             </Link>
             <Link href="/login">
@@ -570,7 +75,7 @@ export default function LoginPage() {
                 width={26}
                 height={26}
                 alt="Profile"
-                className="nav-icon"
+                className="opacity-100 brightness-0 invert contrast-[2.8] saturate-[2.6]"
               />
             </Link>
             <Link href="/wishlist">
@@ -579,7 +84,7 @@ export default function LoginPage() {
                 width={26}
                 height={26}
                 alt="Wishlist"
-                className="nav-icon"
+                className="opacity-100 brightness-0 invert contrast-[2.8] saturate-[2.6]"
               />
             </Link>
           </div>
@@ -587,30 +92,33 @@ export default function LoginPage() {
       </header>
 
       {/* PAGE */}
-      <main className="page">
-        {/* HERO SECTION (IMAGE + FORM) */}
-        <section className="hero">
-          <div className="container hero-grid">
+      <main className="min-h-[calc(100vh-80px)] bg-[radial-gradient(circle_at_top_left,rgba(102,76,255,0.14),transparent_55%)]">
+        {/* HERO */}
+        <section className="py-10 pb-[60px]">
+          <div className="mx-auto grid w-full max-w-[1160px] grid-cols-2 items-center gap-12 px-4 max-[900px]:grid-cols-1">
             {/* LEFT IMAGE */}
-            <div className="hero-image">
+            <div className="relative min-h-[420px] w-full overflow-hidden rounded-[18px] border border-[#20233a] bg-[#111324] max-[900px]:min-h-[320px]">
               <Image
                 src="/images/loginw.jpg"
                 alt="Model sitting on stool"
                 fill
                 priority
+                className="object-cover"
               />
             </div>
 
-            {/* RIGHT FORM CARD */}
-            <div className="hero-card">
-              <h1 className="hero-title">Welcome Back</h1>
-              <p className="hero-sub">
+            {/* RIGHT CARD */}
+            <div className="rounded-[18px] border border-[#22253a] bg-[#101223] px-10 py-10 pb-[34px] shadow-[0_18px_40px_rgba(0,0,0,0.65)] max-[900px]:px-[22px] max-[900px]:py-7">
+              <h1 className="mb-1 text-[40px] font-semibold leading-[1.15] max-[900px]:text-[30px]">
+                Welcome Back
+              </h1>
+              <p className="mb-[26px] max-w-[340px] text-[14px] text-[#8b90ad]">
                 Log in to continue with your fashion journey. Track your orders,
                 manage your wishlist and never miss a drop from UFO Collection.
               </p>
 
               <form
-                className="login-form"
+                className="grid gap-[14px]"
                 onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
                   e.preventDefault();
                   const formData = new FormData(e.currentTarget);
@@ -619,18 +127,15 @@ export default function LoginPage() {
 
                   try {
                     const apiBase =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+                      process.env.NEXT_PUBLIC_API_URL ||
+                      "http://localhost:8080/api";
 
-const res = await fetch(`${apiBase}/auth/login`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  credentials: "include",   // 🔴 ADD THIS
-  body: JSON.stringify({
-    email,
-    password,
-  }),
-});
-
+                    const res = await fetch(`${apiBase}/auth/login`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      credentials: "include",
+                      body: JSON.stringify({ email, password }),
+                    });
 
                     console.log("Login status:", res.status);
 
@@ -658,38 +163,45 @@ const res = await fetch(`${apiBase}/auth/login`, {
               >
                 {/* EMAIL */}
                 <div>
-                  <div className="form-label-row">
-                    <span className="form-label">Email Address</span>
+                  <div className="mb-1.5 flex items-center justify-between text-[12px]">
+                    <span className="font-medium text-[#daddff]">
+                      Email Address
+                    </span>
                   </div>
                   <input
                     name="email"
                     type="email"
                     placeholder="Enter your email"
                     required
+                    className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)]"
                   />
                 </div>
 
-                {/* PASSWORD WITH EYE + FORGOT */}
-                <div className="password-wrapper">
-                  <div className="form-label-row">
-                    <span className="form-label">Password</span>
-                    <Link href="/forgot-password" className="forgot-link">
+                {/* PASSWORD */}
+                <div className="mt-1.5">
+                  <div className="mb-1.5 flex items-center justify-between text-[12px]">
+                    <span className="font-medium text-[#daddff]">Password</span>
+                    <Link
+                      href="/forgot-password"
+                      className="cursor-pointer text-[11px] text-[#c9b9ff] hover:underline"
+                    >
                       Forgot your password?
                     </Link>
                   </div>
 
-                  <div className="password-input-box">
+                  <div className="relative w-full">
                     <input
                       name="password"
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
                       required
+                      className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 pr-[42px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)]"
                     />
                     <button
                       type="button"
                       aria-label={showPassword ? "Hide password" : "Show password"}
-                      className="eye-toggle"
-                      onClick={() => setShowPassword(!showPassword)}
+                      onClick={() => setShowPassword((s) => !s)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 border-0 bg-transparent p-0 opacity-90 hover:opacity-100"
                     >
                       <Image
                         src="/images/view.png"
@@ -702,28 +214,31 @@ const res = await fetch(`${apiBase}/auth/login`, {
                 </div>
 
                 {/* LOGIN BUTTON */}
-                <button type="submit" className="primary-btn">
+                <button
+                  type="submit"
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#b49cff] px-4 py-3 text-[14px] font-medium text-[#070818] shadow-[0_10px_26px_rgba(116,92,255,0.5)] transition hover:brightness-[1.05] active:translate-y-[1px] active:shadow-[0_6px_18px_rgba(116,92,255,0.4)]"
+                >
                   Login
                 </button>
 
                 {/* OR DIVIDER */}
-                <div className="or-row">
-                  <div className="or-line" />
-                  <span>OR</span>
-                  <div className="or-line" />
+                <div className="my-2 flex items-center gap-2.5 text-[11px] text-[#8b90ad]">
+                  <div className="h-px flex-1 bg-[#292c45]" />
+                  <span className="whitespace-nowrap">OR</span>
+                  <div className="h-px flex-1 bg-[#292c45]" />
                 </div>
 
                 {/* GOOGLE LOGIN */}
                 <button
-  type="button"
-  className="google-btn"
-  onClick={() => {
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-    window.location.href = `${apiBase}/auth/google/oauth`;
-  }}
->
-
+                  type="button"
+                  className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-full border border-[#23253a] bg-transparent px-4 py-[10px] text-[13px] text-[#f5f5f7] transition hover:bg-[#15182a] hover:border-[#2b3050]"
+                  onClick={() => {
+                    const apiBase =
+                      process.env.NEXT_PUBLIC_API_URL ||
+                      "http://localhost:8080/api";
+                    window.location.href = `${apiBase}/auth/google/oauth`;
+                  }}
+                >
                   <Image
                     src="/images/google.png"
                     width={18}
@@ -734,24 +249,29 @@ const res = await fetch(`${apiBase}/auth/login`, {
                 </button>
               </form>
 
-              <div className="signup-text">
-                New here? <Link href="/signup">Create an account</Link>
+              <div className="mt-4 text-center text-[12px] text-[#8b90ad]">
+                New here?{" "}
+                <Link href="/signup" className="font-medium text-[#c9b9ff]">
+                  Create an account
+                </Link>
               </div>
             </div>
           </div>
         </section>
 
         {/* SUBSCRIBE STRIP */}
-        <section className="sub">
-          <div className="container">
-            <h3>Subscribe now &amp; get 20% off</h3>
-            <p>
-              Discover the latest trends in fashion with UFO Collection.
-              Stylish, comfortable and made for everyone.
+        <section className="mt-10 border-y border-[#171a32] bg-[#0a1020] py-[46px] text-center max-[640px]:py-9">
+          <div className="mx-auto w-full max-w-[1160px] px-4">
+            <h3 className="mb-1.5 text-[20px] font-semibold">
+              Subscribe now &amp; get 20% off
+            </h3>
+            <p className="mb-[18px] text-[13px] text-[#8b90ad]">
+              Discover the latest trends in fashion with UFO Collection. Stylish,
+              comfortable and made for everyone.
             </p>
 
             <form
-              className="subform"
+              className="flex flex-wrap justify-center gap-2.5"
               onSubmit={(e) => {
                 e.preventDefault();
                 const inp = e.currentTarget.querySelector(
@@ -762,12 +282,15 @@ const res = await fetch(`${apiBase}/auth/login`, {
               }}
             >
               <input
-                className="sub-input"
+                className="w-[420px] max-w-[80vw] min-w-[260px] rounded-full border border-[#23253a] bg-[#090c1a] px-[14px] py-[10px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99]"
                 type="email"
                 required
                 placeholder="Enter your email id"
               />
-              <button className="subbtn" type="submit">
+              <button
+                className="rounded-full bg-white px-5 py-[10px] text-[13px] font-medium text-[#050616]"
+                type="submit"
+              >
                 SUBSCRIBE
               </button>
             </form>
@@ -776,21 +299,25 @@ const res = await fetch(`${apiBase}/auth/login`, {
       </main>
 
       {/* FOOTER */}
-      <footer className="footer">
-        <div className="container footwrap">
-          {/* LEFT: UFO Collection */}
+      <footer className="bg-[#050611] pb-[18px] pt-10">
+        <div className="mx-auto grid w-full max-w-[1160px] grid-cols-[1.4fr_0.8fr_0.8fr] gap-10 border-b border-[#191b2e] px-4 pb-6 max-[900px]:grid-cols-1">
+          {/* LEFT */}
           <div>
-            <div className="foot-logo">UFO Collection</div>
-            <p className="footp">
+            <div className="text-[16px] font-semibold tracking-[0.11em]">
+              UFO Collection
+            </div>
+            <p className="mt-2 max-w-[420px] text-[12px] leading-[1.9] text-[#8b90ad]">
               UFO Collection brings minimal, premium streetwear to your wardrobe.
               Discover curated looks, everyday essentials and pieces made to last.
             </p>
           </div>
 
-          {/* MIDDLE: COMPANY */}
+          {/* MIDDLE */}
           <div>
-            <div className="foothead">COMPANY</div>
-            <ul className="list">
+            <div className="mb-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
+              COMPANY
+            </div>
+            <ul className="grid gap-2 text-[12px] text-[#d4d6ea]">
               <li>
                 <Link href="/">Home</Link>
               </li>
@@ -806,20 +333,22 @@ const res = await fetch(`${apiBase}/auth/login`, {
             </ul>
           </div>
 
-          {/* RIGHT: GET IN TOUCH */}
+          {/* RIGHT */}
           <div>
-            <div className="foothead">GET IN TOUCH</div>
-            <ul className="list">
+            <div className="mb-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
+              GET IN TOUCH
+            </div>
+            <ul className="grid gap-2 text-[12px] text-[#d4d6ea]">
               <li>+977 9804880758</li>
               <li>ufocollection@gmail.com</li>
             </ul>
           </div>
         </div>
 
-        <div className="copy">
+        <div className="pt-3.5 text-center text-[11px] text-[#6d7192]">
           Copyright 2025 © UFO Collection — All Rights Reserved.
         </div>
       </footer>
-    </>
+    </div>
   );
 }

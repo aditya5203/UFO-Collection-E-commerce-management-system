@@ -3,12 +3,18 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 
 export default function ProfilePage() {
   const router = useRouter();
 
-  const [saving, setSaving] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  const [loggingOut, setLoggingOut] = React.useState(false);
+
+  // 3-dots dropdown
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement | null>(null);
 
   const [form, setForm] = React.useState({
     name: "",
@@ -19,29 +25,72 @@ export default function ProfilePage() {
     womenSize: "",
   });
 
-  // ----------------------------------------------------
-  // HANDLE INPUT CHANGE
-  // ----------------------------------------------------
+  // -------------------------------
+  // INPUT CHANGE
+  // -------------------------------
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setForm((p) => ({ ...p, [name]: value }));
   };
 
-  // ----------------------------------------------------
-  // SAVE PROFILE  -> PATCH /auth/profile
-  // ----------------------------------------------------
+  // -------------------------------
+  // LOAD PROFILE -> GET /auth/me
+  // -------------------------------
+  React.useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const api =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+
+        const res = await fetch(`${api}/auth/me`, { credentials: "include" });
+
+        if (res.status === 401 || !res.ok) {
+          router.push("/login");
+          return;
+        }
+
+        const data = await res.json().catch(() => ({} as any));
+        const u = data?.user;
+
+        if (!u) {
+          router.push("/login");
+          return;
+        }
+
+        setForm({
+          name: u.name || "",
+          email: u.email || "",
+          height: u.height ? String(u.height) : "",
+          weight: u.weight ? String(u.weight) : "",
+          menSize: u.recommendedSizeMen || "",
+          womenSize: u.recommendedSizeWomen || "",
+        });
+      } catch (err) {
+        console.error(err);
+        router.push("/login");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadProfile();
+  }, [router]);
+
+  // -------------------------------
+  // SAVE PROFILE -> PATCH /auth/profile
+  // -------------------------------
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaving(true);
 
     try {
-      const apiBase =
+      const api =
         process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
-      const res = await fetch(`${apiBase}/auth/profile`, {
+      const res = await fetch(`${api}/auth/profile`, {
         method: "PATCH",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           name: form.name,
           height: form.height ? Number(form.height) : undefined,
@@ -52,17 +101,14 @@ export default function ProfilePage() {
       const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        alert(data?.message || "Failed to update");
-        setSaving(false);
+        alert(data?.message || "Update failed");
         return;
       }
 
-      const updated = data.user;
-
-      setForm((prev) => ({
-        ...prev,
-        menSize: updated.recommendedSizeMen || "",
-        womenSize: updated.recommendedSizeWomen || "",
+      setForm((p) => ({
+        ...p,
+        menSize: data.user?.recommendedSizeMen || "",
+        womenSize: data.user?.recommendedSizeWomen || "",
       }));
 
       alert("Profile updated successfully!");
@@ -74,382 +120,352 @@ export default function ProfilePage() {
     }
   };
 
-  // ----------------------------------------------------
-  // LOAD PROFILE DATA -> GET /auth/me
-  // ----------------------------------------------------
+  // -------------------------------
+  // LOGOUT -> POST /auth/logout
+  // -------------------------------
+  const handleLogout = async () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+
+    try {
+      const api =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+
+      await fetch(`${api}/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Logout failed", err);
+    } finally {
+      router.push("/login");
+    }
+  };
+
+  // -------------------------------
+  // CLOSE MENU ON OUTSIDE CLICK + ESC
+  // -------------------------------
   React.useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const apiBase =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-
-        const res = await fetch(`${apiBase}/auth/me`, {
-          method: "GET",
-          credentials: "include",
-        });
-
-        // If not logged in -> go to login
-        if (res.status === 401) {
-          router.push("/login");
-          return;
-        }
-
-        if (!res.ok) {
-          console.error("Error loading /auth/me", res.status);
-          router.push("/login");
-          return;
-        }
-
-        const data = await res.json().catch(() => ({} as any));
-
-        if (!data || !data.user) {
-          console.warn("No user in /auth/me response:", data);
-          router.push("/login");
-          return;
-        }
-
-        const u = data.user;
-
-        setForm({
-          name: u.name || "",
-          email: u.email || "",
-          height: u.height ? String(u.height) : "",
-          weight: u.weight ? String(u.weight) : "",
-          menSize: u.recommendedSizeMen || "",
-          womenSize: u.recommendedSizeWomen || "",
-        });
-      } catch (err) {
-        console.error("Failed to load profile", err);
-        router.push("/login");
-      } finally {
-        setLoading(false);
+    const onDown = (e: MouseEvent) => {
+      if (!menuOpen) return;
+      const target = e.target as Node;
+      if (menuRef.current && !menuRef.current.contains(target)) {
+        setMenuOpen(false);
       }
     };
 
-    loadUser();
-  }, [router]);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
 
-  // ----------------------------------------------------
-  // LOADING UI
-  // ----------------------------------------------------
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
   if (loading) {
     return (
-      <>
-        <style jsx global>{`
-          @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
-
-          body {
-            margin: 0;
-            background: #050611;
-            color: #f5f5f7;
-            font-family: Poppins, sans-serif;
-          }
-          .loading-wrap {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-        `}</style>
-        <div className="loading-wrap">Loading profile…</div>
-      </>
+      <main className="min-h-screen bg-[#050611] text-white flex items-center justify-center">
+        Loading profile…
+      </main>
     );
   }
 
-  // ----------------------------------------------------
-  // PAGE
-  // ----------------------------------------------------
   return (
-    <>
-      {/* --------------------------------------------------- */}
-      {/* GLOBAL UFO CSS */}
-      {/* --------------------------------------------------- */}
-      <style jsx global>{`
-        @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
+    <div className="min-h-screen bg-[#050611] text-white">
+      {/* ================= HEADER (same as cart page) ================= */}
+      <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
+        <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
+          {/* LEFT: Back + Logo + Brand */}
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="group flex items-center gap-2 rounded-full border border-[#2b2f45] px-3 py-[7px] text-[11px] uppercase tracking-[0.16em] text-white hover:bg-white hover:text-[#050611]"
+              aria-label="Back"
+              title="Back"
+            >
+              <Image
+                src="/images/backarrow.png"
+                width={18}
+                height={18}
+                alt="Back icon"
+                className="brightness-0 invert group-hover:invert-0"
+              />
+              <span className="hidden sm:inline">Back</span>
+            </button>
 
-        :root {
-          --bg-main: #050611;
-          --bg-card: #101223;
-          --bg-input: #181a2c;
-          --border-soft: #23253a;
-          --text-main: #f5f5f7;
-          --text-muted: #8b90ad;
-          --brand: #b49cff;
-          --brand-soft: #c9b9ff;
-          --max: 1160px;
-        }
-
-        * {
-          box-sizing: border-box;
-        }
-
-        body {
-          margin: 0;
-          padding: 0;
-          background: var(--bg-main);
-          color: var(--text-main);
-          font-family: Poppins, sans-serif;
-        }
-
-        /* TOP BAR */
-        .topbar {
-          height: 80px;
-          padding: 0 32px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          border-bottom: 1px solid #191b2d;
-          background: rgba(5, 6, 17, 0.96);
-          backdrop-filter: blur(12px);
-        }
-
-        .top-left {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-        }
-
-        .back-btn {
-          background: transparent;
-          border: none;
-          color: white;
-          font-size: 22px;
-          cursor: pointer;
-        }
-
-        .brand-logo {
-          width: 54px;
-          height: 54px;
-          border-radius: 50%;
-          overflow: hidden;
-          border: 2px solid #fff;
-        }
-
-        .brand-text {
-          font-size: 28px;
-          font-weight: 600;
-          text-transform: uppercase;
-          letter-spacing: 0.16em;
-        }
-
-        .profile-icon {
-          width: 44px;
-          height: 44px;
-          background: #fff;
-          border-radius: 999px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        /* MAIN */
-        .profile-main {
-          padding: 40px;
-          display: flex;
-          justify-content: center;
-        }
-
-        .profile-card {
-          background: var(--bg-card);
-          width: 100%;
-          max-width: 650px;
-          border-radius: 18px;
-          border: 1px solid #22253a;
-          padding: 30px;
-        }
-
-        .profile-title {
-          font-size: 24px;
-          font-weight: 600;
-          margin-bottom: 10px;
-        }
-
-        .section-title {
-          margin-top: 18px;
-          font-size: 13px;
-          font-weight: 600;
-          color: var(--text-muted);
-        }
-
-        .field-label {
-          margin-top: 14px;
-          margin-bottom: 4px;
-          font-size: 12px;
-          color: var(--text-muted);
-        }
-
-        .field-input {
-          width: 100%;
-          padding: 11px 12px;
-          background: var(--bg-input);
-          border-radius: 8px;
-          border: 1px solid var(--border-soft);
-          color: var(--text-main);
-          font-size: 13px;
-        }
-
-        .field-input::placeholder {
-          color: #787e99;
-        }
-
-        .field-input:focus {
-          border-color: var(--brand-soft);
-          box-shadow: 0 0 0 1px rgba(180, 156, 255, 0.4);
-          outline: none;
-        }
-
-        .field-input[disabled] {
-          opacity: 0.7;
-          cursor: not-allowed;
-        }
-
-        .save-btn {
-          margin-top: 22px;
-          padding: 12px 20px;
-          border-radius: 999px;
-          background: #2f7efc;
-          border: none;
-          color: white;
-          font-weight: 500;
-          cursor: pointer;
-          float: right;
-        }
-
-        .save-btn:hover {
-          filter: brightness(1.05);
-        }
-
-        .save-btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        @media (max-width: 768px) {
-          .profile-main {
-            padding: 20px;
-          }
-          .topbar {
-            padding: 0 16px;
-          }
-          .brand-text {
-            font-size: 20px;
-          }
-        }
-      `}</style>
-
-      {/* --------------------------------------------------- */}
-      {/* HEADER */}
-      {/* --------------------------------------------------- */}
-      <header className="topbar">
-        <div className="top-left">
-          <button className="back-btn" onClick={() => router.back()}>
-            ←
-          </button>
-
-          <div className="brand-logo">
-            <Image src="/images/logo.png" alt="logo" width={54} height={54} />
+            <Link href="/homepage" className="flex items-center gap-2">
+              <div className="h-[48px] w-[48px] overflow-hidden rounded-full border-2 border-white">
+                <Image
+                  src="/images/logo.png"
+                  alt="UFO Collection logo"
+                  width={48}
+                  height={48}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <span className="text-[26px] font-bold uppercase tracking-[0.18em] text-white">
+                UFO Collection
+              </span>
+            </Link>
           </div>
 
-          <span className="brand-text">UFO Collection</span>
-        </div>
+          {/* CENTER NAV: Home/Collection/About/Contact */}
+          <nav className="hidden md:flex gap-10">
+            <Link
+              href="/homepage"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              HOME
+            </Link>
+            <Link
+              href="/collection"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              COLLECTION
+            </Link>
+            <Link
+              href="/about"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              ABOUT
+            </Link>
+            <Link
+              href="/contact"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              CONTACT
+            </Link>
+          </nav>
 
-        <div className="profile-icon">
-          <Image src="/images/profile.png" width={20} height={20} alt="profile" />
+          {/* RIGHT: Wishlist + Profile + 3 dots */}
+          <div className="relative flex items-center gap-2" ref={menuRef}>
+            <Link href="/wishlist" aria-label="Wishlist" title="Wishlist">
+              <Image
+                src="/images/wishlist.png"
+                width={26}
+                height={26}
+                alt="Wishlist icon"
+                className="brightness-0 invert"
+              />
+            </Link>
+
+            <button
+              type="button"
+              aria-label="Profile"
+              title="Profile"
+              className="rounded-full border border-[#2b2f45] p-2 hover:bg-white/10"
+              onClick={() => router.push("/profile")}
+            >
+              <Image
+                src="/images/profile.png"
+                width={24}
+                height={24}
+                alt="Profile"
+                className="brightness-0 invert"
+              />
+            </button>
+
+            <button
+              type="button"
+              aria-label="Menu"
+              title="Menu"
+              className="rounded-full border border-[#2b2f45] p-2 hover:bg-white/10"
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              <Image
+                src="/images/dots.png"
+                width={24}
+                height={24}
+                alt="Menu"
+                className="brightness-0 invert"
+              />
+            </button>
+
+            {/* Dropdown */}
+            {menuOpen ? (
+              <div className="absolute right-0 top-[56px] w-[220px] overflow-hidden rounded-[12px] border border-[#23253a] bg-[#101223] shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
+                <Link
+                  href="/order-tracking"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
+                >
+                  Order Tracking
+                </Link>
+
+                <Link
+                  href="/order-history"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
+                >
+                  Order History
+                </Link>
+
+                <Link
+                  href="/address"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
+                >
+                  Address
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    router.push("/language");
+                  }}
+                  className="w-full px-4 py-3 text-left text-[13px] text-white hover:bg-[#15182a]"
+                >
+                  Language
+                </button>
+
+                <div className="h-px bg-[#23253a]" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    handleLogout();
+                  }}
+                  disabled={loggingOut}
+                  className="w-full px-4 py-3 text-left text-[13px] text-red-300 hover:bg-[#15182a] disabled:opacity-60"
+                >
+                  {loggingOut ? "Logging out..." : "Logout"}
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
-      {/* --------------------------------------------------- */}
-      {/* MAIN CONTENT */}
-      {/* --------------------------------------------------- */}
-      <main className="profile-main">
-        <div className="profile-card">
-          <div className="profile-title">My Profile</div>
+      {/* ================= MAIN ================= */}
+      <main className="mx-auto max-w-[1160px] px-4 py-10 flex justify-center">
+        <div className="w-full max-w-[650px] rounded-xl border border-[#22253a] bg-[#101223] p-6">
+          <h1 className="text-xl font-semibold">My Profile</h1>
 
-          <form onSubmit={handleSave}>
-            {/* PERSONAL */}
-            <div className="section-title">Personal Information</div>
+          <form onSubmit={handleSave} className="mt-6">
+            <p className="text-[13px] font-semibold text-[#8b90ad]">
+              Personal Information
+            </p>
 
-            <label className="field-label" htmlFor="name">
+            <label
+              htmlFor="name"
+              className="mt-4 block text-[12px] text-[#8b90ad]"
+            >
               Name
             </label>
             <input
               id="name"
               name="name"
-              className="field-input"
               value={form.name}
               onChange={handleChange}
               placeholder="Enter your name"
+              className="mt-1 w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none focus:ring-1 focus:ring-[#c9b9ff]"
             />
 
-            <label className="field-label" htmlFor="email">
+            <label
+              htmlFor="email"
+              className="mt-4 block text-[12px] text-[#8b90ad]"
+            >
               Email
             </label>
             <input
               id="email"
-              className="field-input"
               value={form.email}
-              disabled
-              placeholder="Your email"
+              readOnly
+              className="mt-1 w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 text-sm text-white opacity-70"
             />
 
-            {/* FIT */}
-            <div className="section-title">Fit Preferences</div>
+            <p className="mt-6 text-[13px] font-semibold text-[#8b90ad]">
+              Fit Preferences
+            </p>
 
-            <label className="field-label" htmlFor="height">
-              Height (feet)
+            <label
+              htmlFor="height"
+              className="mt-4 block text-[12px] text-[#8b90ad]"
+            >
+              Height (ft)
             </label>
             <input
               id="height"
               name="height"
-              className="field-input"
               value={form.height}
               onChange={handleChange}
               placeholder="e.g. 5.6"
+              className="mt-1 w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none focus:ring-1 focus:ring-[#c9b9ff]"
             />
 
-            <label className="field-label" htmlFor="weight">
+            <label
+              htmlFor="weight"
+              className="mt-4 block text-[12px] text-[#8b90ad]"
+            >
               Weight (kg)
             </label>
             <input
               id="weight"
               name="weight"
-              className="field-input"
               value={form.weight}
               onChange={handleChange}
               placeholder="e.g. 60"
+              className="mt-1 w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none focus:ring-1 focus:ring-[#c9b9ff]"
             />
 
-            {/* SIZE */}
-            <div className="section-title">Size Recommendations</div>
+            <p className="mt-6 text-[13px] font-semibold text-[#8b90ad]">
+              Size Recommendation
+            </p>
 
-            <label className="field-label" htmlFor="menSize">
+            <label
+              htmlFor="menSize"
+              className="mt-3 block text-[12px] text-[#8b90ad]"
+            >
               Men&apos;s Size
             </label>
             <input
               id="menSize"
-              className="field-input"
-              value={form.menSize}
-              disabled
-              placeholder="Calculated automatically"
+              value={form.menSize || "-"}
+              readOnly
+              className="mt-1 w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 text-sm text-white opacity-70"
             />
 
-            <label className="field-label" htmlFor="womenSize">
+            <label
+              htmlFor="womenSize"
+              className="mt-4 block text-[12px] text-[#8b90ad]"
+            >
               Women&apos;s Size
             </label>
             <input
               id="womenSize"
-              className="field-input"
-              value={form.womenSize}
-              disabled
-              placeholder="Calculated automatically"
+              value={form.womenSize || "-"}
+              readOnly
+              className="mt-1 w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 text-sm text-white opacity-70"
             />
 
-            <button className="save-btn" disabled={saving}>
-              {saving ? "Saving..." : "Save Changes"}
-            </button>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded-full bg-[#2f7efc] px-6 py-3 text-sm hover:brightness-105 disabled:opacity-60"
+              >
+                {saving ? "Saving..." : "Save Changes"}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                disabled={loggingOut}
+                className="rounded-full bg-red-500 px-6 py-3 text-sm hover:bg-red-600 disabled:opacity-60"
+              >
+                {loggingOut ? "Logging out..." : "Logout"}
+              </button>
+            </div>
           </form>
         </div>
       </main>
-    </>
+    </div>
   );
 }

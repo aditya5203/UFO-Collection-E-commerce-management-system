@@ -27,7 +27,6 @@ export default function HomePage() {
   const [user, setUser] = React.useState<User | null>(null);
   const [loadingUser, setLoadingUser] = React.useState(true);
 
-  // 🔹 homepage products (from backend)
   const [latestProducts, setLatestProducts] = React.useState<Product[]>([]);
   const [bestSellerProducts, setBestSellerProducts] = React.useState<Product[]>(
     []
@@ -69,23 +68,15 @@ export default function HomePage() {
     const fetchProducts = async () => {
       try {
         setLoadingProducts(true);
+
         const apiBase =
           process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
-        const res = await fetch(`${apiBase}/products`, {
-          cache: "no-store",
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to load products");
-        }
+        const res = await fetch(`${apiBase}/products`, { cache: "no-store" });
+        if (!res.ok) throw new Error("Failed to load products");
 
         const all: Product[] = await res.json();
 
-        // 🟣 HomePage requirement:
-        //   - total 50 products
-        //   - first 25 → Latest
-        //   - next 25 → Best Seller
         const limited = all.slice(0, 50);
         setLatestProducts(limited.slice(0, 25));
         setBestSellerProducts(limited.slice(25, 50));
@@ -103,598 +94,121 @@ export default function HomePage() {
 
   return (
     <>
+      {/* Google Font (same as before) */}
       <style jsx global>{`
         @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
-
-        :root {
-          --bg-main: #050611;
-          --bg-card: #101223;
-          --bg-hero: #0b0d1a;
-          --bg-subscribe: #0a1020;
-          --bg-input: #181a2c;
-          --border-soft: #23253a;
-          --text-main: #f5f5f7;
-          --text-muted: #8b90ad;
-          --brand: #b49cff;
-          --brand-soft: #c9b9ff;
-          --max: 1160px;
-        }
-
-        * {
-          box-sizing: border-box;
-        }
-
         html,
         body {
-          margin: 0;
-          padding: 0;
           font-family: Poppins, system-ui, -apple-system, BlinkMacSystemFont,
             "Segoe UI", sans-serif;
-          background: var(--bg-main);
-          color: var(--text-main);
-        }
-
-        a {
-          text-decoration: none;
-          color: inherit;
-        }
-
-        .container {
-          max-width: var(--max);
-          margin: 0 auto;
-          padding: 0 16px;
-        }
-
-        /* HEADER – SAME AS LOGIN/SIGNUP */
-        .topbar {
-          height: 80px;
-          display: flex;
-          align-items: center;
-          border-bottom: 1px solid #191b2d;
-          background: rgba(5, 6, 17, 0.96);
-          backdrop-filter: blur(12px);
-          position: sticky;
-          top: 0;
-          z-index: 40;
-        }
-
-        .row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          width: 100%;
-        }
-
-        .brand-wrap {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .brand-logo {
-          border-radius: 999px;
-          overflow: hidden;
-          border: 2px solid #ffffff;
-          width: 44px;
-          height: 44px;
-          flex-shrink: 0;
-        }
-
-        .brand-logo :global(img) {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-        }
-
-        .logo-text {
-          font-weight: 700;
-          letter-spacing: 0.18em;
-          font-size: 28px;
-          text-transform: uppercase;
-          color: #ffffff;
-        }
-
-        .nav {
-          display: flex;
-          gap: 42px;
-        }
-
-        .nav a {
-          font-size: 15px;
-          font-weight: 500;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          color: var(--text-muted);
-        }
-
-        .nav a:hover {
-          color: var(--brand-soft);
-        }
-
-        .icons {
-          display: flex;
-          gap: 20px;
-          align-items: center;
-        }
-
-        .nav-icon {
-          filter: brightness(0) invert(1) contrast(280%) saturate(260%);
-          opacity: 1;
-        }
-
-        .admin-btn {
-          border-radius: 999px;
-          border: 1px solid #ffffff;
-          padding: 6px 18px;
-          font-size: 11px;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          background: transparent;
-          color: #ffffff;
-          cursor: pointer;
-        }
-
-        .admin-btn:hover {
-          background: #ffffff;
-          color: #050611;
-        }
-
-        /* PAGE */
-        .page {
-          background: radial-gradient(
-              circle at top left,
-              rgba(102, 76, 255, 0.16),
-              transparent 55%
-            ),
-            var(--bg-main);
-        }
-
-        /* HERO – DARK VERSION OF YOUR WHITE HERO */
-        .hero-section {
-          padding: 32px 0 40px;
-        }
-
-        .hero-card {
-          display: grid;
-          grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-          gap: 0;
-          border-radius: 18px;
-          overflow: hidden;
-          background: var(--bg-hero);
-          border: 1px solid #1f2136;
-          min-height: 320px;
-        }
-
-        .hero-left {
-          padding: 38px 40px;
-          display: flex;
-          flex-direction: column;
-          justify-content: center;
-          gap: 18px;
-        }
-
-        .hero-tag {
-          font-size: 12px;
-          letter-spacing: 0.18em;
-          text-transform: uppercase;
-          color: var(--text-muted);
-        }
-
-        .hero-title {
-          font-size: 38px;
-          font-weight: 600;
-        }
-
-        .hero-sub {
-          font-size: 13px;
-          color: var(--text-muted);
-          max-width: 320px;
-        }
-
-        .hero-cta {
-          margin-top: 8px;
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 13px;
-          font-weight: 500;
-          letter-spacing: 0.16em;
-          text-transform: uppercase;
-          color: #050611;
-          background: #ffffff;
-          border-radius: 999px;
-          padding: 10px 20px;
-          cursor: pointer;
-          border: none;
-        }
-
-        .hero-right {
-          position: relative;
-          background: #0f1120;
-        }
-
-        .hero-right :global(img) {
-          object-fit: cover;
-        }
-
-        /* SECTION HEADINGS */
-        .section {
-          padding: 24px 0 32px;
-        }
-
-        .section-header {
-          text-align: center;
-          margin-bottom: 22px;
-        }
-
-        .section-title {
-          font-size: 18px;
-          letter-spacing: 0.24em;
-          text-transform: uppercase;
-        }
-
-        .section-divider {
-          margin: 8px auto 0;
-          width: 80px;
-          height: 1px;
-          background: #3c3f59;
-        }
-
-        .section-sub {
-          margin-top: 10px;
-          font-size: 13px;
-          color: var(--text-muted);
-          max-width: 520px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-
-        /* PRODUCT GRIDS */
-        .products-grid {
-          display: grid;
-          grid-template-columns: repeat(4, minmax(0, 1fr));
-          gap: 20px;
-        }
-
-        .product-card {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          font-size: 12px;
-        }
-
-        .product-image-wrap {
-          position: relative;
-          width: 100%;
-          padding-bottom: 130%;
-          border-radius: 10px;
-          overflow: hidden;
-          background: #151726;
-          border: 1px solid #252842;
-        }
-
-        .product-image-wrap :global(img) {
-          object-fit: cover;
-        }
-
-        .product-name {
-          margin-top: 4px;
-          color: #f1f2ff;
-        }
-
-        .product-price {
-          color: var(--text-muted);
-        }
-
-        /* POLICIES ROW */
-        .policies-section {
-          padding: 12px 0 40px;
-        }
-
-        .policies-row {
-          display: grid;
-          grid-template-columns: repeat(3, minmax(0, 1fr));
-          gap: 32px;
-          text-align: center;
-        }
-
-        .policy-card {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .policy-icon {
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
-          border: 1px solid #3a3d5a;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 20px;
-        }
-
-        .policy-title {
-          font-size: 13px;
-          font-weight: 600;
-        }
-
-        .policy-text {
-          font-size: 12px;
-          color: var(--text-muted);
-          max-width: 220px;
-        }
-
-        /* SUBSCRIBE SECTION */
-        .sub {
-          margin-top: 10px;
-          padding: 46px 0;
-          background: var(--bg-subscribe);
-          border-top: 1px solid #171a32;
-          border-bottom: 1px solid #171a32;
-          text-align: center;
-        }
-
-        .sub h3 {
-          margin: 0 0 6px;
-          font-size: 20px;
-          font-weight: 600;
-        }
-
-        .sub p {
-          margin: 0 0 18px;
-          font-size: 13px;
-          color: var(--text-muted);
-        }
-
-        .subform {
-          display: flex;
-          justify-content: center;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-
-        .sub-input {
-          min-width: 260px;
-          width: 420px;
-          max-width: 80vw;
-          border-radius: 999px;
-          border: 1px solid var(--border-soft);
-          padding: 10px 14px;
-          font-size: 13px;
-          background: #090c1a;
-          color: var(--text-main);
-        }
-
-        .sub-input::placeholder {
-          color: #787e99;
-        }
-
-        .subbtn {
-          border-radius: 999px;
-          border: none;
-          padding: 10px 20px;
-          font-size: 13px;
-          font-weight: 500;
-          cursor: pointer;
-          background: #ffffff;
-          color: #050616;
-        }
-
-        /* FOOTER */
-        .footer {
-          padding: 40px 0 18px;
-          background: #050611;
-        }
-
-        .footwrap {
-          max-width: var(--max);
-          margin: 0 auto;
-          padding: 0 16px 24px;
-          display: grid;
-          grid-template-columns: 1.4fr 0.8fr 0.8fr;
-          gap: 40px;
-          border-bottom: 1px solid #191b2e;
-        }
-
-        .foot-logo {
-          font-weight: 600;
-          font-size: 16px;
-          letter-spacing: 0.11em;
-          margin-bottom: 8px;
-        }
-
-        .footp {
-          font-size: 12px;
-          color: var(--text-muted);
-          line-height: 1.9;
-          max-width: 420px;
-        }
-
-        .foothead {
-          font-size: 12px;
-          text-transform: uppercase;
-          letter-spacing: 0.14em;
-          font-weight: 600;
-          margin-bottom: 10px;
-          color: var(--text-muted);
-        }
-
-        .list {
-          list-style: none;
-          margin: 0;
-          padding: 0;
-          display: grid;
-          gap: 8px;
-          font-size: 12px;
-          color: #d4d6ea;
-        }
-
-        .copy {
-          font-size: 11px;
-          color: #6d7192;
-          text-align: center;
-          padding-top: 14px;
-        }
-
-        /* RESPONSIVE */
-        @media (max-width: 1024px) {
-          .products-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-          }
-        }
-
-        @media (max-width: 900px) {
-          .hero-card {
-            grid-template-columns: 1fr;
-          }
-
-          .hero-right {
-            min-height: 260px;
-          }
-
-          .products-grid {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-          }
-
-          .policies-row {
-            grid-template-columns: 1fr 1fr;
-          }
-
-          .footwrap {
-            grid-template-columns: 1fr 1fr;
-          }
-        }
-
-        @media (max-width: 640px) {
-          .row {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 10px;
-          }
-
-          .nav {
-            gap: 20px;
-            flex-wrap: wrap;
-          }
-
-          .icons {
-            margin-top: 4px;
-          }
-
-          .logo-text {
-            font-size: 22px;
-          }
-
-          .hero-left {
-            padding: 28px 20px;
-          }
-
-          .hero-title {
-            font-size: 30px;
-          }
-
-          .products-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-          }
-
-          .policies-row {
-            grid-template-columns: 1fr;
-          }
-
-          .footwrap {
-            grid-template-columns: 1fr;
-          }
         }
       `}</style>
 
       {/* HEADER */}
-      <header className="topbar">
-        <div className="container row">
-          <div className="brand-wrap">
-            <div className="brand-logo">
+      <header className="sticky top-0 z-40 h-[80px] border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
+        <div className="mx-auto flex h-full w-full max-w-[1160px] items-center justify-between px-4">
+          {/* Brand */}
+          <div className="flex items-center gap-[10px]">
+            <div className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white">
               <Image
                 src="/images/logo.png"
                 alt="UFO Collection logo"
                 width={44}
                 height={44}
+                className="h-full w-full object-cover"
               />
             </div>
-            <div className="logo-text">UFO Collection</div>
+            <div className="text-[28px] font-bold uppercase tracking-[0.18em] text-white max-sm:text-[22px]">
+              UFO Collection
+            </div>
           </div>
 
-          <nav className="nav">
-            <Link href="/homepage">HOME</Link>
-            <Link href="/collection">COLLECTION</Link>
-            <Link href="/about">ABOUT</Link>
-            <Link href="/contact">CONTACT</Link>
+          {/* Nav */}
+          <nav className="flex gap-[42px] max-sm:flex-wrap max-sm:gap-5">
+            <Link
+              href="/homepage"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              HOME
+            </Link>
+            <Link
+              href="/collection"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              COLLECTION
+            </Link>
+            <Link
+              href="/about"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              ABOUT
+            </Link>
+            <Link
+              href="/contact"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              CONTACT
+            </Link>
           </nav>
 
-          <div className="icons">
+          {/* Icons */}
+          <div className="flex items-center gap-5 max-sm:mt-1">
             {/* Search */}
-            <Link href="/collection">
+            <Link href="/collection" aria-label="Search">
               <Image
                 src="/images/search.png"
                 width={26}
                 height={26}
                 alt="Search"
-                className="nav-icon"
+                className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
               />
             </Link>
 
-            {/* Profile (with Google avatar if logged in) */}
+            {/* Profile */}
             {user ? (
               <button
                 type="button"
                 aria-label="Open user profile"
                 title="Profile"
                 onClick={() => router.push("/profile")}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  padding: 0,
-                  cursor: "pointer",
-                }}
+                className="cursor-pointer bg-transparent p-0"
               >
                 <Image
                   src={user.avatarUrl || "/images/profile.png"}
                   width={32}
                   height={32}
                   alt={user.name || "Profile picture"}
-                  className="nav-icon"
-                  style={{ borderRadius: "999px" }}
+                  className="rounded-full brightness-0 invert contrast-[2.8] saturate-[2.6]"
                 />
               </button>
             ) : (
-              <Link href="/signup">
+              <Link href="/signup" aria-label="Signup">
                 <Image
                   src="/images/profile.png"
                   width={26}
                   height={26}
                   alt="Profile"
-                  className="nav-icon"
+                  className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
                 />
               </Link>
             )}
 
             {/* Wishlist */}
-            <Link href="/wishlist">
+            <Link href="/wishlist" aria-label="Wishlist">
               <Image
                 src="/images/wishlist.png"
                 width={26}
                 height={26}
                 alt="Wishlist"
-                className="nav-icon"
+                className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
               />
             </Link>
 
             {/* Admin Button */}
             <button
               type="button"
-              className="admin-btn"
               onClick={() => router.push("/admin/adminlogin")}
+              className="rounded-full border border-white bg-transparent px-[18px] py-[6px] text-[11px] uppercase tracking-[0.16em] text-white hover:bg-white hover:text-[#050611]"
             >
               ADMIN
             </button>
@@ -703,46 +217,55 @@ export default function HomePage() {
       </header>
 
       {/* PAGE */}
-      <main className="page">
+      <main className="bg-[#050611] text-[#f5f5f7]">
         {/* HERO */}
-        <section className="hero-section">
-          <div className="container">
-            <div className="hero-card">
-              <div className="hero-left">
-                <div className="hero-tag">OUR BESTSELLERS</div>
-                <h1 className="hero-title">Latest Arrivals</h1>
-                <p className="hero-sub">
-                  Discover new-season pieces designed for everyday comfort and
-                  statement looks. Curated drops from UFO Collection, just
-                  landed.
-                </p>
-                <button
-                  className="hero-cta"
-                  onClick={() => router.push("/collection")}
-                >
-                  SHOP NOW
-                </button>
-              </div>
+        <section className="py-8">
+          <div className="mx-auto max-w-[1160px] px-4">
+            <div className="min-h-[320px] overflow-hidden rounded-[18px] border border-[#1f2136] bg-[#0b0d1a] max-[900px]:grid-cols-1 max-[900px]:min-h-0">
+              <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] max-[900px]:grid-cols-1">
+                <div className="flex flex-col justify-center gap-[18px] p-[38px_40px] max-sm:p-[28px_20px]">
+                  <div className="text-[12px] uppercase tracking-[0.18em] text-[#8b90ad]">
+                    OUR BESTSELLERS
+                  </div>
+                  <h1 className="text-[38px] font-semibold max-sm:text-[30px]">
+                    Latest Arrivals
+                  </h1>
+                  <p className="max-w-[320px] text-[13px] text-[#8b90ad]">
+                    Discover new-season pieces designed for everyday comfort and
+                    statement looks. Curated drops from UFO Collection, just
+                    landed.
+                  </p>
+                  <button
+                    onClick={() => router.push("/collection")}
+                    className="mt-2 inline-flex w-fit items-center gap-2 rounded-full bg-white px-5 py-[10px] text-[13px] font-medium uppercase tracking-[0.16em] text-[#050611]"
+                  >
+                    SHOP NOW
+                  </button>
+                </div>
 
-              <div className="hero-right">
-                <Image
-                  src="/images/home/hero-banner.jpg"
-                  alt="Jeans and t-shirt flatlay"
-                  fill
-                  priority
-                />
+                <div className="relative bg-[#0f1120] max-[900px]:min-h-[260px]">
+                  <Image
+                    src="/images/home/hero-banner.jpg"
+                    alt="Jeans and t-shirt flatlay"
+                    fill
+                    priority
+                    className="object-cover"
+                  />
+                </div>
               </div>
             </div>
           </div>
         </section>
 
         {/* LATEST COLLECTIONS */}
-        <section className="section">
-          <div className="container">
-            <div className="section-header">
-              <div className="section-title">LATEST COLLECTIONS</div>
-              <div className="section-divider" />
-              <p className="section-sub">
+        <section className="py-6">
+          <div className="mx-auto max-w-[1160px] px-4">
+            <div className="mb-[22px] text-center">
+              <div className="text-[18px] uppercase tracking-[0.24em]">
+                LATEST COLLECTIONS
+              </div>
+              <div className="mx-auto mt-2 h-px w-20 bg-[#3c3f59]" />
+              <p className="mx-auto mt-[10px] max-w-[520px] text-[13px] text-[#8b90ad]">
                 Handpicked styles fresh from our latest drops. Explore minimalist
                 silhouettes, soft fabrics and everyday essentials for every
                 wardrobe.
@@ -754,16 +277,14 @@ export default function HomePage() {
             ) : latestProducts.length === 0 ? (
               <div>No products available.</div>
             ) : (
-              <div className="products-grid">
+              <div className="grid grid-cols-4 gap-5 max-[1024px]:grid-cols-3 max-sm:grid-cols-2">
                 {latestProducts.map((p) => (
-                  <div key={p.id} className="product-card">
-                    <div className="product-image-wrap">
-                      <Image src={p.image} alt={p.name} fill />
+                  <div key={p.id} className="flex flex-col gap-[6px] text-[12px]">
+                    <div className="relative w-full overflow-hidden rounded-[10px] border border-[#252842] bg-[#151726] pb-[130%]">
+                      <Image src={p.image} alt={p.name} fill className="object-cover" />
                     </div>
-                    <div className="product-name">{p.name}</div>
-                    <div className="product-price">
-                      Rs. {p.price.toFixed(2)}
-                    </div>
+                    <div className="mt-1 text-[#f1f2ff]">{p.name}</div>
+                    <div className="text-[#8b90ad]">Rs. {p.price.toFixed(2)}</div>
                   </div>
                 ))}
               </div>
@@ -772,16 +293,16 @@ export default function HomePage() {
         </section>
 
         {/* BEST SELLER */}
-        <section className="section">
-          <div className="container">
-            <div className="section-header">
-              <div className="section-title">
-                BEST <span style={{ fontWeight: 400 }}>SELLER</span>
+        <section className="py-6">
+          <div className="mx-auto max-w-[1160px] px-4">
+            <div className="mb-[22px] text-center">
+              <div className="text-[18px] uppercase tracking-[0.24em]">
+                BEST <span className="font-normal">SELLER</span>
               </div>
-              <div className="section-divider" />
-              <p className="section-sub">
-                Customer favorites you can&apos;t go wrong with. These pieces
-                are tried, tested and loved by the UFO community.
+              <div className="mx-auto mt-2 h-px w-20 bg-[#3c3f59]" />
+              <p className="mx-auto mt-[10px] max-w-[520px] text-[13px] text-[#8b90ad]">
+                Customer favorites you can&apos;t go wrong with. These pieces are
+                tried, tested and loved by the UFO community.
               </p>
             </div>
 
@@ -790,16 +311,14 @@ export default function HomePage() {
             ) : bestSellerProducts.length === 0 ? (
               <div>No products available.</div>
             ) : (
-              <div className="products-grid">
+              <div className="grid grid-cols-4 gap-5 max-[1024px]:grid-cols-3 max-sm:grid-cols-2">
                 {bestSellerProducts.map((p) => (
-                  <div key={p.id} className="product-card">
-                    <div className="product-image-wrap">
-                      <Image src={p.image} alt={p.name} fill />
+                  <div key={p.id} className="flex flex-col gap-[6px] text-[12px]">
+                    <div className="relative w-full overflow-hidden rounded-[10px] border border-[#252842] bg-[#151726] pb-[130%]">
+                      <Image src={p.image} alt={p.name} fill className="object-cover" />
                     </div>
-                    <div className="product-name">{p.name}</div>
-                    <div className="product-price">
-                      Rs. {p.price.toFixed(2)}
-                    </div>
+                    <div className="mt-1 text-[#f1f2ff]">{p.name}</div>
+                    <div className="text-[#8b90ad]">Rs. {p.price.toFixed(2)}</div>
                   </div>
                 ))}
               </div>
@@ -808,48 +327,53 @@ export default function HomePage() {
         </section>
 
         {/* POLICIES */}
-        <section className="policies-section">
-          <div className="container">
-            <div className="policies-row">
-              <div className="policy-card">
-                <div className="policy-icon">🔁</div>
-                <div className="policy-title">Easy Exchange Policy</div>
-                <div className="policy-text">
-                  Hassle-free exchanges on eligible items for a smooth
-                  experience.
+        <section className="py-3 pb-10">
+          <div className="mx-auto max-w-[1160px] px-4">
+            <div className="grid grid-cols-3 gap-8 text-center max-[900px]:grid-cols-2 max-sm:grid-cols-1">
+              {[
+                {
+                  icon: "🔁",
+                  title: "Easy Exchange Policy",
+                  text: "Hassle-free exchanges on eligible items for a smooth experience.",
+                },
+                {
+                  icon: "📅",
+                  title: "7 Days Return Policy",
+                  text: "Not the right fit? Enjoy a simple 7-day return window.",
+                },
+                {
+                  icon: "🎧",
+                  title: "Best Customer Support",
+                  text: "Our team is here to help you with sizing, orders and more.",
+                },
+              ].map((p) => (
+                <div key={p.title} className="flex flex-col items-center gap-[10px]">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#3a3d5a] text-[20px]">
+                    {p.icon}
+                  </div>
+                  <div className="text-[13px] font-semibold">{p.title}</div>
+                  <div className="max-w-[220px] text-[12px] text-[#8b90ad]">
+                    {p.text}
+                  </div>
                 </div>
-              </div>
-
-              <div className="policy-card">
-                <div className="policy-icon">📅</div>
-                <div className="policy-title">7 Days Return Policy</div>
-                <div className="policy-text">
-                  Not the right fit? Enjoy a simple 7-day return window.
-                </div>
-              </div>
-
-              <div className="policy-card">
-                <div className="policy-icon">🎧</div>
-                <div className="policy-title">Best Customer Support</div>
-                <div className="policy-text">
-                  Our team is here to help you with sizing, orders and more.
-                </div>
-              </div>
+              ))}
             </div>
           </div>
         </section>
 
-        {/* SUBSCRIBE STRIP */}
-        <section className="sub">
-          <div className="container">
-            <h3>Subscribe now &amp; get 20% off</h3>
-            <p>
+        {/* SUBSCRIBE */}
+        <section className="border-y border-[#171a32] bg-[#0a1020] py-[46px] text-center">
+          <div className="mx-auto max-w-[1160px] px-4">
+            <h3 className="m-0 text-[20px] font-semibold">
+              Subscribe now &amp; get 20% off
+            </h3>
+            <p className="mt-[6px] text-[13px] text-[#8b90ad]">
               Join our mailing list for early access to drops, exclusive deals,
               and styling tips curated by UFO Collection.
             </p>
 
             <form
-              className="subform"
+              className="mt-[18px] flex flex-wrap justify-center gap-[10px]"
               onSubmit={(e) => {
                 e.preventDefault();
                 const inp = e.currentTarget.querySelector(
@@ -860,12 +384,15 @@ export default function HomePage() {
               }}
             >
               <input
-                className="sub-input"
                 type="email"
                 required
                 placeholder="Enter your email id"
+                className="w-[420px] min-w-[260px] max-w-[80vw] rounded-full border border-[#23253a] bg-[#090c1a] px-[14px] py-[10px] text-[13px] text-[#f5f5f7] placeholder:text-[#787e99]"
               />
-              <button className="subbtn" type="submit">
+              <button
+                type="submit"
+                className="rounded-full bg-white px-5 py-[10px] text-[13px] font-medium text-[#050616]"
+              >
                 SUBSCRIBE
               </button>
             </form>
@@ -874,20 +401,23 @@ export default function HomePage() {
       </main>
 
       {/* FOOTER */}
-      <footer className="footer">
-        <div className="footwrap">
+      <footer className="bg-[#050611] py-10 pb-[18px]">
+        <div className="mx-auto grid max-w-[1160px] grid-cols-[1.4fr_0.8fr_0.8fr] gap-10 border-b border-[#191b2e] px-4 pb-6 max-[900px]:grid-cols-2 max-sm:grid-cols-1">
           <div>
-            <div className="foot-logo">UFO Collection</div>
-            <p className="footp">
-              UFO Collection brings minimal, premium streetwear to your
-              wardrobe. Discover curated looks, everyday essentials and pieces
-              made to last.
+            <div className="mb-2 text-[16px] font-semibold tracking-[0.11em]">
+              UFO Collection
+            </div>
+            <p className="max-w-[420px] text-[12px] leading-[1.9] text-[#8b90ad]">
+              UFO Collection brings minimal, premium streetwear to your wardrobe.
+              Discover curated looks, everyday essentials and pieces made to last.
             </p>
           </div>
 
           <div>
-            <div className="foothead">COMPANY</div>
-            <ul className="list">
+            <div className="mb-[10px] text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
+              COMPANY
+            </div>
+            <ul className="grid list-none gap-2 p-0 text-[12px] text-[#d4d6ea]">
               <li>
                 <Link href="/">Home</Link>
               </li>
@@ -904,15 +434,17 @@ export default function HomePage() {
           </div>
 
           <div>
-            <div className="foothead">GET IN TOUCH</div>
-            <ul className="list">
+            <div className="mb-[10px] text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
+              GET IN TOUCH
+            </div>
+            <ul className="grid list-none gap-2 p-0 text-[12px] text-[#d4d6ea]">
               <li>+977 9804880758</li>
               <li>ufocollection@gmail.com</li>
             </ul>
           </div>
         </div>
 
-        <div className="copy">
+        <div className="pt-[14px] text-center text-[11px] text-[#6d7192]">
           Copyright 2025 © UFO Collection — All Rights Reserved.
         </div>
       </footer>
