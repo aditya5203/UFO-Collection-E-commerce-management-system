@@ -3,6 +3,9 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"; // ✅ base only (no /api)
+
 export default function AdminLoginPage() {
   const router = useRouter();
   const [loading, setLoading] = React.useState(false);
@@ -13,23 +16,18 @@ export default function AdminLoginPage() {
     setError(null);
 
     const formData = new FormData(e.currentTarget);
-    const email = formData.get("email") as string;
-    const password = formData.get("password") as string;
+    const email = String(formData.get("email") || "").trim();
+    const password = String(formData.get("password") || "").trim();
 
     if (!email || !password) return;
 
     try {
       setLoading(true);
 
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
-
-      const res = await fetch(`${baseUrl}/auth/admin/login`, {
+      const res = await fetch(`${API_BASE}/api/auth/admin/login`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", // ✅ MUST so adminToken cookie stores
         body: JSON.stringify({ email, password }),
       });
 
@@ -50,175 +48,69 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <>
-      {/* GLOBAL CSS USED HERE */}
-      <style jsx global>{`
-        body {
-          margin: 0;
-          padding: 0;
-          background: #070514;
-          font-family: system-ui, -apple-system, BlinkMacSystemFont,
-            "Segoe UI", sans-serif;
-          color: #ffffff;
-        }
+    <div
+      className="min-h-screen text-white"
+      style={{
+        background: "#070514",
+        fontFamily:
+          'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      }}
+    >
+      {/* Topbar (same UI/colors) */}
+      <header className="flex h-16 items-center border-b border-[#2a223b] bg-[#0b061b] px-[40px]">
+        <div className="text-[18px] font-semibold">Admin Panel</div>
+      </header>
 
-        .page {
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-        }
+      {/* Main */}
+      <main className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-[40px]">
+        <div className="flex w-full max-w-[460px] flex-col items-center rounded-[16px]">
+          <h1 className="mb-8 text-center text-[26px] font-semibold">
+            Admin Login
+          </h1>
 
-        .topbar {
-          height: 64px;
-          display: flex;
-          align-items: center;
-          padding: 0 40px;
-          border-bottom: 1px solid #2a223b;
-          background: #0b061b;
-        }
+          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-[18px]">
+            <div className="flex flex-col">
+              <input
+                className="w-full rounded-[10px] border border-[#3a2b58] bg-[#160d28] px-[16px] py-[14px] text-[14px] text-[#f5f3ff] outline-none placeholder:text-[#7f6caa] focus:border-[#a95cff] focus:shadow-[0_0_0_1px_rgba(169,92,255,0.4)]"
+                type="email"
+                name="email"
+                placeholder="Email Address"
+                required
+              />
+            </div>
 
-        .topbar-title {
-          font-size: 18px;
-          font-weight: 600;
-        }
+            <div className="flex flex-col">
+              <input
+                className="w-full rounded-[10px] border border-[#3a2b58] bg-[#160d28] px-[16px] py-[14px] text-[14px] text-[#f5f3ff] outline-none placeholder:text-[#7f6caa] focus:border-[#a95cff] focus:shadow-[0_0_0_1px_rgba(169,92,255,0.4)]"
+                type="password"
+                name="password"
+                placeholder="Password"
+                required
+              />
+            </div>
 
-        .main {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 40px 16px;
-        }
-
-        .card {
-          width: 100%;
-          max-width: 460px;
-          border-radius: 16px;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-
-        .title {
-          font-size: 26px;
-          font-weight: 600;
-          margin-bottom: 32px;
-          text-align: center;
-        }
-
-        form {
-          width: 100%;
-          display: flex;
-          flex-direction: column;
-          gap: 18px;
-        }
-
-        .field {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .input {
-          width: 100%;
-          padding: 14px 16px;
-          border-radius: 10px;
-          border: 1px solid #3a2b58;
-          background: #160d28;
-          color: #f5f3ff;
-          font-size: 14px;
-          outline: none;
-        }
-
-        .input::placeholder {
-          color: #7f6caa;
-        }
-
-        .input:focus {
-          border-color: #a95cff;
-          box-shadow: 0 0 0 1px rgba(169, 92, 255, 0.4);
-        }
-
-        .error {
-          margin-top: -6px;
-          font-size: 13px;
-          color: #ff6b81;
-          text-align: center;
-        }
-
-        .button-wrap {
-          margin-top: 6px;
-          display: flex;
-          justify-content: center;
-        }
-
-        .btn {
-          border: none;
-          outline: none;
-          padding: 12px 40px;
-          border-radius: 999px;
-          font-size: 14px;
-          font-weight: 600;
-          cursor: pointer;
-          background: linear-gradient(135deg, #b021ff, #5b1dff);
-          color: #ffffff;
-          box-shadow: 0 8px 24px rgba(176, 33, 255, 0.4);
-          transition: transform 0.12s ease, box-shadow 0.12s ease,
-            opacity 0.12s ease;
-          opacity: ${loading ? 0.7 : 1};
-        }
-
-        .btn:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 10px 30px rgba(176, 33, 255, 0.55);
-        }
-
-        .btn:active {
-          transform: translateY(0);
-          box-shadow: 0 6px 18px rgba(176, 33, 255, 0.35);
-        }
-      `}</style>
-
-      <div className="page">
-        <header className="topbar">
-          <div className="topbar-title">Admin Panel</div>
-        </header>
-
-        <main className="main">
-          <div className="card">
-            <h1 className="title">Admin Login</h1>
-
-            <form onSubmit={handleSubmit}>
-              <div className="field">
-                <input
-                  className="input"
-                  type="email"
-                  name="email"
-                  placeholder="Email Address"
-                  required
-                />
+            {error && (
+              <div className="-mt-[6px] text-center text-[13px] text-[#ff6b81]">
+                {error}
               </div>
+            )}
 
-              <div className="field">
-                <input
-                  className="input"
-                  type="password"
-                  name="password"
-                  placeholder="Password"
-                  required
-                />
-              </div>
-
-              {error && <div className="error">{error}</div>}
-
-              <div className="button-wrap">
-                <button type="submit" className="btn" disabled={loading}>
-                  {loading ? "Logging in..." : "Login"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </main>
-      </div>
-    </>
+            <div className="mt-[6px] flex justify-center">
+              <button
+                type="submit"
+                disabled={loading}
+                className="cursor-pointer rounded-full border-none px-[40px] py-[12px] text-[14px] font-semibold text-white shadow-[0_8px_24px_rgba(176,33,255,0.4)] transition-[transform,box-shadow,opacity] duration-[120ms] ease-in hover:-translate-y-[1px] hover:shadow-[0_10px_30px_rgba(176,33,255,0.55)] active:translate-y-0 active:shadow-[0_6px_18px_rgba(176,33,255,0.35)] disabled:cursor-not-allowed"
+                style={{
+                  background: "linear-gradient(135deg, #b021ff, #5b1dff)",
+                  opacity: loading ? 0.7 : 1,
+                }}
+              >
+                {loading ? "Logging in..." : "Login"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </div>
   );
 }

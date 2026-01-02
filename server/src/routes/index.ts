@@ -1,32 +1,39 @@
-//server/src/routes/index.ts
+// server/src/routes/index.ts
 import { Router } from "express";
+
 import authRoutes from "../modules/auth/routes/auth.routes";
 import categoryRoutes from "../modules/category/routes/category.routes";
 import productRoutes from "../modules/product/routes/product.routes";
 import paymentRoutes from "../modules/payments/routes/payment.routes";
+import orderRoutes from "../modules/orders/routes/order.routes";
+import customerRoutes from "../modules/customers/routes/customer.routes";
+
+// ✅ add this
+import addressRoutes from "../modules/addresses/routes/address.routes";
+
+import {
+  adminAuthMiddleware,
+  customerAuthMiddleware, // ✅ add this
+} from "../modules/auth/middleware/auth.middleware";
 
 const router = Router();
 
 /* -------------------- PUBLIC ENDPOINTS -------------------- */
-
-// Payments → /api/payments/...
 router.use("/payments", paymentRoutes);
-
-// Public products → /api/products/...
 router.use("/products", productRoutes.publicRouter);
-
-// Auth → /api/auth/...
 router.use("/auth", authRoutes);
-
-// Public categories → /api/categories/...
 router.use("/categories", categoryRoutes.publicRouter);
 
-/* -------------------- ADMIN ENDPOINTS -------------------- */
+// ✅ Customer/checkout orders (public)
+router.use("/orders", orderRoutes.publicRouter);
 
-// Admin products → /api/admin/products/...
-router.use("/admin/products", productRoutes.adminRouter);
+// ✅ Addresses for logged-in customers
+router.use("/addresses", customerAuthMiddleware, addressRoutes);
 
-// Admin categories → /api/admin/categories/...
-router.use("/admin/categories", categoryRoutes.adminRouter);
+/* -------------------- ADMIN ENDPOINTS (PROTECTED) -------------------- */
+router.use("/admin/products", adminAuthMiddleware, productRoutes.adminRouter);
+router.use("/admin/categories", adminAuthMiddleware, categoryRoutes.adminRouter);
+router.use("/admin/orders", adminAuthMiddleware, orderRoutes.adminRouter);
+router.use("/admin/customers", adminAuthMiddleware, customerRoutes.adminRouter);
 
 export default router;

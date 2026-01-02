@@ -19,7 +19,7 @@ export default function CartPage() {
 
   const [items, setItems] = React.useState<CartItem[]>([]);
   const [discount, setDiscount] = React.useState("");
-  const shipping = 10;
+  const shipping = 100;
 
   // ✅ Load cart from localStorage
   React.useEffect(() => {

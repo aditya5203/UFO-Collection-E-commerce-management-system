@@ -18,8 +18,41 @@ type Product = {
   name: string;
   category: string;
   price: number;
-  image: string;
+  image: string; // can be remote or local
 };
+
+function isSafeImageSrc(src: unknown): src is string {
+  return typeof src === "string" && src.length > 0;
+}
+
+function resolveImageSrc(src: unknown) {
+  // ✅ If backend sends empty / null / undefined → fallback image
+  if (!isSafeImageSrc(src)) return "/images/placeholder.png";
+
+  // ✅ Allow local public images (/images/..)
+  if (src.startsWith("/")) return src;
+
+  // ✅ Allow https remote images (must be whitelisted in next.config.js)
+  if (src.startsWith("https://")) return src;
+
+  // ✅ Allow http (dev only) if you want, otherwise fallback
+  if (src.startsWith("http://")) return src;
+
+  return "/images/placeholder.png";
+}
+
+// ✅ INITIALS LOGIC (Aditya Kumar => AK)
+function getInitials(name: string) {
+  const clean = (name || "").trim();
+  if (!clean) return "U";
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const last =
+    parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : parts[0]?.[1] ?? "";
+
+  return (first + last).toUpperCase();
+}
 
 export default function HomePage() {
   const router = useRouter();
@@ -33,14 +66,16 @@ export default function HomePage() {
   );
   const [loadingProducts, setLoadingProducts] = React.useState(true);
 
+  // ✅ One env everywhere
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
+    "http://localhost:8080/api";
+
   // ---------- Fetch /auth/me ----------
   React.useEffect(() => {
     const fetchMe = async () => {
       try {
-        const apiBase =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-
-        const res = await fetch(`${apiBase}/auth/me`, {
+        const res = await fetch(`${API_BASE}/auth/me`, {
           credentials: "include",
         });
 
@@ -50,7 +85,7 @@ export default function HomePage() {
         }
 
         const data = await res.json();
-        const me = data.user || data.data?.user || null;
+        const me = data?.user || data?.data?.user || data?.data || null;
         setUser(me);
       } catch (err) {
         console.error("Failed to fetch /auth/me", err);
@@ -61,7 +96,7 @@ export default function HomePage() {
     };
 
     fetchMe();
-  }, []);
+  }, [API_BASE]);
 
   // ---------- Fetch products for homepage ----------
   React.useEffect(() => {
@@ -69,13 +104,19 @@ export default function HomePage() {
       try {
         setLoadingProducts(true);
 
-        const apiBase =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-
-        const res = await fetch(`${apiBase}/products`, { cache: "no-store" });
+        const res = await fetch(`${API_BASE}/products`, { cache: "no-store" });
         if (!res.ok) throw new Error("Failed to load products");
 
-        const all: Product[] = await res.json();
+        const json = await res.json();
+
+        // ✅ Support both shapes:
+        // - api returns array directly
+        // - or { data: [...] } or { data: { products: [...] } }
+        const all: Product[] =
+          (Array.isArray(json) && json) ||
+          (Array.isArray(json?.data) && json.data) ||
+          (Array.isArray(json?.data?.products) && json.data.products) ||
+          [];
 
         const limited = all.slice(0, 50);
         setLatestProducts(limited.slice(0, 25));
@@ -90,11 +131,11 @@ export default function HomePage() {
     };
 
     fetchProducts();
-  }, []);
+  }, [API_BASE]);
 
   return (
     <>
-      {/* Google Font (same as before) */}
+      {/* Google Font */}
       <style jsx global>{`
         @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
         html,
@@ -165,21 +206,17 @@ export default function HomePage() {
             </Link>
 
             {/* Profile */}
-            {user ? (
+            {loadingUser ? (
+              <div className="h-[32px] w-[32px] animate-pulse rounded-full bg-white/10" />
+            ) : user ? (
               <button
                 type="button"
                 aria-label="Open user profile"
-                title="Profile"
+                title={user.name || "Profile"}
                 onClick={() => router.push("/profile")}
-                className="cursor-pointer bg-transparent p-0"
+                className="flex h-[32px] w-[32px] items-center justify-center rounded-full border border-white bg-white text-[12px] font-semibold text-[#050611]"
               >
-                <Image
-                  src={user.avatarUrl || "/images/profile.png"}
-                  width={32}
-                  height={32}
-                  alt={user.name || "Profile picture"}
-                  className="rounded-full brightness-0 invert contrast-[2.8] saturate-[2.6]"
-                />
+                {getInitials(user.name || user.email)}
               </button>
             ) : (
               <Link href="/signup" aria-label="Signup">
@@ -279,13 +316,27 @@ export default function HomePage() {
             ) : (
               <div className="grid grid-cols-4 gap-5 max-[1024px]:grid-cols-3 max-sm:grid-cols-2">
                 {latestProducts.map((p) => (
-                  <div key={p.id} className="flex flex-col gap-[6px] text-[12px]">
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => router.push(`/product/${p.id}`)}
+                    className="flex flex-col gap-[6px] text-left text-[12px]"
+                    aria-label={`Open ${p.name}`}
+                    title={p.name}
+                  >
                     <div className="relative w-full overflow-hidden rounded-[10px] border border-[#252842] bg-[#151726] pb-[130%]">
-                      <Image src={p.image} alt={p.name} fill className="object-cover" />
+                      <Image
+                        src={resolveImageSrc(p.image)}
+                        alt={p.name}
+                        fill
+                        className="object-cover"
+                      />
                     </div>
                     <div className="mt-1 text-[#f1f2ff]">{p.name}</div>
-                    <div className="text-[#8b90ad]">Rs. {p.price.toFixed(2)}</div>
-                  </div>
+                    <div className="text-[#8b90ad]">
+                      Rs. {Number(p.price || 0).toFixed(2)}
+                    </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -313,13 +364,27 @@ export default function HomePage() {
             ) : (
               <div className="grid grid-cols-4 gap-5 max-[1024px]:grid-cols-3 max-sm:grid-cols-2">
                 {bestSellerProducts.map((p) => (
-                  <div key={p.id} className="flex flex-col gap-[6px] text-[12px]">
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => router.push(`/product/${p.id}`)}
+                    className="flex flex-col gap-[6px] text-left text-[12px]"
+                    aria-label={`Open ${p.name}`}
+                    title={p.name}
+                  >
                     <div className="relative w-full overflow-hidden rounded-[10px] border border-[#252842] bg-[#151726] pb-[130%]">
-                      <Image src={p.image} alt={p.name} fill className="object-cover" />
+                      <Image
+                        src={resolveImageSrc(p.image)}
+                        alt={p.name}
+                        fill
+                        className="object-cover"
+                      />
                     </div>
                     <div className="mt-1 text-[#f1f2ff]">{p.name}</div>
-                    <div className="text-[#8b90ad]">Rs. {p.price.toFixed(2)}</div>
-                  </div>
+                    <div className="text-[#8b90ad]">
+                      Rs. {Number(p.price || 0).toFixed(2)}
+                    </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -347,7 +412,10 @@ export default function HomePage() {
                   text: "Our team is here to help you with sizing, orders and more.",
                 },
               ].map((p) => (
-                <div key={p.title} className="flex flex-col items-center gap-[10px]">
+                <div
+                  key={p.title}
+                  className="flex flex-col items-center gap-[10px]"
+                >
                   <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#3a3d5a] text-[20px]">
                     {p.icon}
                   </div>
@@ -378,9 +446,9 @@ export default function HomePage() {
                 e.preventDefault();
                 const inp = e.currentTarget.querySelector(
                   "input"
-                ) as HTMLInputElement;
-                if (inp.value) alert(`Subscribed: ${inp.value}`);
-                inp.value = "";
+                ) as HTMLInputElement | null;
+                if (inp?.value) alert(`Subscribed: ${inp.value}`);
+                if (inp) inp.value = "";
               }}
             >
               <input
@@ -419,7 +487,7 @@ export default function HomePage() {
             </div>
             <ul className="grid list-none gap-2 p-0 text-[12px] text-[#d4d6ea]">
               <li>
-                <Link href="/">Home</Link>
+                <Link href="/homepage">Home</Link>
               </li>
               <li>
                 <Link href="/about">About us</Link>

@@ -2,11 +2,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   images: {
-    // allow loading images from localhost / private IPs in dev
     dangerouslyAllowLocalIP: true,
 
     remotePatterns: [
-      // backend product images: http://localhost:8080/uploads/...
+      // localhost uploads
       {
         protocol: "http",
         hostname: "localhost",
@@ -14,31 +13,38 @@ const nextConfig: NextConfig = {
         pathname: "/uploads/**",
       },
 
-      // ✅ Cloudinary images
+      // Cloudinary
       {
         protocol: "https",
         hostname: "res.cloudinary.com",
         pathname: "/**",
       },
 
-      // Google avatars (Google OAuth)
+      // Google OAuth avatars
       {
         protocol: "https",
         hostname: "lh3.googleusercontent.com",
         pathname: "/**",
       },
 
-      // Example domain used in docs/samples
+      // Unsplash
       {
         protocol: "https",
-        hostname: "example.com",
+        hostname: "images.unsplash.com",
         pathname: "/**",
       },
 
-      // Stock image (ftcdn)
+      // ftcdn
       {
         protocol: "https",
         hostname: "t3.ftcdn.net",
+        pathname: "/**",
+      },
+
+      // ✅ REQUIRED FOR YOUR ERROR
+      {
+        protocol: "https",
+        hostname: "example.com",
         pathname: "/**",
       },
     ],

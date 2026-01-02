@@ -71,8 +71,33 @@ function TimelineIcon({ step, active }: { step: StepKey; active: StepKey }) {
   );
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+
+/** Backend orderStatus -> step */
+function statusToStep(orderStatus: string): StepKey {
+  // your backend: "Pending" | "Shipped" | "Delivered" | "Cancelled"
+  if (orderStatus === "Shipped") return "SHIPPED";
+  if (orderStatus === "Delivered") return "DELIVERED";
+  return "PLACED";
+}
+
+/** Format createdAt nicely */
+function fmtDate(input?: string) {
+  if (!input) return "";
+  const d = new Date(input);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 export default function OrderTrackingPage() {
   const router = useRouter();
+
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const [data, setData] = React.useState<TrackingData>({
     trackingNumber: "",
@@ -91,7 +116,73 @@ export default function OrderTrackingPage() {
       "Shipped via Speedy Delivery. For more details, contact their customer service at 1-800-SPEEDY.",
   });
 
+  async function handleTrack() {
+    const raw = (data.trackingNumber || "").trim();
+    if (!raw) {
+      setError("Please enter tracking number.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // allow "123456" OR "#123456"
+      const code = raw;
+
+      const res = await fetch(`${API_BASE}/api/orders/track/${encodeURIComponent(code)}`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        throw new Error(json?.message || "Order not found");
+      }
+
+      const o = json?.order || {};
+      const orderStatus = String(o.orderStatus || "Pending");
+      const activeStep = statusToStep(orderStatus);
+
+      const placedDate = fmtDate(o.createdAt) || "";
+      const estDelivery =
+        String(o.shipping?.estimatedDelivery || "").trim() || data.estimatedDelivery;
+
+      setData((p) => ({
+        ...p,
+        trackingNumber: String(o.orderCode || raw).replace("#", ""),
+        currentStatus: orderStatus,
+        estimatedDelivery: estDelivery,
+        activeStep,
+        timeline: [
+          { key: "PLACED", title: "Order Placed", date: placedDate || "—" },
+          { key: "SHIPPED", title: "Shipped", date: "—" },
+          { key: "IN_TRANSIT", title: "In Transit", date: "—" },
+          { key: "DELIVERED", title: "Delivered", date: "—" },
+        ],
+        locationUpdates:
+          orderStatus === "Delivered"
+            ? "Your order has been delivered successfully."
+            : orderStatus === "Shipped"
+            ? "Your order has been shipped and is moving through the delivery network."
+            : "Your order has been placed and is being processed.",
+        carrierInfo: String(o.shipping?.method || "Standard Shipping — UFO Collection"),
+      }));
+    } catch (e: any) {
+      setError(e?.message || "Failed to track order");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const percent = progressPercent(data.activeStep);
+
+  // ✅ tracking for review link
+  const trackingForUrl = encodeURIComponent((data.trackingNumber || "").replace("#", ""));
+
+  // ✅ show review only if delivered (keep as you had it)
+  const canReview = data.activeStep === "DELIVERED" || data.currentStatus === "Delivered";
 
   return (
     <>
@@ -159,7 +250,6 @@ export default function OrderTrackingPage() {
             </Link>
           </nav>
 
-          {/* spacer only */}
           <div className="w-[26px]" />
         </div>
       </header>
@@ -176,14 +266,33 @@ export default function OrderTrackingPage() {
                 <label htmlFor="trackingNumber" className="text-sm text-white/85">
                   Tracking Number
                 </label>
-                <input
-                  id="trackingNumber"
-                  value={data.trackingNumber}
-                  onChange={(e) =>
-                    setData((p) => ({ ...p, trackingNumber: e.target.value }))
-                  }
-                  className="mt-3 h-[44px] w-full rounded-[8px] border border-white/15 bg-[#0b0f1a]/70 px-4 text-white outline-none focus:border-white/35"
-                />
+
+                <div className="mt-3 flex gap-3">
+                  <input
+                    id="trackingNumber"
+                    value={data.trackingNumber}
+                    onChange={(e) =>
+                      setData((p) => ({ ...p, trackingNumber: e.target.value }))
+                    }
+                    className="h-[44px] w-full rounded-[8px] border border-white/15 bg-[#0b0f1a]/70 px-4 text-white outline-none focus:border-white/35"
+                    placeholder="Enter order code (e.g. 123456)"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleTrack}
+                    disabled={loading}
+                    className={[
+                      "h-[44px] shrink-0 rounded-[8px] border border-white/15 bg-[#0b0f1a]/70 px-4 text-[12px] uppercase tracking-[0.16em] text-white",
+                      "hover:border-white/35 hover:bg-white/10",
+                      loading ? "opacity-60 cursor-not-allowed" : "",
+                    ].join(" ")}
+                  >
+                    {loading ? "Tracking..." : "Track"}
+                  </button>
+                </div>
+
+                {error ? <div className="mt-3 text-sm text-red-300">{error}</div> : null}
               </div>
 
               <div>
@@ -193,10 +302,9 @@ export default function OrderTrackingPage() {
                 <input
                   id="currentStatus"
                   value={data.currentStatus}
-                  onChange={(e) =>
-                    setData((p) => ({ ...p, currentStatus: e.target.value }))
-                  }
-                  className="mt-3 h-[44px] w-full rounded-[8px] border border-white/15 bg-[#0b0f1a]/70 px-4 text-white outline-none focus:border-white/35"
+                  readOnly
+                  className="mt-3 h-[44px] w-full rounded-[8px] border border-white/15 bg-[#0b0f1a]/70 px-4 text-white/90 outline-none focus:border-white/35"
+                  placeholder="(auto from system)"
                 />
               </div>
             </div>
@@ -237,10 +345,8 @@ export default function OrderTrackingPage() {
                     <TimelineIcon step={t.key} active={data.activeStep} />
 
                     <div className="pt-1">
-                      <div className="text-base font-semibold text-white/90">
-                        {t.title}
-                      </div>
-                      <div className="mt-1 text-sm text-white/60">{t.date}</div>
+                      <div className="text-base font-semibold text-white/90">{t.title}</div>
+                      <div className="mt-1 text-sm text-white/60">{t.date || "—"}</div>
                     </div>
                   </div>
                 );
@@ -257,10 +363,28 @@ export default function OrderTrackingPage() {
 
             {/* Carrier Information */}
             <div className="mt-12">
-              <h2 className="text-[22px] font-semibold">Carrier Information</h2>
-              <p className="mt-4 max-w-[900px] text-white/75 leading-relaxed">
-                {data.carrierInfo}
-              </p>
+              <div className="flex items-start justify-between gap-6">
+                <div className="min-w-0">
+                  <h2 className="text-[22px] font-semibold">Carrier Information</h2>
+                  <p className="mt-4 max-w-[900px] text-white/75 leading-relaxed">
+                    {data.carrierInfo}
+                  </p>
+                </div>
+
+                {/* ✅ ADD THIS BUTTON (no design change to your existing layout) */}
+                {canReview ? (
+                  <Link
+                    href={`/review?tracking=${trackingForUrl}`}
+                    className="mt-[6px] inline-flex h-[34px] items-center rounded-[8px] bg-[#1f7cff] px-4 text-[12px] font-semibold text-white hover:opacity-90"
+                    aria-label="Leave a Review"
+                    title="Leave a Review"
+                  >
+                    Leave a Review
+                  </Link>
+                ) : (
+                  <div className="mt-[6px] h-[34px] w-[118px]" />
+                )}
+              </div>
             </div>
           </div>
 
@@ -270,9 +394,7 @@ export default function OrderTrackingPage() {
               <span className="text-lg">◎</span>
               <span className="text-lg">◯</span>
             </div>
-            <p className="text-sm text-white/50">
-              © 2025 UFO Collection — All Rights Reserved
-            </p>
+            <p className="text-sm text-white/50">© 2025 UFO Collection — All Rights Reserved</p>
           </div>
         </div>
       </main>

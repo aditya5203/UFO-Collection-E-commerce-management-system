@@ -1,7 +1,7 @@
-// server/src/modules/auth/product/routes/product.routes.ts
+// server/src/modules/product/routes/product.routes.ts
 import { Router } from "express";
 import { productController } from "../controllers/product.controller";
-import authMiddleware, { authorize } from "../../auth/middleware/auth.middleware";
+import { adminAuthMiddleware, authorize } from "../../auth/middleware/auth.middleware";
 import { upload } from "../../../config/cloudinaryUpload";
 
 const publicRouter = Router();
@@ -12,7 +12,7 @@ publicRouter.get("/", productController.getAllPublic);
 publicRouter.get("/:id", productController.getById);
 
 /* ---------- Admin ---------- */
-adminRouter.use(authMiddleware);
+adminRouter.use(adminAuthMiddleware);
 adminRouter.use(authorize("admin", "superadmin"));
 
 /**

@@ -5,6 +5,19 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 
+// ✅ INITIALS LOGIC (Aditya Kumar => AK)
+function getInitials(name: string) {
+  const clean = (name || "").trim();
+  if (!clean) return "U";
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? "";
+  const last =
+    parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : parts[0]?.[1] ?? "";
+
+  return (first + last).toUpperCase();
+}
+
 export default function ProfilePage() {
   const router = useRouter();
 
@@ -176,7 +189,7 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-[#050611] text-white">
-      {/* ================= HEADER (same as cart page) ================= */}
+      {/* ================= HEADER ================= */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
           {/* LEFT: Back + Logo + Brand */}
@@ -214,7 +227,7 @@ export default function ProfilePage() {
             </Link>
           </div>
 
-          {/* CENTER NAV: Home/Collection/About/Contact */}
+          {/* CENTER NAV */}
           <nav className="hidden md:flex gap-10">
             <Link
               href="/homepage"
@@ -242,7 +255,7 @@ export default function ProfilePage() {
             </Link>
           </nav>
 
-          {/* RIGHT: Wishlist + Profile + 3 dots */}
+          {/* RIGHT */}
           <div className="relative flex items-center gap-2" ref={menuRef}>
             <Link href="/wishlist" aria-label="Wishlist" title="Wishlist">
               <Image
@@ -254,20 +267,15 @@ export default function ProfilePage() {
               />
             </Link>
 
+            {/* ✅ PROFILE INITIALS ICON */}
             <button
               type="button"
               aria-label="Profile"
-              title="Profile"
-              className="rounded-full border border-[#2b2f45] p-2 hover:bg-white/10"
+              title={form.name || "Profile"}
+              className="flex h-[40px] w-[40px] items-center justify-center rounded-full border border-[#2b2f45] bg-white text-[12px] font-semibold text-[#050611] hover:brightness-95"
               onClick={() => router.push("/profile")}
             >
-              <Image
-                src="/images/profile.png"
-                width={24}
-                height={24}
-                alt="Profile"
-                className="brightness-0 invert"
-              />
+              {getInitials(form.name || form.email)}
             </button>
 
             <button

@@ -1,4 +1,4 @@
-//modules/auth/category/routes/category.routes.ts
+// server/src/modules/category/routes/category.routes.ts
 import { Router } from "express";
 import {
   createCategory,
@@ -9,9 +9,8 @@ import {
   updateCategory,
   deleteCategory,
 } from "../controllers/category.controller";
-import authMiddleware, {
-  authorize,
-} from "../../auth/middleware/auth.middleware";
+
+import { adminAuthMiddleware, authorize } from "../../auth/middleware/auth.middleware";
 
 const publicRouter = Router();
 const adminRouter = Router();
@@ -21,8 +20,9 @@ publicRouter.get("/", getPublicCategories);
 publicRouter.get("/:id", getPublicCategoryById);
 
 // Admin
-adminRouter.use(authMiddleware);
+adminRouter.use(adminAuthMiddleware);
 adminRouter.use(authorize("admin", "superadmin"));
+
 adminRouter.get("/", getCategories);
 adminRouter.post("/", createCategory);
 adminRouter.get("/:id", getCategoryById);

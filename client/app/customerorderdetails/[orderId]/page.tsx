@@ -10,14 +10,14 @@ type OrderItem = {
   name: string;
   size: string;
   qty: number;
-  price: number;
+  price: number; // Rs
   image: string;
 };
 
 type OrderStatus = "Pending" | "Confirmed" | "Shipped" | "Delivered" | "Cancelled";
 
 type Order = {
-  orderId: string; // "#9876543210"
+  orderId: string; // "#123456"
   status: OrderStatus;
 
   customer: {
@@ -45,59 +45,94 @@ type Order = {
   };
 };
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API = `${API_BASE}/api`;
+
+function StatusBadge({ status }: { status: OrderStatus }) {
+  const map: Record<OrderStatus, string> = {
+    Pending: "bg-yellow-500/15 text-yellow-200 border-yellow-500/30",
+    Confirmed: "bg-blue-500/15 text-blue-200 border-blue-500/30",
+    Shipped: "bg-purple-500/15 text-purple-200 border-purple-500/30",
+    Delivered: "bg-green-500/15 text-green-200 border-green-500/30",
+    Cancelled: "bg-red-500/15 text-red-200 border-red-500/30",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${map[status]}`}
+    >
+      {status}
+    </span>
+  );
+}
+
 export default function CustomerOrderDetailsPage() {
   const router = useRouter();
   const params = useParams<{ orderId: string }>();
-  const orderIdFromUrl = params?.orderId ?? "9876543210";
+  const orderIdFromUrl = params?.orderId ? String(params.orderId) : "";
 
-  // ✅ Dummy data (replace with API later)
-  const [order] = React.useState<Order>({
-    orderId: `#${orderIdFromUrl}`,
-    status: "Shipped",
-    customer: {
-      name: "Aditya Kumar",
-      email: "adityaprajapati@gmail.com",
-      shippingAddress: "456 Oak Avenue, Anytown,\nCA 91234",
-    },
-    items: [
-      {
-        id: "1",
-        name: "Men Jacket",
-        size: "M",
-        qty: 1,
-        price: 25,
-        image: "/images/products/jacket.png",
-      },
-      {
-        id: "2",
-        name: "Blue Jeans",
-        size: "32",
-        qty: 1,
-        price: 75,
-        image: "/images/products/jeans.png",
-      },
-    ],
-    payment: {
-      method: "Credit Card (**** **** **** 1234)",
-    },
-    shipping: {
-      method: "Standard Shipping",
-      estimatedDelivery: "May 15, 2025",
-    },
-    summary: {
-      subtotal: 100,
-      shipping: 10,
-      taxes: 0,
-      total: 110,
-    },
-  });
+  const [order, setOrder] = React.useState<Order | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  // ✅ Build tracking query from orderId: "#987..." -> "987..."
-  const trackingNumber = order.orderId.replace("#", "");
+  React.useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        if (!orderIdFromUrl) {
+          setOrder(null);
+          setError("Order ID is missing in the URL.");
+          return;
+        }
+
+        // ✅ cookie-based auth (your backend uses cookie)
+        const meRes = await fetch(`${API}/auth/me`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (meRes.status === 401) {
+          router.push("/login");
+          return;
+        }
+
+        const res = await fetch(`${API}/orders/my/${encodeURIComponent(orderIdFromUrl)}`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const data = await res.json().catch(() => ({} as any));
+
+        if (!res.ok) throw new Error(data?.message || "Failed to load order");
+
+        if (!mounted) return;
+        setOrder(data?.order || null);
+      } catch (e: any) {
+        if (!mounted) return;
+        setError(e?.message || "Something went wrong");
+      } finally {
+        if (!mounted) return;
+        setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [orderIdFromUrl, router]);
+
+  const trackingNumber = (order?.orderId || orderIdFromUrl).replace("#", "");
 
   return (
     <>
-      {/* HEADER (same style as Cart page, but NO wishlist/cart icons) */}
+      {/* HEADER */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
           <div className="flex items-center gap-4">
@@ -135,33 +170,20 @@ export default function CustomerOrderDetailsPage() {
           </div>
 
           <nav className="hidden md:flex gap-10">
-            <Link
-              href="/homepage"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
+            <Link href="/homepage" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
               HOME
             </Link>
-            <Link
-              href="/collection"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
+            <Link href="/collection" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
               COLLECTION
             </Link>
-            <Link
-              href="/about"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
+            <Link href="/about" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
               ABOUT
             </Link>
-            <Link
-              href="/contact"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
+            <Link href="/contact" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
               CONTACT
             </Link>
           </nav>
 
-          {/* ✅ No cart/wishlist */}
           <div className="w-[26px]" />
         </div>
       </header>
@@ -171,207 +193,178 @@ export default function CustomerOrderDetailsPage() {
         <div className="mx-auto max-w-[1280px] px-6 py-10">
           <h1 className="text-[36px] font-semibold">Order Details</h1>
 
-          <p className="mt-2 text-[13px] text-[#9aa3cc]">
-            Order ID: <span className="text-white">{order.orderId}</span> | Status:{" "}
-            <span className="text-white">{order.status}</span>
-          </p>
-
-          <div className="mt-6 h-px bg-[#2b2f45]" />
-
-          {/* CUSTOMER INFO */}
-          <section className="mt-10">
-            <h2 className="text-[18px] font-semibold">Customer Information</h2>
-
-            <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-2">
-              <div className="grid grid-cols-12 gap-4 py-4 text-sm">
-                <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
-                  Name
-                </div>
-                <div className="col-span-12 md:col-span-9 text-white">
-                  {order.customer.name}
-                </div>
-                <div className="col-span-12 h-px bg-[#2b2f45]" />
-
-                <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
-                  Email
-                </div>
-                <div className="col-span-12 md:col-span-9 text-white">
-                  {order.customer.email}
-                </div>
-                <div className="col-span-12 h-px bg-[#2b2f45]" />
-
-                <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
-                  Shipping Address
-                </div>
-                <div className="col-span-12 md:col-span-9 text-white whitespace-pre-line">
-                  {order.customer.shippingAddress}
-                </div>
-              </div>
+          {/* LOADING / ERROR */}
+          {loading && (
+            <div className="mt-8 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6 text-[#9aa3cc]">
+              Loading order...
             </div>
-          </section>
+          )}
 
-          {/* ITEMS PURCHASED */}
-          <section className="mt-12">
-            <h2 className="text-[18px] font-semibold">Items Purchased</h2>
+          {error && (
+            <div className="mt-8 rounded-[12px] border border-red-500/40 bg-red-500/10 p-6 text-red-200">
+              {error}
+            </div>
+          )}
 
-            <div className="mt-5 rounded-[10px] border border-[#2b2f45] bg-[#0b0f1a]/60 overflow-hidden">
-              <div className="hidden md:grid grid-cols-[1.2fr_0.6fr_0.9fr_0.6fr_0.6fr] px-6 py-4 border-b border-[#2b2f45] text-[#dfe3ff]">
-                <div>Product</div>
-                <div>Size</div>
-                <div className="text-center">Quantity</div>
-                <div>Price</div>
-                <div>Total</div>
+          {!loading && !error && !order && (
+            <div className="mt-8 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6 text-[#9aa3cc]">
+              Order not found.
+            </div>
+          )}
+
+          {!loading && !error && order && (
+            <>
+              {/* ✅ Better Order ID + Status UI */}
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <span className="rounded-full border border-[#2b2f45] bg-[#0b0f1a]/60 px-4 py-2 text-[13px] text-[#dfe3ff]">
+                  Order ID: <span className="text-white font-semibold">{order.orderId}</span>
+                </span>
+                <StatusBadge status={order.status} />
               </div>
 
-              {order.items.map((it) => (
-                <div
-                  key={it.id}
-                  className="border-b border-[#1b2034] px-6 py-6 last:border-0"
-                >
-                  {/* Desktop Row */}
-                  <div className="hidden md:grid grid-cols-[1.2fr_0.6fr_0.9fr_0.6fr_0.6fr] items-center gap-4">
-                    <div className="flex items-center gap-4">
-                      <div className="relative h-[46px] w-[46px] overflow-hidden rounded-full border border-[#2b2f45]">
-                        <Image
-                          src={it.image}
-                          alt={it.name}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-                      <span>{it.name}</span>
-                    </div>
+              <div className="mt-6 h-px bg-[#2b2f45]" />
 
-                    <span className="text-[#9aa3cc]">Size: {it.size}</span>
+              {/* CUSTOMER INFO */}
+              <section className="mt-10">
+                <h2 className="text-[18px] font-semibold">Customer Information</h2>
 
-                    <div className="text-center text-[#9aa3cc]">{it.qty}</div>
+                <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-2">
+                  <div className="grid grid-cols-12 gap-4 py-4 text-sm">
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Name</div>
+                    <div className="col-span-12 md:col-span-9 text-white">{order.customer.name}</div>
+                    <div className="col-span-12 h-px bg-[#2b2f45]" />
 
-                    <span className="text-[#9aa3cc]">Rs. {it.price}</span>
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Email</div>
+                    <div className="col-span-12 md:col-span-9 text-white">{order.customer.email}</div>
+                    <div className="col-span-12 h-px bg-[#2b2f45]" />
 
-                    <span className="text-white">Rs. {it.price * it.qty}</span>
-                  </div>
-
-                  {/* Mobile Row */}
-                  <div className="md:hidden flex gap-4">
-                    <div className="relative h-[62px] w-[62px] overflow-hidden rounded-[12px] border border-[#2b2f45]">
-                      <Image
-                        src={it.image}
-                        alt={it.name}
-                        fill
-                        className="object-cover"
-                      />
-                    </div>
-
-                    <div className="flex-1">
-                      <div className="font-medium">{it.name}</div>
-                      <div className="mt-1 text-[#9aa3cc] text-sm">
-                        Size: {it.size}
-                      </div>
-                      <div className="mt-1 text-[#9aa3cc] text-sm">
-                        Qty: {it.qty}
-                      </div>
-                      <div className="mt-1 text-[#9aa3cc] text-sm">
-                        Price: Rs. {it.price}
-                      </div>
-                      <div className="mt-1 text-white text-sm">
-                        Total: Rs. {it.price * it.qty}
-                      </div>
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Shipping Address</div>
+                    <div className="col-span-12 md:col-span-9 text-white whitespace-pre-line">
+                      {order.customer.shippingAddress}
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </section>
+              </section>
 
-          {/* PAYMENT INFO */}
-          <section className="mt-12">
-            <h2 className="text-[18px] font-semibold">Payment Information</h2>
+              {/* ITEMS */}
+              <section className="mt-12">
+                <h2 className="text-[18px] font-semibold">Items Purchased</h2>
 
-            <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-4">
-              <div className="grid grid-cols-12 gap-4 py-2 text-sm">
-                <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
-                  Method
+                <div className="mt-5 rounded-[10px] border border-[#2b2f45] bg-[#0b0f1a]/60 overflow-hidden">
+                  <div className="hidden md:grid grid-cols-[1.2fr_0.6fr_0.9fr_0.6fr_0.6fr] px-6 py-4 border-b border-[#2b2f45] text-[#dfe3ff]">
+                    <div>Product</div>
+                    <div>Size</div>
+                    <div className="text-center">Quantity</div>
+                    <div>Price</div>
+                    <div>Total</div>
+                  </div>
+
+                  {order.items.map((it) => (
+                    <div key={it.id} className="border-b border-[#1b2034] px-6 py-6 last:border-0">
+                      <div className="hidden md:grid grid-cols-[1.2fr_0.6fr_0.9fr_0.6fr_0.6fr] items-center gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="relative h-[46px] w-[46px] overflow-hidden rounded-full border border-[#2b2f45]">
+                            <Image src={it.image} alt={it.name} fill className="object-cover" />
+                          </div>
+                          <span>{it.name}</span>
+                        </div>
+
+                        <span className="text-[#9aa3cc]">{it.size ? `Size: ${it.size}` : "-"}</span>
+                        <div className="text-center text-[#9aa3cc]">{it.qty}</div>
+                        <span className="text-[#9aa3cc]">Rs. {it.price}</span>
+                        <span className="text-white">Rs. {it.price * it.qty}</span>
+                      </div>
+
+                      <div className="md:hidden flex gap-4">
+                        <div className="relative h-[62px] w-[62px] overflow-hidden rounded-[12px] border border-[#2b2f45]">
+                          <Image src={it.image} alt={it.name} fill className="object-cover" />
+                        </div>
+
+                        <div className="flex-1">
+                          <div className="font-medium">{it.name}</div>
+                          <div className="mt-1 text-[#9aa3cc] text-sm">Size: {it.size || "-"}</div>
+                          <div className="mt-1 text-[#9aa3cc] text-sm">Qty: {it.qty}</div>
+                          <div className="mt-1 text-[#9aa3cc] text-sm">Price: Rs. {it.price}</div>
+                          <div className="mt-1 text-white text-sm">Total: Rs. {it.price * it.qty}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div className="col-span-12 md:col-span-9 text-white">
-                  {order.payment.method}
+              </section>
+
+              {/* PAYMENT */}
+              <section className="mt-12">
+                <h2 className="text-[18px] font-semibold">Payment Information</h2>
+
+                <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-4">
+                  <div className="grid grid-cols-12 gap-4 py-2 text-sm">
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Method</div>
+                    <div className="col-span-12 md:col-span-9 text-white">{order.payment.method}</div>
+                  </div>
                 </div>
+              </section>
+
+              {/* SHIPPING */}
+              <section className="mt-12">
+                <h2 className="text-[18px] font-semibold">Shipping Information</h2>
+
+                <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-2">
+                  <div className="grid grid-cols-12 gap-4 py-4 text-sm">
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Method</div>
+                    <div className="col-span-12 md:col-span-9 text-white">{order.shipping.method}</div>
+                    <div className="col-span-12 h-px bg-[#2b2f45]" />
+
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Estimated Delivery</div>
+                    <div className="col-span-12 md:col-span-9 text-white">
+                      {order.shipping.estimatedDelivery || "—"}
+                    </div>
+                    <div className="col-span-12 h-px bg-[#2b2f45]" />
+
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Track Order</div>
+                    <div className="col-span-12 md:col-span-9">
+                      <Link
+                        href={`/order-tracking?tracking=${encodeURIComponent(trackingNumber)}`}
+                        className="text-white underline underline-offset-4 hover:text-[#c9b9ff]"
+                      >
+                        Click here to track
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* SUMMARY */}
+              <section className="mt-12 max-w-[460px] ml-auto">
+                <h2 className="text-[22px] font-semibold">Summary</h2>
+
+                <div className="mt-6 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6">
+                  <div className="space-y-4 text-[#9aa3cc]">
+                    <div className="flex justify-between">
+                      <span>Subtotal</span>
+                      <span className="text-white">Rs. {order.summary.subtotal}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Shipping</span>
+                      <span className="text-white">Rs. {order.summary.shipping}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Taxes</span>
+                      <span className="text-white">Rs. {order.summary.taxes}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total</span>
+                      <span className="text-white font-semibold">Rs. {order.summary.total}</span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <div className="mt-16 text-center text-[#8b90ad] text-sm">
+                © 2025 UFO Collection — All Rights Reserved
               </div>
-            </div>
-          </section>
-
-          {/* SHIPPING INFO */}
-          <section className="mt-12">
-            <h2 className="text-[18px] font-semibold">Shipping Information</h2>
-
-            <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-2">
-              <div className="grid grid-cols-12 gap-4 py-4 text-sm">
-                <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
-                  Method
-                </div>
-                <div className="col-span-12 md:col-span-9 text-white">
-                  {order.shipping.method}
-                </div>
-                <div className="col-span-12 h-px bg-[#2b2f45]" />
-
-                <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
-                  Estimated Delivery
-                </div>
-                <div className="col-span-12 md:col-span-9 text-white">
-                  {order.shipping.estimatedDelivery}
-                </div>
-                <div className="col-span-12 h-px bg-[#2b2f45]" />
-
-                {/* ✅ TRACK ORDER: go to /order-tracking */}
-                <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
-                  Track Order
-                </div>
-                <div className="col-span-12 md:col-span-9">
-                  <Link
-                    href={`/order-tracking?tracking=${encodeURIComponent(
-                      trackingNumber
-                    )}`}
-                    className="text-white underline underline-offset-4 hover:text-[#c9b9ff]"
-                    aria-label="Click here to track order"
-                    title="Click here to track order"
-                  >
-                    Click here to track
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* SUMMARY */}
-          <section className="mt-12 max-w-[460px] ml-auto">
-            <h2 className="text-[22px] font-semibold">Summary</h2>
-
-            <div className="mt-6 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6">
-              <div className="space-y-4 text-[#9aa3cc]">
-                <div className="flex justify-between">
-                  <span>Subtotal</span>
-                  <span className="text-white">Rs. {order.summary.subtotal}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Shipping</span>
-                  <span className="text-white">Rs. {order.summary.shipping}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Taxes</span>
-                  <span className="text-white">Rs. {order.summary.taxes}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Total</span>
-                  <span className="text-white font-semibold">
-                    Rs. {order.summary.total}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <div className="mt-16 text-center text-[#8b90ad] text-sm">
-            © 2025 UFO Collection — All Rights Reserved
-          </div>
+            </>
+          )}
         </div>
       </main>
     </>

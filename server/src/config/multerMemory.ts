@@ -1,3 +1,4 @@
+// server/src/config/multerMemory.ts
 import multer from "multer";
 
 export const uploadMemory = multer({

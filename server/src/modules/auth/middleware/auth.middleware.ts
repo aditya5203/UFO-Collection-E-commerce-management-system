@@ -5,7 +5,6 @@ import { config } from "../../../config";
 import { JwtPayload } from "../types/auth.types";
 import { AppError } from "../../../middleware/error.middleware";
 
-// Local type for requests where we use req.user
 export type AuthRequest = Request & {
   user?: {
     userId?: string;
@@ -15,67 +14,81 @@ export type AuthRequest = Request & {
   };
 };
 
-/**
- * Authentication middleware
- * - Reads token from Authorization: Bearer <token> OR cookies.token
- * - Verifies JWT
- * - Attaches { userId, email, role } to req.user
- */
-export const authMiddleware = (
-  req: AuthRequest,
-  _res: Response,
-  next: NextFunction
-) => {
-  try {
-    let token: string | undefined;
+// ✅ cookie names
+const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
+const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
 
-    // 1) Try Authorization header: "Bearer <token>"
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.substring(7);
+// ✅ Base middleware factory: only verifies token and sets req.user
+export const makeAuthMiddleware =
+  (cookieName: string) =>
+  (req: AuthRequest, _res: Response, next: NextFunction) => {
+    try {
+      let token: string | undefined;
+
+      // 1) Cookie
+      if (req.cookies && req.cookies[cookieName]) {
+        token = req.cookies[cookieName] as string;
+      }
+
+      // 2) Authorization header fallback
+      if (!token) {
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+          token = authHeader.substring(7);
+        }
+      }
+
+      if (!token) throw new AppError("No token provided", 401);
+
+      const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
+
+      req.user = {
+        userId: decoded.userId,
+        email: decoded.email,
+        role: decoded.role,
+      };
+
+      next();
+    } catch (error: any) {
+      if (error?.name === "JsonWebTokenError") {
+        return next(new AppError("Invalid token", 401));
+      }
+      if (error?.name === "TokenExpiredError") {
+        return next(new AppError("Token expired", 401));
+      }
+      return next(error);
     }
+  };
 
-    // 2) Fallback to cookie token
-    if (!token && req.cookies && req.cookies.token) {
-      token = req.cookies.token as string;
+// ✅ Customer auth (requires customer role)
+export const customerAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
+  return makeAuthMiddleware(CUSTOMER_COOKIE)(req, res, (err?: any) => {
+    if (err) return next(err);
+
+    const role = (req.user?.role || "").toLowerCase();
+    if (role !== "customer") {
+      return next(new AppError("Customer access only", 403));
     }
-
-    // 3) No token → unauthorized
-    if (!token) {
-      throw new AppError("No token provided", 401);
-    }
-
-    // 4) Verify token
-    const decoded = jwt.verify(token, config.jwt.secret) as JwtPayload;
-
-    // 5) Attach user info to request
-    req.user = {
-      userId: decoded.userId,
-      email: decoded.email,
-      role: decoded.role,
-    };
 
     next();
-  } catch (error: any) {
-    if (error.name === "JsonWebTokenError") {
-      return next(new AppError("Invalid token", 401));
-    }
-    if (error.name === "TokenExpiredError") {
-      return next(new AppError("Token expired", 401));
-    }
-    next(error);
-  }
+  });
 };
 
-/**
- * Role-based authorization
- * Usage:
- *   router.get("/admin",
- *     authMiddleware,
- *     authorize("admin", "superadmin"),
- *     handler
- *   );
- */
+// ✅ Admin auth (requires admin/superadmin role)
+export const adminAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
+  return makeAuthMiddleware(ADMIN_COOKIE)(req, res, (err?: any) => {
+    if (err) return next(err);
+
+    const role = (req.user?.role || "").toLowerCase();
+    if (role !== "admin" && role !== "superadmin") {
+      return next(new AppError("Admin access only", 403));
+    }
+
+    next();
+  });
+};
+
+// ✅ Role-based authorization (must run AFTER an auth middleware that sets req.user)
 export const authorize =
   (...roles: string[]) =>
   (req: AuthRequest, _res: Response, next: NextFunction) => {
@@ -83,14 +96,16 @@ export const authorize =
       return next(new AppError("User not authenticated", 401));
     }
 
-    if (!roles.includes(req.user.role || "")) {
-      return next(
-        new AppError("Access denied. Insufficient permissions", 403)
-      );
+    const userRole = (req.user.role || "").toLowerCase();
+    const allowed = roles.map((r) => r.toLowerCase());
+
+    if (!allowed.includes(userRole)) {
+      return next(new AppError("Access denied. Insufficient permissions", 403));
     }
 
     next();
   };
 
-// Default export so you can do: import authMiddleware from "../middleware/auth.middleware";
-export default authMiddleware;
+// ✅ Default export: base "auth only" (NO role restriction)
+// This prevents accidental "customer only" lockouts in admin routers.
+export default makeAuthMiddleware(CUSTOMER_COOKIE);

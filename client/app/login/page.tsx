@@ -5,9 +5,60 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API = `${API_BASE}/api`;
+
 export default function LoginPage() {
   const router = useRouter();
+
   const [showPassword, setShowPassword] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string>("");
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError("");
+
+    const formData = new FormData(e.currentTarget);
+    const email = formData.get("email")?.toString().trim() || "";
+    const password = formData.get("password")?.toString() || "";
+
+    if (!email || !password) {
+      setError("Email and password are required.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const res = await fetch(`${API}/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include", // ✅ important for cookie auth
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json().catch(() => ({} as any));
+
+      if (!res.ok) {
+        setError(data?.message || "Login failed");
+        return;
+      }
+
+      // ✅ success
+      router.push("/collection");
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onGoogleLogin = () => {
+    // ✅ backend route already includes /api in our API const
+    window.location.href = `${API}/auth/google/oauth`;
+  };
 
   return (
     <div className="min-h-screen bg-[#050611] text-[#f5f5f7]">
@@ -117,63 +168,19 @@ export default function LoginPage() {
                 manage your wishlist and never miss a drop from UFO Collection.
               </p>
 
-              <form
-                className="grid gap-[14px]"
-                onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
-                  e.preventDefault();
-                  const formData = new FormData(e.currentTarget);
-                  const email = formData.get("email")?.toString() || "";
-                  const password = formData.get("password")?.toString() || "";
-
-                  try {
-                    const apiBase =
-                      process.env.NEXT_PUBLIC_API_URL ||
-                      "http://localhost:8080/api";
-
-                    const res = await fetch(`${apiBase}/auth/login`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      credentials: "include",
-                      body: JSON.stringify({ email, password }),
-                    });
-
-                    console.log("Login status:", res.status);
-
-                    let data: any = {};
-                    try {
-                      data = await res.json();
-                    } catch {
-                      console.log("Login response not JSON");
-                    }
-
-                    console.log("Login response body:", data);
-
-                    if (!res.ok) {
-                      alert(data.message || "Login failed");
-                      return;
-                    }
-
-                    alert("Logged in successfully ✨");
-                    router.push("/collection");
-                  } catch (err) {
-                    console.error("Login error:", err);
-                    alert("Something went wrong. Please try again.");
-                  }
-                }}
-              >
+              <form className="grid gap-[14px]" onSubmit={onSubmit}>
                 {/* EMAIL */}
                 <div>
                   <div className="mb-1.5 flex items-center justify-between text-[12px]">
-                    <span className="font-medium text-[#daddff]">
-                      Email Address
-                    </span>
+                    <span className="font-medium text-[#daddff]">Email Address</span>
                   </div>
                   <input
                     name="email"
                     type="email"
                     placeholder="Enter your email"
                     required
-                    className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)]"
+                    disabled={loading}
+                    className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)] disabled:opacity-60"
                   />
                 </div>
 
@@ -195,7 +202,8 @@ export default function LoginPage() {
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
                       required
-                      className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 pr-[42px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)]"
+                      disabled={loading}
+                      className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 pr-[42px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)] disabled:opacity-60"
                     />
                     <button
                       type="button"
@@ -213,12 +221,20 @@ export default function LoginPage() {
                   </div>
                 </div>
 
+                {/* ERROR */}
+                {error ? (
+                  <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
+                    {error}
+                  </div>
+                ) : null}
+
                 {/* LOGIN BUTTON */}
                 <button
                   type="submit"
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#b49cff] px-4 py-3 text-[14px] font-medium text-[#070818] shadow-[0_10px_26px_rgba(116,92,255,0.5)] transition hover:brightness-[1.05] active:translate-y-[1px] active:shadow-[0_6px_18px_rgba(116,92,255,0.4)]"
+                  disabled={loading}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#b49cff] px-4 py-3 text-[14px] font-medium text-[#070818] shadow-[0_10px_26px_rgba(116,92,255,0.5)] transition hover:brightness-[1.05] active:translate-y-[1px] active:shadow-[0_6px_18px_rgba(116,92,255,0.4)] disabled:opacity-60"
                 >
-                  Login
+                  {loading ? "Logging in..." : "Login"}
                 </button>
 
                 {/* OR DIVIDER */}
@@ -231,20 +247,11 @@ export default function LoginPage() {
                 {/* GOOGLE LOGIN */}
                 <button
                   type="button"
-                  className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-full border border-[#23253a] bg-transparent px-4 py-[10px] text-[13px] text-[#f5f5f7] transition hover:bg-[#15182a] hover:border-[#2b3050]"
-                  onClick={() => {
-                    const apiBase =
-                      process.env.NEXT_PUBLIC_API_URL ||
-                      "http://localhost:8080/api";
-                    window.location.href = `${apiBase}/auth/google/oauth`;
-                  }}
+                  disabled={loading}
+                  className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-full border border-[#23253a] bg-transparent px-4 py-[10px] text-[13px] text-[#f5f5f7] transition hover:bg-[#15182a] hover:border-[#2b3050] disabled:opacity-60"
+                  onClick={onGoogleLogin}
                 >
-                  <Image
-                    src="/images/google.png"
-                    width={18}
-                    height={18}
-                    alt="Google"
-                  />
+                  <Image src="/images/google.png" width={18} height={18} alt="Google" />
                   <span>Log in with Google</span>
                 </button>
               </form>
@@ -274,9 +281,7 @@ export default function LoginPage() {
               className="flex flex-wrap justify-center gap-2.5"
               onSubmit={(e) => {
                 e.preventDefault();
-                const inp = e.currentTarget.querySelector(
-                  "input"
-                ) as HTMLInputElement;
+                const inp = e.currentTarget.querySelector("input") as HTMLInputElement;
                 if (inp.value) alert(`Subscribed: ${inp.value}`);
                 inp.value = "";
               }}
@@ -301,39 +306,26 @@ export default function LoginPage() {
       {/* FOOTER */}
       <footer className="bg-[#050611] pb-[18px] pt-10">
         <div className="mx-auto grid w-full max-w-[1160px] grid-cols-[1.4fr_0.8fr_0.8fr] gap-10 border-b border-[#191b2e] px-4 pb-6 max-[900px]:grid-cols-1">
-          {/* LEFT */}
           <div>
-            <div className="text-[16px] font-semibold tracking-[0.11em]">
-              UFO Collection
-            </div>
+            <div className="text-[16px] font-semibold tracking-[0.11em]">UFO Collection</div>
             <p className="mt-2 max-w-[420px] text-[12px] leading-[1.9] text-[#8b90ad]">
               UFO Collection brings minimal, premium streetwear to your wardrobe.
               Discover curated looks, everyday essentials and pieces made to last.
             </p>
           </div>
 
-          {/* MIDDLE */}
           <div>
             <div className="mb-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
               COMPANY
             </div>
             <ul className="grid gap-2 text-[12px] text-[#d4d6ea]">
-              <li>
-                <Link href="/">Home</Link>
-              </li>
-              <li>
-                <Link href="/about">About us</Link>
-              </li>
-              <li>
-                <a href="#">Delivery</a>
-              </li>
-              <li>
-                <a href="#">Privacy policy</a>
-              </li>
+              <li><Link href="/">Home</Link></li>
+              <li><Link href="/about">About us</Link></li>
+              <li><a href="#">Delivery</a></li>
+              <li><a href="#">Privacy policy</a></li>
             </ul>
           </div>
 
-          {/* RIGHT */}
           <div>
             <div className="mb-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
               GET IN TOUCH

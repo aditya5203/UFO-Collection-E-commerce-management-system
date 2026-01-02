@@ -1,4 +1,4 @@
-// src/modules/auth/controllers/auth.controller.ts
+// server/src/modules/auth/controllers/auth.controller.ts
 import { Request, Response, NextFunction } from "express";
 import type { Profile } from "passport-google-oauth20";
 import { authService } from "../services/auth.service";
@@ -18,6 +18,58 @@ type AuthRequest = Request & {
     | Profile;
 };
 
+// ✅ Cookie names
+const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
+const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
+
+/**
+ * ✅ Cookie settings that work:
+ * - Localhost dev (http): secure=false, sameSite="lax"
+ * - Production cross-domain (https): secure=true, sameSite="none"
+ */
+function getCookieOptions() {
+  const isProd = config.nodeEnv === "production";
+
+  const sameSiteEnv = (process.env.COOKIE_SAMESITE || "").toLowerCase();
+  const secureEnv = (process.env.COOKIE_SECURE || "").toLowerCase();
+
+  const sameSite =
+    sameSiteEnv === "none" || sameSiteEnv === "lax" || sameSiteEnv === "strict"
+      ? (sameSiteEnv as "none" | "lax" | "strict")
+      : isProd
+      ? "none"
+      : "lax";
+
+  // sameSite="none" MUST have secure=true in modern browsers
+  const secure =
+    secureEnv === "true"
+      ? true
+      : secureEnv === "false"
+      ? false
+      : sameSite === "none"
+      ? true
+      : isProd;
+
+  return {
+    httpOnly: true,
+    secure,
+    sameSite,
+    path: "/", // ✅ important for /api/orders and /api/admin/*
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  };
+}
+
+function setCookie(res: Response, cookieName: string, token: string) {
+  res.cookie(cookieName, token, getCookieOptions());
+}
+
+function clearCookie(res: Response, cookieName: string) {
+  res.clearCookie(cookieName, {
+    ...getCookieOptions(),
+    maxAge: undefined,
+  });
+}
+
 export const authController = {
   // ---------- Register user ----------
   register: async (req: Request, res: Response, next: NextFunction) => {
@@ -30,12 +82,8 @@ export const authController = {
 
       const result = await authService.registerUser(userData);
 
-      res.cookie("token", result.token, {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-      });
+      // ✅ CUSTOMER cookie
+      setCookie(res, CUSTOMER_COOKIE, result.token);
 
       res.status(201).json({
         success: true,
@@ -59,12 +107,8 @@ export const authController = {
 
       const result = await authService.loginUser(credentials);
 
-      res.cookie("token", result.token, {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      // ✅ CUSTOMER cookie
+      setCookie(res, CUSTOMER_COOKIE, result.token);
 
       res.status(200).json({
         success: true,
@@ -88,16 +132,14 @@ export const authController = {
 
       const result = await authService.loginUser(credentials);
 
-      if (result.user.role !== "admin" && result.user.role !== "superadmin") {
+      // ✅ case-insensitive role check
+      const role = String(result.user.role || "").toLowerCase();
+      if (role !== "admin" && role !== "superadmin") {
         throw new AppError("Access denied. Admin only.", 403);
       }
 
-      res.cookie("token", result.token, {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      // ✅ ADMIN cookie (separate from customer)
+      setCookie(res, ADMIN_COOKIE, result.token);
 
       res.status(200).json({
         success: true,
@@ -118,11 +160,9 @@ export const authController = {
 
       await authService.logoutUser(userId);
 
-      res.clearCookie("token", {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-      });
+      // ✅ clear BOTH cookies
+      clearCookie(res, CUSTOMER_COOKIE);
+      clearCookie(res, ADMIN_COOKIE);
 
       res.status(200).json({
         success: true,
@@ -133,54 +173,39 @@ export const authController = {
     }
   },
 
-  // ---------- Get current user ----------
-  // ---------- Get current user ----------
-getMe: async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const userId = (req.user as any)?.userId;
+  // ---------- Get current user (CUSTOMER SESSION) ----------
+  getMe: async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = (req.user as any)?.userId;
 
-    // No decoded user in request → not authenticated
-    if (!userId) {
-      res.status(401).json({
-        success: false,
-        message: "User not authenticated",
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: "User not authenticated",
+        });
+        return;
+      }
+
+      const user = await authService.getUserById(userId);
+
+      if (!user) {
+        clearCookie(res, CUSTOMER_COOKIE);
+
+        res.status(401).json({
+          success: false,
+          message: "User not found",
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        user,
       });
-      return; // ✅ important so TS sees we return here
+    } catch (error) {
+      next(error);
     }
-
-    const user = await authService.getUserById(userId);
-
-    // Token exists but user no longer exists in DB
-    if (!user) {
-      // Optional: clear bad cookie
-      res.clearCookie("token", {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-      });
-
-      res.status(401).json({
-        success: false,
-        message: "User not found",
-      });
-      return; // ✅
-    }
-
-    res.status(200).json({
-      success: true,
-      user,
-    });
-    return; // ✅
-  } catch (error) {
-    next(error);
-    return; // ✅ for TS
-  }
-},
-
+  },
 
   // ---------- Init superadmin ----------
   initSuperAdmin: async (req: Request, res: Response, next: NextFunction) => {
@@ -191,18 +216,10 @@ getMe: async (
         throw new AppError("Email, password, and name are required", 400);
       }
 
-      const result = await authService.initializeSuperAdmin({
-        email,
-        password,
-        name,
-      });
+      const result = await authService.initializeSuperAdmin({ email, password, name });
 
-      res.cookie("token", result.token, {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      // ✅ ADMIN cookie
+      setCookie(res, ADMIN_COOKIE, result.token);
 
       res.status(201).json({
         success: true,
@@ -239,21 +256,15 @@ getMe: async (
     }
   },
 
-  // ---------- Google OAuth redirect callback (GET /api/auth/google/callback) ----------
-  googleCallback: async (
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction
-  ) => {
+  // ---------- Google OAuth redirect callback ----------
+  googleCallback: async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const profile = req.user as Profile;
 
       const email = profile.emails?.[0]?.value;
       const name =
         profile.displayName ||
-        `${profile.name?.givenName || ""} ${
-          profile.name?.familyName || ""
-        }`.trim();
+        `${profile.name?.givenName || ""} ${profile.name?.familyName || ""}`.trim();
       const providerId = profile.id;
       const avatar = profile.photos?.[0]?.value;
 
@@ -261,34 +272,19 @@ getMe: async (
         throw new AppError("Invalid Google profile data", 400);
       }
 
-      const result = await authService.loginWithGoogle({
-        email,
-        name,
-        providerId,
-        avatar,
-      });
+      const result = await authService.loginWithGoogle({ email, name, providerId, avatar });
 
-      // ✅ Set token cookie
-      res.cookie("token", result.token, {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      // ✅ CUSTOMER cookie
+      setCookie(res, CUSTOMER_COOKIE, result.token);
 
       const base = process.env.CLIENT_BASE_URL || "http://localhost:3000";
-
-      // 🔥 IMPORTANT:
-      // Redirect to HOMEPAGE after Google signup/login
-      // If your homepage is "/", use `${base}/`
-      // If your homepage page is "/homepage", use `${base}/homepage`
       return res.redirect(`${base}/homepage`);
     } catch (error) {
       next(error);
     }
   },
 
-  // ---------- Google login via POST (if you use it from frontend) ----------
+  // ---------- Google login via POST ----------
   googleLogin: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { email, name, providerId, avatar } = req.body;
@@ -297,19 +293,10 @@ getMe: async (
         throw new AppError("Invalid Google user data", 400);
       }
 
-      const result = await authService.loginWithGoogle({
-        email,
-        name,
-        providerId,
-        avatar,
-      });
+      const result = await authService.loginWithGoogle({ email, name, providerId, avatar });
 
-      res.cookie("token", result.token, {
-        httpOnly: true,
-        secure: config.nodeEnv === "production",
-        sameSite: "lax",
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      // ✅ CUSTOMER cookie
+      setCookie(res, CUSTOMER_COOKIE, result.token);
 
       res.status(200).json({
         success: true,

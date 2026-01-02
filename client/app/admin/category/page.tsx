@@ -195,385 +195,229 @@ export default function AdminCategoryPage() {
   }
 
   return (
-    <>
-      <style jsx global>{`
-        .page-title {
-          font-size: 22px;
-          font-weight: 600;
-          margin-bottom: 16px;
-        }
+    <div className="relative">
+      {/* HEADER */}
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="mb-0 text-[22px] font-semibold">Categories</h1>
 
-        .page-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 16px;
-        }
-
-        .add-btn {
-          padding: 10px 16px;
-          border-radius: 10px;
-          background: #22c55e;
-          border: none;
-          color: #0f172a;
-          font-weight: 600;
-          cursor: pointer;
-        }
-
-        .add-btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .category-form-wrap {
-          max-width: 720px;
-          margin-bottom: 28px;
-          border: 1px solid #111827;
-          border-radius: 16px;
-          padding: 18px 18px 10px;
-          background: #0b1220;
-        }
-
-        .field-group {
-          margin-bottom: 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .field-label {
-          font-size: 13px;
-        }
-
-        .field-description {
-          font-size: 11px;
-          color: #9ca3af;
-        }
-
-        .text-input {
-          padding: 10px 12px;
-          border-radius: 10px;
-          border: 1px solid #1f2937;
-          background: #020617;
-          color: #e5e7eb;
-        }
-
-        .actions {
-          margin-top: 28px;
-          display: flex;
-          justify-content: flex-end;
-        }
-
-        .save-btn {
-          padding: 10px 22px;
-          border-radius: 999px;
-          background: #8b5cf6;
-          border: none;
-          color: #fff;
-          cursor: pointer;
-        }
-
-        .save-btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
-        .error-text {
-          margin-bottom: 12px;
-          font-size: 13px;
-          color: #fca5a5;
-        }
-
-        .modal-overlay {
-          position: fixed;
-          inset: 0;
-          background: rgba(0, 0, 0, 0.5);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-        }
-
-        .modal {
-          background: #0b1220;
-          border: 1px solid #111827;
-          border-radius: 16px;
-          padding: 20px;
-          width: min(720px, 90vw);
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-        }
-
-        .modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 14px;
-        }
-
-        .modal-title {
-          font-size: 18px;
-          font-weight: 700;
-        }
-
-        .close-btn {
-          background: none;
-          border: none;
-          color: #9ca3af;
-          font-size: 22px;
-          cursor: pointer;
-        }
-
-        .table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 10px;
-        }
-
-        .table th,
-        .table td {
-          border-bottom: 1px solid #111827;
-          padding: 10px 8px;
-          text-align: left;
-          font-size: 13px;
-        }
-
-        .badge {
-          display: inline-flex;
-          align-items: center;
-          gap: 6px;
-          padding: 4px 8px;
-          border-radius: 999px;
-          font-size: 12px;
-          font-weight: 600;
-        }
-
-        .badge.active {
-          background: rgba(34, 197, 94, 0.12);
-          color: #4ade80;
-        }
-
-        .badge.inactive {
-          background: rgba(248, 113, 113, 0.12);
-          color: #fca5a5;
-        }
-
-        .action-btn {
-          padding: 6px 10px;
-          border-radius: 8px;
-          border: 1px solid #1f2937;
-          background: #0b1220;
-          color: #e5e7eb;
-          cursor: pointer;
-          font-size: 12px;
-          margin-right: 8px;
-        }
-
-        .action-btn.delete {
-          border-color: #7f1d1d;
-          color: #fca5a5;
-        }
-
-        .confirm-card {
-          background: #0b1220;
-          border: 1px solid #111827;
-          border-radius: 14px;
-          padding: 18px;
-          width: min(420px, 90vw);
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-        }
-
-        .confirm-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-          margin-top: 16px;
-        }
-
-        .btn {
-          padding: 8px 14px;
-          border-radius: 10px;
-          border: 1px solid #1f2937;
-          background: #0b1220;
-          color: #e5e7eb;
-          cursor: pointer;
-        }
-
-        .btn.primary {
-          background: #ef4444;
-          border-color: #b91c1c;
-          color: #fff;
-        }
-
-        .toast {
-          position: fixed;
-          right: 20px;
-          bottom: 20px;
-          padding: 12px 14px;
-          border-radius: 12px;
-          color: #0f172a;
-          font-size: 13px;
-          font-weight: 600;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-          z-index: 1200;
-        }
-
-        .toast.success {
-          background: #bbf7d0;
-          border: 1px solid #22c55e;
-        }
-
-        .toast.error {
-          background: #fecdd3;
-          border: 1px solid #f43f5e;
-        }
-      `}</style>
-
-      <div>
-        <div className="page-header">
-          <h1 className="page-title">Categories</h1>
-          <button type="button" className="add-btn" onClick={openCreateModal}>
-            Add Category
-          </button>
-        </div>
-
-        {error && <div className="error-text">{error}</div>}
-
-        {showModal && (
-          <div className="modal-overlay">
-            <div className="modal">
-              <div className="modal-header">
-                <div className="modal-title">{editingId ? "Edit Category" : "Add Category"}</div>
-                <button
-                  type="button"
-                  className="close-btn"
-                  aria-label="Close"
-                  onClick={() => setShowModal(false)}
-                >
-                  ×
-                </button>
-              </div>
-              <div className="category-form-wrap" style={{ marginBottom: 0, border: "none", padding: 0 }}>
-                <form onSubmit={handleSubmit}>
-                  <div className="field-group">
-                    <label htmlFor="name" className="field-label">
-                      Category Name *
-                    </label>
-                    <input
-                      id="name"
-                      name="name"
-                      className="text-input"
-                      placeholder="e.g. Hoodie, Sneakers"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
-                    />
-                  </div>
-
-                  <div className="field-group">
-                    <label htmlFor="description" className="field-label">
-                      Description
-                    </label>
-                    <textarea
-                      id="description"
-                      name="description"
-                      className="text-input"
-                      placeholder="Optional short description"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="field-group">
-                    <label htmlFor="isActive" className="field-label">
-                      Active
-                    </label>
-                    <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <input
-                        id="isActive"
-                        name="isActive"
-                        type="checkbox"
-                        checked={isActive}
-                        onChange={(e) => setIsActive(e.target.checked)}
-                      />
-                      <span className="field-description">Keep enabled to show in public listings.</span>
-                    </label>
-                  </div>
-
-                  <div className="actions">
-                    <button type="submit" className="save-btn" disabled={submitting}>
-                      {submitting ? "Saving..." : "Save Category"}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {confirmDeleteId && (
-          <div className="modal-overlay">
-            <div className="confirm-card">
-              <div style={{ fontWeight: 700, marginBottom: 8 }}>Delete category?</div>
-              <div className="field-description" style={{ marginBottom: 8 }}>
-                This action cannot be undone.
-              </div>
-              <div className="confirm-actions">
-                <button type="button" className="btn" onClick={() => setConfirmDeleteId(null)}>
-                  Cancel
-                </button>
-                <button type="button" className="btn primary" onClick={() => handleDeleteConfirmed(confirmDeleteId)}>
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div>
-          {loadingList ? (
-            <p className="field-description">Loading categories...</p>
-          ) : categories.length === 0 ? (
-            <p className="field-description">No categories yet.</p>
-          ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Slug</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {categories.map((c) => (
-                  <tr key={c.id}>
-                    <td>{c.name}</td>
-                    <td>{c.slug}</td>
-                    <td>
-                      <span className={`badge ${c.isActive ? "active" : "inactive"}`}>
-                        {c.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "--"}</td>
-                    <td>
-                      <button type="button" className="action-btn" onClick={() => openEditModal(c)}>
-                        Edit
-                      </button>
-                      <button type="button" className="action-btn delete" onClick={() => requestDelete(c.id)}>
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={openCreateModal}
+          className="cursor-pointer rounded-[10px] bg-[#22c55e] px-4 py-[10px] font-semibold text-[#0f172a]"
+        >
+          Add Category
+        </button>
       </div>
 
-      {toast && <div className={`toast ${toast.type}`}>{toast.message}</div>}
-    </>
+      {/* ERROR */}
+      {error && <div className="mb-3 text-[13px] text-[#fca5a5]">{error}</div>}
+
+      {/* CREATE / EDIT MODAL */}
+      {showModal && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50">
+          <div className="w-[min(720px,90vw)] rounded-2xl border border-[#111827] bg-[#0b1220] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+            <div className="mb-[14px] flex items-center justify-between">
+              <div className="text-[18px] font-bold">
+                {editingId ? "Edit Category" : "Add Category"}
+              </div>
+
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setShowModal(false)}
+                className="cursor-pointer border-0 bg-transparent text-[22px] text-[#9ca3af]"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* form wrap (same look as before but border removed in modal) */}
+            <div className="max-w-[720px] rounded-2xl bg-transparent p-0">
+              <form onSubmit={handleSubmit}>
+                {/* Name */}
+                <div className="mb-5 flex flex-col gap-[6px]">
+                  <label htmlFor="name" className="text-[13px]">
+                    Category Name *
+                  </label>
+                  <input
+                    id="name"
+                    name="name"
+                    className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
+                    placeholder="e.g. Hoodie, Sneakers"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {/* Desc */}
+                <div className="mb-5 flex flex-col gap-[6px]">
+                  <label htmlFor="description" className="text-[13px]">
+                    Description
+                  </label>
+                  <textarea
+                    id="description"
+                    name="description"
+                    className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
+                    placeholder="Optional short description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                {/* Active */}
+                <div className="mb-5 flex flex-col gap-[6px]">
+                  <label htmlFor="isActive" className="text-[13px]">
+                    Active
+                  </label>
+
+                  <label className="flex items-center gap-2">
+                    <input
+                      id="isActive"
+                      name="isActive"
+                      type="checkbox"
+                      checked={isActive}
+                      onChange={(e) => setIsActive(e.target.checked)}
+                    />
+                    <span className="text-[11px] text-[#9ca3af]">
+                      Keep enabled to show in public listings.
+                    </span>
+                  </label>
+                </div>
+
+                {/* Actions */}
+                <div className="mt-7 flex justify-end">
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="cursor-pointer rounded-full bg-[#8b5cf6] px-[22px] py-[10px] text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {submitting ? "Saving..." : "Save Category"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRM */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50">
+          <div className="w-[min(420px,90vw)] rounded-[14px] border border-[#111827] bg-[#0b1220] p-[18px] shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+            <div className="mb-2 font-bold">Delete category?</div>
+            <div className="mb-2 text-[11px] text-[#9ca3af]">This action cannot be undone.</div>
+
+            <div className="mt-4 flex justify-end gap-[10px]">
+              <button
+                type="button"
+                onClick={() => setConfirmDeleteId(null)}
+                className="cursor-pointer rounded-[10px] border border-[#1f2937] bg-[#0b1220] px-[14px] py-2 text-[#e5e7eb]"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleDeleteConfirmed(confirmDeleteId)}
+                className="cursor-pointer rounded-[10px] border border-[#b91c1c] bg-[#ef4444] px-[14px] py-2 text-white"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TABLE */}
+      <div>
+        {loadingList ? (
+          <p className="text-[11px] text-[#9ca3af]">Loading categories...</p>
+        ) : categories.length === 0 ? (
+          <p className="text-[11px] text-[#9ca3af]">No categories yet.</p>
+        ) : (
+          <table className="mt-[10px] w-full border-collapse">
+            <thead>
+              <tr>
+                <th className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px] font-semibold">
+                  Name
+                </th>
+                <th className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px] font-semibold">
+                  Slug
+                </th>
+                <th className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px] font-semibold">
+                  Status
+                </th>
+                <th className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px] font-semibold">
+                  Created
+                </th>
+                <th className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px] font-semibold">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {categories.map((c) => (
+                <tr key={c.id}>
+                  <td className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px]">
+                    {c.name}
+                  </td>
+                  <td className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px]">
+                    {c.slug}
+                  </td>
+                  <td className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px]">
+                    <span
+                      className={[
+                        "inline-flex items-center gap-[6px] rounded-full px-2 py-1 text-[12px] font-semibold",
+                        c.isActive
+                          ? "bg-[rgba(34,197,94,0.12)] text-[#4ade80]"
+                          : "bg-[rgba(248,113,113,0.12)] text-[#fca5a5]",
+                      ].join(" ")}
+                    >
+                      {c.isActive ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                  <td className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px]">
+                    {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "--"}
+                  </td>
+                  <td className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px]">
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(c)}
+                      className="mr-2 cursor-pointer rounded-lg border border-[#1f2937] bg-[#0b1220] px-[10px] py-[6px] text-[12px] text-[#e5e7eb]"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => requestDelete(c.id)}
+                      className="cursor-pointer rounded-lg border border-[#7f1d1d] bg-[#0b1220] px-[10px] py-[6px] text-[12px] text-[#fca5a5]"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* TOAST */}
+      {toast && (
+        <div
+          className={[
+            "fixed bottom-5 right-5 z-[1200] rounded-xl px-[14px] py-3 text-[13px] font-semibold text-[#0f172a] shadow-[0_10px_30px_rgba(0,0,0,0.25)]",
+            toast.type === "success"
+              ? "border border-[#22c55e] bg-[#bbf7d0]"
+              : "border border-[#f43f5e] bg-[#fecdd3]",
+          ].join(" ")}
+        >
+          {toast.message}
+        </div>
+      )}
+    </div>
   );
 }

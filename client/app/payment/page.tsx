@@ -1,26 +1,76 @@
+// app/payment/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type CartItem = {
   id: string;
   name: string;
   size: string;
-  price: number;
+  price: number; // Rs
   qty: number;
   image: string;
 };
 
+type PayMethod = "card" | "esewa" | "khalti" | "fonepay" | "cod";
+
+type CheckoutAddressLS = {
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  country?: string;
+
+  provinceId?: string;
+  district?: string;
+  cityOrMunicipality?: string;
+
+  addressLine?: string;
+  street?: string;
+  postalCode?: string;
+  phone?: string;
+
+  city?: string;
+  area?: string;
+
+  savedAddressId?: string | null;
+};
+
+type OrderAddressAPI = {
+  label?: "Home" | "Work" | "Other";
+  fullName: string;
+  phone: string;
+  city: string;
+  area: string;
+  street: string;
+};
+
+function joinUrl(base: string, path: string) {
+  const b = base.replace(/\/+$/, "");
+  const p = path.replace(/^\/+/, "");
+  return `${b}/${p}`;
+}
+
 export default function PaymentPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  // ✅ Load totals from cart (localStorage) — same cart you already use: "ufo_cart"
   const [items, setItems] = React.useState<CartItem[]>([]);
-  const shipping = items.length ? 10 : 0;
+  const [cartReady, setCartReady] = React.useState(false); // ✅ NEW
+  const [method, setMethod] = React.useState<PayMethod>("card");
+  const [placing, setPlacing] = React.useState(false);
 
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+
+  const apiBase = React.useMemo(() => joinUrl(API_BASE, "/api"), [API_BASE]);
+
+  // ✅ only calculate shipping after cart ready
+  const shipping = cartReady && items.length ? 100 : 0;
+
+  // ✅ Load cart FIRST
   React.useEffect(() => {
     try {
       const raw = localStorage.getItem("ufo_cart");
@@ -28,49 +78,288 @@ export default function PaymentPage() {
       setItems(Array.isArray(parsed) ? parsed : []);
     } catch {
       setItems([]);
+    } finally {
+      setCartReady(true); // ✅ NEW
     }
   }, []);
 
-  const subtotal = React.useMemo(
-    () => items.reduce((sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0), 0),
-    [items]
-  );
+  const subtotal = React.useMemo(() => {
+    return items.reduce(
+      (sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0),
+      0
+    );
+  }, [items]);
 
-  const total = subtotal + shipping;
+  const total = subtotal + shipping; // Rs
 
-  const [method, setMethod] = React.useState<
-    "card" | "esewa" | "khalti" | "fonepay" | "cod"
-  >("card");
+  const savePaymentMeta = (label: string) => {
+    try {
+      localStorage.setItem("ufo_payment_method", label);
+      localStorage.setItem(
+        "ufo_last_total_paisa",
+        String(Math.round(total * 100))
+      );
+    } catch {}
+  };
 
-  // -------------------- HANDLERS --------------------
+  const getCheckoutAddressLS = (): CheckoutAddressLS | undefined => {
+    try {
+      const raw =
+        localStorage.getItem("checkout_address") ||
+        localStorage.getItem("ufo_checkout_address") ||
+        localStorage.getItem("ufo_address") ||
+        "";
 
+      if (!raw) return undefined;
+
+      const addr = JSON.parse(raw);
+      return addr && typeof addr === "object"
+        ? (addr as CheckoutAddressLS)
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const mapToOrderAddress = (
+    a?: CheckoutAddressLS
+  ): OrderAddressAPI | undefined => {
+    if (!a) return undefined;
+
+    const fullName = `${a.firstName || ""} ${a.lastName || ""}`.trim();
+    const phone = String(a.phone || "").trim();
+
+    const city = String(a.cityOrMunicipality || a.city || "").trim();
+    const area = String(a.district || a.area || "").trim();
+    const street = String(a.street || a.addressLine || "").trim();
+
+    if (!fullName && !phone && !city && !area && !street) return undefined;
+
+    return {
+      label: "Home",
+      fullName: fullName || "Customer",
+      phone,
+      city,
+      area,
+      street,
+    };
+  };
+
+  const createOrder = async (
+    paymentMethod: "COD" | "Khalti" | "eSewa",
+    paymentRef?: string,
+    paymentStatus?: "Paid" | "Pending" | "Failed"
+  ) => {
+    // ✅ read cart again from localStorage (extra safety after redirects)
+    let safeItems: CartItem[] = items;
+    if (!safeItems.length) {
+      try {
+        const raw = localStorage.getItem("ufo_cart");
+        const parsed = raw ? (JSON.parse(raw) as CartItem[]) : [];
+        safeItems = Array.isArray(parsed) ? parsed : [];
+      } catch {
+        safeItems = [];
+      }
+    }
+
+    if (!safeItems.length) {
+      throw new Error("Cart is empty (no items found in localStorage)");
+    }
+
+    const addrLS = getCheckoutAddressLS();
+    const mappedAddress = mapToOrderAddress(addrLS);
+
+    const payload = {
+      paymentMethod,
+      paymentRef: paymentRef || undefined,
+      paymentStatus: paymentStatus || undefined,
+      shippingPaisa: Math.round(shipping * 100),
+      items: safeItems.map((it) => ({
+        productId: it.id,
+        size: it.size || "",
+        qty: Math.max(1, Number(it.qty || 1)),
+      })),
+      address: mappedAddress,
+    };
+
+    const res = await fetch(joinUrl(apiBase, "/orders"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json().catch(() => ({} as any));
+    if (!res.ok) throw new Error(json?.message || "Failed to create order");
+    return json?.data as { id: string; orderCode: string; totalPaisa: number };
+  };
+
+  const finishToThankYou = (data: {
+    id: string;
+    orderCode: string;
+    totalPaisa: number;
+  }) => {
+    localStorage.setItem("ufo_last_order_id", data.id);
+    localStorage.setItem("ufo_last_order_number", data.orderCode);
+    localStorage.setItem("ufo_last_total_paisa", String(data.totalPaisa));
+    localStorage.removeItem("ufo_cart");
+    router.replace("/ThankYou");
+  };
+
+  // ===============================
+  // ✅ FINALIZE: FAILED message
+  // ===============================
+  React.useEffect(() => {
+    const status = searchParams.get("status");
+    if (status === "failed") {
+      alert("Payment failed. Please try again.");
+    }
+  }, [searchParams]);
+
+  // ===============================
+  // ✅ FINALIZE: Khalti return
+  // /payment?pidx=XXXX
+  // ===============================
+  React.useEffect(() => {
+    if (!cartReady) return; // ✅ wait for cart load
+
+    const pidx = searchParams.get("pidx");
+    if (!pidx) return;
+
+    const already = sessionStorage.getItem("khalti_finalized");
+    if (already === "1") return;
+
+    const run = async () => {
+      try {
+        setPlacing(true);
+        sessionStorage.setItem("khalti_finalized", "1");
+
+        const vr = await fetch(joinUrl(apiBase, "/payments/khalti/lookup"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ pidx }),
+        });
+
+        const vj = await vr.json().catch(() => ({} as any));
+        if (!vr.ok) throw new Error(vj?.message || "Khalti lookup failed");
+
+        if (!vj?.paid) {
+          throw new Error(
+            `Khalti not completed (status: ${vj?.status || "Unknown"})`
+          );
+        }
+
+        savePaymentMeta("Khalti");
+
+        const order = await createOrder("Khalti", pidx, "Paid");
+        finishToThankYou(order);
+      } catch (e: any) {
+        console.error(e);
+        sessionStorage.removeItem("khalti_finalized");
+        alert(e?.message || "Failed to finalize Khalti payment");
+      } finally {
+        setPlacing(false);
+      }
+    };
+
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartReady, searchParams, apiBase]);
+
+  // ===============================
+  // ✅ FINALIZE: eSewa return
+  // /payment?esewa=success&data=....
+  // ===============================
+  React.useEffect(() => {
+    if (!cartReady) return; // ✅ wait for cart load
+
+    const esewa = searchParams.get("esewa");
+    const data = searchParams.get("data") || "";
+    if (esewa !== "success" || !data) return;
+
+    const already = sessionStorage.getItem("esewa_finalized");
+    if (already === "1") return;
+
+    const run = async () => {
+      try {
+        setPlacing(true);
+        sessionStorage.setItem("esewa_finalized", "1");
+
+        const vr = await fetch(joinUrl(apiBase, "/payments/esewa/verify"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ data }),
+        });
+
+        const vj = await vr.json().catch(() => ({} as any));
+        if (!vr.ok) throw new Error(vj?.message || "eSewa verify failed");
+
+        const ref =
+          String(
+            vj?.transaction_uuid || vj?.payload?.transaction_uuid || ""
+          ).trim() || "ESEWA_OK";
+
+        savePaymentMeta("eSewa");
+
+        // ✅ Paid only if statusOk, else Pending (safe)
+        const payStatus: "Paid" | "Pending" = vj?.statusOk ? "Paid" : "Pending";
+
+        const order = await createOrder("eSewa", ref, payStatus);
+        finishToThankYou(order);
+      } catch (e: any) {
+        console.error(e);
+        sessionStorage.removeItem("esewa_finalized");
+        alert(e?.message || "Failed to finalize eSewa payment");
+      } finally {
+        setPlacing(false);
+      }
+    };
+
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartReady, searchParams, apiBase]);
+
+  // ===============================
+  // PAY BUTTON HANDLERS
+  // ===============================
   const handleEsewaPay = () => {
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-
-    // ✅ Backend must have: GET /api/payments/esewa/initiate?amount=...
-    window.location.href = `${apiBase}/payments/esewa/initiate?amount=${total}`;
+    if (!cartReady) return;
+    if (!items.length) {
+      alert("Your cart is empty.");
+      router.push("/collection");
+      return;
+    }
+    savePaymentMeta("eSewa");
+    window.location.href = joinUrl(
+      apiBase,
+      `/payments/esewa/initiate?amount=${encodeURIComponent(String(total))}`
+    );
   };
 
   const handleKhaltiPay = async () => {
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+    if (!cartReady) return;
+    if (!items.length) {
+      alert("Your cart is empty.");
+      router.push("/collection");
+      return;
+    }
+    savePaymentMeta("Khalti");
 
     try {
-      // ✅ Backend must have: POST /api/payments/khalti/initiate
-      const res = await fetch(`${apiBase}/payments/khalti/initiate`, {
+      const res = await fetch(joinUrl(apiBase, "/payments/khalti/initiate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          amount: Math.round(total * 100), // Khalti uses paisa
+          amount: Math.round(total * 100),
           orderId: `ORDER_${Date.now()}`,
           orderName: "UFO Collection Order",
         }),
       });
 
       const data = await res.json().catch(() => ({} as any));
-
       if (!res.ok) {
         alert(data?.message || "Failed to initiate Khalti payment");
         return;
@@ -88,7 +377,9 @@ export default function PaymentPage() {
     }
   };
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
+    if (!cartReady) return;
+
     if (!items.length) {
       alert("Your cart is empty.");
       router.push("/collection");
@@ -98,26 +389,35 @@ export default function PaymentPage() {
     if (method === "esewa") return handleEsewaPay();
     if (method === "khalti") return void handleKhaltiPay();
 
-    // ✅ Cash on Delivery
     if (method === "cod") {
-      // if you want, store chosen method for the ThankYou page
       try {
-        localStorage.setItem("ufo_payment_method", "Cash on Delivery");
-      } catch {}
+        setPlacing(true);
+        savePaymentMeta("Cash on Delivery");
+        const order = await createOrder("COD", undefined, "Pending");
+        finishToThankYou(order);
+      } catch (e: any) {
+        alert(e?.message || "Failed to place COD order");
+      } finally {
+        setPlacing(false);
+      }
+      return;
+    }
+
+    if (method === "fonepay") {
+      savePaymentMeta("Fonepay (Demo)");
       router.push("/ThankYou");
       return;
     }
 
-    // Card / Fonepay (demo)
+    savePaymentMeta("Credit Card (Demo)");
     router.push("/ThankYou");
   };
 
   return (
     <>
-      {/* ================= HEADER (SAME STYLE AS YOUR CART/CHECKOUT) ================= */}
+      {/* HEADER */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
-          {/* Left: Back + Brand */}
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -153,7 +453,6 @@ export default function PaymentPage() {
             </Link>
           </div>
 
-          {/* Center: Nav (desktop only) ✅ */}
           <nav className="hidden items-center gap-[42px] md:flex">
             <Link
               href="/homepage"
@@ -181,7 +480,6 @@ export default function PaymentPage() {
             </Link>
           </nav>
 
-          {/* Right: Wishlist */}
           <button
             type="button"
             onClick={() => router.push("/cartpage")}
@@ -197,42 +495,11 @@ export default function PaymentPage() {
             />
           </button>
         </div>
-
-        {/* Mobile Nav (below header) ✅ */}
-        <div className="border-t border-[#14162a] bg-[rgba(5,6,17,0.92)] md:hidden">
-          <div className="mx-auto flex max-w-[1160px] flex-wrap items-center justify-center gap-x-8 gap-y-3 px-4 py-3">
-            <Link
-              href="/homepage"
-              className="text-[13px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              HOME
-            </Link>
-            <Link
-              href="/collection"
-              className="text-[13px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              COLLECTION
-            </Link>
-            <Link
-              href="/about"
-              className="text-[13px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              ABOUT
-            </Link>
-            <Link
-              href="/contact"
-              className="text-[13px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              CONTACT
-            </Link>
-          </div>
-        </div>
       </header>
 
-      {/* ================= BODY ================= */}
+      {/* BODY */}
       <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
         <div className="mx-auto max-w-[1160px] px-4 pb-20 pt-10">
-          {/* Breadcrumb */}
           <div className="mb-10 text-[14px] text-[#9aa3cc]">
             Cart <span className="mx-2">/</span>
             <span className="text-white">Payment</span>
@@ -245,11 +512,7 @@ export default function PaymentPage() {
                 Payment Information
               </h2>
 
-              <label htmlFor="cardNumber" className="sr-only">
-                Card Number
-              </label>
               <input
-                id="cardNumber"
                 placeholder="Card Number"
                 disabled={method !== "card"}
                 className="input mb-4 disabled:opacity-50"
@@ -274,14 +537,14 @@ export default function PaymentPage() {
                   { key: "esewa", label: "Esewa" },
                   { key: "khalti", label: "Khalti" },
                   { key: "fonepay", label: "Fonepay" },
-                  { key: "cod", label: "Cash on Delivery" }, // ✅ NEW
+                  { key: "cod", label: "Cash on Delivery" },
                 ].map((m) => {
-                  const active = method === (m.key as any);
+                  const active = method === (m.key as PayMethod);
                   return (
                     <button
                       key={m.key}
                       type="button"
-                      onClick={() => setMethod(m.key as any)}
+                      onClick={() => setMethod(m.key as PayMethod)}
                       className={`rounded-[10px] border px-4 py-2 text-[14px] ${
                         active
                           ? "border-[#1f7cff] bg-[#0b0f1a] text-white"
@@ -318,15 +581,16 @@ export default function PaymentPage() {
                 <button
                   type="button"
                   onClick={handleContinue}
-                  className="mt-8 h-[50px] w-full rounded-[10px] bg-[#1f7cff] text-[14px] font-semibold text-white hover:bg-[#2a86ff]"
+                  disabled={placing || !cartReady}
+                  className="mt-8 h-[50px] w-full rounded-[10px] bg-[#1f7cff] text-[14px] font-semibold text-white hover:bg-[#2a86ff] disabled:opacity-60"
                 >
-                  Pay Now
+                  {placing ? "Processing..." : "Pay Now"}
                 </button>
               </div>
             </aside>
           </div>
 
-          {/* ================= FOOTER ================= */}
+          {/* FOOTER */}
           <div className="mt-24 flex flex-col items-center gap-6 text-center">
             <div className="flex items-center gap-6 opacity-90">
               <a href="#" aria-label="Instagram" className="hover:opacity-100">
@@ -356,7 +620,6 @@ export default function PaymentPage() {
         </div>
       </main>
 
-      {/* input styles (same as your checkout page style) */}
       <style jsx>{`
         .input {
           height: 48px;

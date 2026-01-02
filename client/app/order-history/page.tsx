@@ -1,3 +1,4 @@
+// client/app/order-history/page.tsx
 "use client";
 
 import * as React from "react";
@@ -5,44 +6,94 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
-type Order = {
-  id: string; // "#12345"
-  date: string; // "2023-11-15"
+type OrderRow = {
+  id: string; // Mongo _id OR fallback
+  orderCode: string; // "#123456"
+  createdAt: string; // ISO or YYYY-MM-DD
 };
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API = `${API_BASE}/api`;
+
+function formatDate(iso: string) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "2-digit" });
+}
 
 export default function OrderHistoryPage() {
   const router = useRouter();
 
-  const [orders, setOrders] = React.useState<Order[]>([]);
+  const [orders, setOrders] = React.useState<OrderRow[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  // ✅ Load orders from localStorage (optional)
   React.useEffect(() => {
-    try {
-      const raw = localStorage.getItem("ufo_orders");
-      const parsed = raw ? (JSON.parse(raw) as Order[]) : null;
+    let mounted = true;
 
-      if (Array.isArray(parsed) && parsed.length) {
-        setOrders(parsed);
-      } else {
-        // Demo fallback (same like your screenshot)
-        setOrders([
-          { id: "#12345", date: "2023-11-15" },
-          { id: "#67890", date: "2023-10-20" },
-          { id: "#11223", date: "2023-09-05" },
-          { id: "#44556", date: "2023-08-10" },
-          { id: "#77889", date: "2023-07-25" },
-        ]);
+    async function loadOrders() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // ✅ cookie-based auth
+        const res = await fetch(`${API}/orders/my`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        // ✅ not logged in
+        if (res.status === 401) {
+          router.push("/login");
+          return;
+        }
+
+        const json = await res.json().catch(() => ({} as any));
+
+        if (!res.ok) {
+          throw new Error(json?.message || "Failed to load order history");
+        }
+
+        // ✅ accept multiple response shapes safely:
+        // 1) { orders: [...] }
+        // 2) { data: [...] }
+        // 3) direct array [...]
+        const listRaw = Array.isArray(json)
+          ? json
+          : Array.isArray(json?.orders)
+          ? json.orders
+          : Array.isArray(json?.data)
+          ? json.data
+          : [];
+
+        const list: OrderRow[] = Array.isArray(listRaw)
+          ? listRaw.map((o: any) => ({
+              id: String(o?._id || o?.id || ""),
+              orderCode: String(o?.orderCode || o?.orderId || o?.id || ""),
+              createdAt: String(o?.createdAt || o?.date || ""),
+            }))
+          : [];
+
+        if (!mounted) return;
+
+        // ✅ filter invalid
+        setOrders(list.filter((x) => x.orderCode || x.id));
+      } catch (e: any) {
+        if (!mounted) return;
+        setError(e?.message || "Something went wrong");
+      } finally {
+        if (!mounted) return;
+        setLoading(false);
       }
-    } catch {
-      setOrders([
-        { id: "#12345", date: "2023-11-15" },
-        { id: "#67890", date: "2023-10-20" },
-        { id: "#11223", date: "2023-09-05" },
-        { id: "#44556", date: "2023-08-10" },
-        { id: "#77889", date: "2023-07-25" },
-      ]);
     }
-  }, []);
+
+    loadOrders();
+    return () => {
+      mounted = false;
+    };
+  }, [router]);
 
   return (
     <>
@@ -122,52 +173,74 @@ export default function OrderHistoryPage() {
         </div>
       </header>
 
-      {/* ✅ PAGE (Order History design like your screenshot) */}
+      {/* ✅ PAGE */}
       <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
         <div className="mx-auto max-w-[1280px] px-6 py-14">
           <h1 className="text-[40px] font-semibold">Order History</h1>
 
           <div className="mt-8 h-px bg-[#2b2f45]" />
 
-          {orders.length === 0 ? (
+          {/* Loading */}
+          {loading && (
+            <div className="mt-10 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-8 text-[#9aa3cc]">
+              Loading your orders...
+            </div>
+          )}
+
+          {/* Error */}
+          {!loading && error && (
+            <div className="mt-10 rounded-[12px] border border-red-500/40 bg-red-500/10 p-8 text-red-200">
+              {error}
+            </div>
+          )}
+
+          {/* Empty */}
+          {!loading && !error && orders.length === 0 && (
             <div className="mt-10 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-8 text-[#9aa3cc]">
               No orders found.
             </div>
-          ) : (
+          )}
+
+          {/* Orders */}
+          {!loading && !error && orders.length > 0 && (
             <section className="mt-10">
               <div className="space-y-8">
-                {orders.map((order) => (
-                  <div
-                    key={order.id}
-                    className="flex items-center justify-between"
-                  >
-                    {/* left info */}
-                    <div>
-                      <div className="text-[18px] font-semibold text-white">
-                        Order ID: {order.id}
-                      </div>
-                      <div className="mt-1 text-[14px] text-[#8b90ad]">
-                        Order Date: {order.date}
-                      </div>
-                    </div>
+                {orders.map((order) => {
+                  const displayId = order.orderCode || order.id;
 
-                    {/* right button */}
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/order-history/${order.id.replace("#", "")}`)}
-                      className="rounded-[10px] bg-[#1b2a3a] px-6 py-3 text-[14px] text-white hover:bg-[#223449]"
-                      aria-label={`View details for ${order.id}`}
-                      title={`View details for ${order.id}`}
-                    >
-                      View Details
-                    </button>
-                  </div>
-                ))}
+                  // ✅ IMPORTANT: pass orderCode without "#", fallback to id
+                  const urlId = (displayId || "").replace("#", "");
+
+                  return (
+                    <div key={displayId} className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[18px] font-semibold text-white">
+                          Order ID: {displayId}
+                        </div>
+                        <div className="mt-1 text-[14px] text-[#8b90ad]">
+                          Order Date: {formatDate(order.createdAt)}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(`/customerorderdetails/${encodeURIComponent(urlId)}`)
+                        }
+                        className="rounded-[10px] bg-[#1b2a3a] px-6 py-3 text-[14px] text-white hover:bg-[#223449]"
+                        aria-label={`View details for ${displayId}`}
+                        title={`View details for ${displayId}`}
+                      >
+                        View Details
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </section>
           )}
 
-          {/* Footer like your screenshot (optional) */}
+          {/* Footer */}
           <div className="mt-28 flex items-center justify-center gap-8 text-white/80">
             <Link href="#" aria-label="Instagram" title="Instagram">
               <Image

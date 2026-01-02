@@ -1,3 +1,4 @@
+// server/src/config/cloudinaryUploads.ts
 import multer, { type StorageEngine } from "multer";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
 import cloudinary from "./cloudinary";

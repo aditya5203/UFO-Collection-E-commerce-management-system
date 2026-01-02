@@ -1,3 +1,4 @@
+// server/src/modules/auth/routes/init-superadmin.route.ts
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt, { Secret, SignOptions } from "jsonwebtoken";
@@ -6,6 +7,29 @@ import { config } from "../../../config";
 import { AppError } from "../../../middleware/error.middleware";
 
 const router = Router();
+
+// ✅ Cookie names (must match your system)
+const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
+const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
+
+function setCookie(res: any, cookieName: string, token: string) {
+  res.cookie(cookieName, token, {
+    httpOnly: true,
+    secure: config.nodeEnv === "production",
+    sameSite: "lax",
+    path: "/", // ✅ important for /api/admin/*
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+}
+
+function clearCookie(res: any, cookieName: string) {
+  res.clearCookie(cookieName, {
+    httpOnly: true,
+    secure: config.nodeEnv === "production",
+    sameSite: "lax",
+    path: "/",
+  });
+}
 
 /**
  * Create FIRST superadmin in the system.
@@ -29,10 +53,7 @@ router.post("/", async (req, res, next) => {
     }
 
     // Check if this email is already used by any user
-    const existingUser = await User.findOne({
-      email: email.toLowerCase(),
-    });
-
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -43,7 +64,7 @@ router.post("/", async (req, res, next) => {
     // Hash password
     const hashed = await bcrypt.hash(password, 10);
 
-    // Create the superadmin user
+    // Create superadmin user
     const admin = await User.create({
       email: email.toLowerCase(),
       name,
@@ -52,16 +73,23 @@ router.post("/", async (req, res, next) => {
       provider: "credentials",
     });
 
-    // Generate JWT (matching your service JWT structure)
+    // Generate JWT
     const token = jwt.sign(
       {
         userId: admin._id.toString(),
         email: admin.email,
         role: admin.role,
       },
-      config.jwt.secret as Secret, // 👈 cast so TS is happy
+      config.jwt.secret as Secret,
       { expiresIn: config.jwt.expiresIn } as SignOptions
     );
+
+    // ✅ IMPORTANT:
+    // clear customer cookie if it exists (avoid mixing sessions)
+    clearCookie(res, CUSTOMER_COOKIE);
+
+    // ✅ set ADMIN cookie so admin routes work
+    setCookie(res, ADMIN_COOKIE, token);
 
     return res.status(201).json({
       success: true,

@@ -1,7 +1,7 @@
 // server/src/modules/auth/routes/auth.routes.ts
 import { Router } from "express";
 import { authController } from "../controllers/auth.controller";
-import authMiddleware from "../middleware/auth.middleware";
+import { customerAuthMiddleware } from "../middleware/auth.middleware";
 import passport from "../../../config/passport";
 
 const router = Router();
@@ -225,7 +225,8 @@ router.get(
   "/google/callback",
   passport.authenticate("google", {
     session: false,
-    failureRedirect: process.env.CLIENT_BASE_URL || "http://localhost:3000/login",
+    failureRedirect:
+      process.env.CLIENT_BASE_URL || "http://localhost:3000/login",
   }),
   authController.googleCallback
 );
@@ -260,7 +261,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post("/logout", authMiddleware, authController.logout);
+router.post("/logout", customerAuthMiddleware, authController.logout);
 
 /**
  * @swagger
@@ -291,7 +292,7 @@ router.post("/logout", authMiddleware, authController.logout);
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get("/me", authMiddleware, authController.getMe);
+router.get("/me", customerAuthMiddleware, authController.getMe);
 
 /**
  * @swagger
@@ -465,6 +466,6 @@ router.post("/admin/login", authController.adminLogin);
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.patch("/profile", authMiddleware, authController.updateProfile);
+router.patch("/profile", customerAuthMiddleware, authController.updateProfile);
 
 export default router;

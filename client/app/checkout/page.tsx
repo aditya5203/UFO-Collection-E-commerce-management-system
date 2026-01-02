@@ -12,6 +12,9 @@ import {
   type District,
 } from "../data/nepalLocations";
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+
 export default function CheckoutPage() {
   const router = useRouter();
 
@@ -25,6 +28,18 @@ export default function CheckoutPage() {
   const [firstName, setFirstName] = React.useState<string>("");
   const [lastName, setLastName] = React.useState<string>("");
 
+  // ✅ Address inputs (needed for Address.model.ts)
+  const [addressLine, setAddressLine] = React.useState<string>(""); // "Address"
+  const [street, setStreet] = React.useState<string>("");
+  const [postalCode, setPostalCode] = React.useState<string>("");
+  const [phone, setPhone] = React.useState<string>("");
+
+  // ✅ Save checkbox
+  const [saveForNextTime, setSaveForNextTime] = React.useState(false);
+
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string>("");
+
   // ------------------ derived ------------------
   const districtsForProvince: District[] = React.useMemo(() => {
     return NEPAL_DISTRICTS.filter((d) => d.provinceId === provinceId);
@@ -34,29 +49,22 @@ export default function CheckoutPage() {
   React.useEffect(() => {
     const loadMe = async () => {
       try {
-        const apiBase =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-
-        const res = await fetch(`${apiBase}/auth/me`, {
+        const res = await fetch(`${API_BASE}/api/auth/me`, {
           method: "GET",
-          credentials: "include", // ✅ sends httpOnly cookie token
+          credentials: "include",
         });
 
         if (!res.ok) return;
 
-        const data = await res.json();
-
+        const data = await res.json().catch(() => ({} as any));
         if (!data?.success || !data?.user) return;
 
         const user = data.user as { email?: string; name?: string };
 
-        // Email
         setEmail(user.email || "");
 
-        // Split full name into first + last name
         const fullName = (user.name || "").trim();
         const parts = fullName.split(/\s+/).filter(Boolean);
-
         setFirstName(parts[0] || "");
         setLastName(parts.length > 1 ? parts.slice(1).join(" ") : "");
       } catch {
@@ -66,6 +74,136 @@ export default function CheckoutPage() {
 
     loadMe();
   }, []);
+
+  // ✅ Optional: load default address and pre-fill checkout
+  React.useEffect(() => {
+    const loadDefaultAddress = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/addresses`, {
+          credentials: "include",
+        });
+
+        if (!res.ok) return;
+
+        const json = await res.json().catch(() => ({} as any));
+        if (!json?.success) return;
+
+        // your addressController.listMine returns { success:true, shipping, billing }
+        const shipping = Array.isArray(json?.shipping) ? json.shipping : [];
+        const def = shipping.find((x: any) => x.isDefault) || shipping[0];
+
+        if (!def) return;
+
+        setEmail(def.email || email);
+        setFirstName(def.firstName || firstName);
+        setLastName(def.lastName || lastName);
+
+        setProvinceId(def.provinceId || "");
+        setDistrict(def.district || "");
+        setCityOrMunicipality(def.cityOrMunicipality || "");
+
+        setAddressLine(def.addressLine || "");
+        setStreet(def.street || "");
+        setPostalCode(def.postalCode || "");
+        setPhone(def.phone || "");
+      } catch {
+        // ignore
+      }
+    };
+
+    loadDefaultAddress();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const validate = () => {
+    if (!email.trim()) return "Email is required";
+    if (!firstName.trim()) return "First name is required";
+    if (!lastName.trim()) return "Last name is required";
+    if (!provinceId) return "Province is required";
+    if (!district) return "District is required";
+    if (!cityOrMunicipality.trim()) return "City/Municipality is required";
+    if (!addressLine.trim()) return "Address is required";
+    if (!phone.trim()) return "Phone number is required";
+    return "";
+  };
+
+  // ✅ SAVE ADDRESS TO DB (if checkbox checked)
+  const saveAddressToDB = async () => {
+    const payload = {
+      type: "Shipping", // Address.model.ts expects Shipping/Billing
+      label: "Home",
+      email: email.trim(),
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      country: "Nepal",
+      provinceId,
+      district,
+      cityOrMunicipality: cityOrMunicipality.trim(),
+      addressLine: addressLine.trim(),
+      street: street.trim(),
+      postalCode: postalCode.trim(),
+      phone: phone.trim(),
+      isDefault: true, // optional: make default
+    };
+
+    const res = await fetch(`${API_BASE}/api/addresses`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json().catch(() => ({} as any));
+
+    if (!res.ok || !json?.success) {
+      throw new Error(json?.message || "Failed to save address");
+    }
+
+    return json?.data; // created address
+  };
+
+  const handleContinue = async () => {
+    setError("");
+    const msg = validate();
+    if (msg) {
+      setError(msg);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let savedAddress: any = null;
+
+      // ✅ only save if checkbox checked
+      if (saveForNextTime) {
+        savedAddress = await saveAddressToDB();
+      }
+
+      // ✅ Store checkout address in localStorage so Payment page can use it
+      const checkoutAddress = {
+        email,
+        firstName,
+        lastName,
+        country: "Nepal",
+        provinceId,
+        district,
+        cityOrMunicipality,
+        addressLine,
+        street,
+        postalCode,
+        phone,
+        savedAddressId: savedAddress?.id || savedAddress?._id || null,
+      };
+
+      localStorage.setItem("checkout_address", JSON.stringify(checkoutAddress));
+
+      router.push("/payment");
+    } catch (e: any) {
+      setError(e?.message || "Something went wrong");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -151,9 +289,12 @@ export default function CheckoutPage() {
               {/* Contact */}
               <h2 className="mb-4 text-[20px] font-semibold">Contact</h2>
 
-              <label htmlFor="email" className="sr-only">
-                Email
-              </label>
+              {error ? (
+                <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {error}
+                </div>
+              ) : null}
+
               <input
                 id="email"
                 type="email"
@@ -189,22 +330,14 @@ export default function CheckoutPage() {
               </div>
 
               {/* Country */}
-              <label htmlFor="country" className="sr-only">
-                Country
-              </label>
               <input
-                id="country"
                 value="Nepal"
                 disabled
                 className="input mt-4 text-[#cfd3ff]"
               />
 
               {/* Province */}
-              <label htmlFor="province" className="sr-only">
-                Province
-              </label>
               <select
-                id="province"
                 value={provinceId}
                 onChange={(e) => {
                   setProvinceId(e.target.value);
@@ -222,11 +355,7 @@ export default function CheckoutPage() {
               </select>
 
               {/* District */}
-              <label htmlFor="district" className="sr-only">
-                District
-              </label>
               <select
-                id="district"
                 value={district}
                 onChange={(e) => setDistrict(e.target.value)}
                 disabled={!provinceId}
@@ -243,11 +372,7 @@ export default function CheckoutPage() {
               </select>
 
               {/* City / Municipality */}
-              <label htmlFor="city" className="sr-only">
-                City or Municipality
-              </label>
               <input
-                id="city"
                 value={cityOrMunicipality}
                 onChange={(e) => setCityOrMunicipality(e.target.value)}
                 placeholder="City / Municipality"
@@ -255,17 +380,42 @@ export default function CheckoutPage() {
                 className="input mt-4 disabled:opacity-60"
               />
 
-              <input placeholder="Address" className="input mt-4" />
+              {/* AddressLine */}
+              <input
+                placeholder="Address"
+                className="input mt-4"
+                value={addressLine}
+                onChange={(e) => setAddressLine(e.target.value)}
+              />
 
               <div className="mt-4 grid grid-cols-2 gap-4">
-                <input placeholder="Street" className="input" />
-                <input placeholder="Postal code" className="input" />
+                <input
+                  placeholder="Street"
+                  className="input"
+                  value={street}
+                  onChange={(e) => setStreet(e.target.value)}
+                />
+                <input
+                  placeholder="Postal code"
+                  className="input"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                />
               </div>
 
-              <input placeholder="Phone number" className="input mt-4" />
+              <input
+                placeholder="Phone number"
+                className="input mt-4"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
 
               <label className="mt-4 flex items-center gap-3 text-[14px] text-[#cfd3ff]">
-                <input type="checkbox" />
+                <input
+                  type="checkbox"
+                  checked={saveForNextTime}
+                  onChange={(e) => setSaveForNextTime(e.target.checked)}
+                />
                 Save this information for next time
               </label>
             </section>
@@ -273,10 +423,11 @@ export default function CheckoutPage() {
             {/* ================= RIGHT ACTION ================= */}
             <aside className="flex items-end justify-end">
               <button
-                onClick={() => router.push("/payment")}
-                className="rounded-[10px] bg-[#1f7cff] px-8 py-4 text-[15px] font-semibold text-white hover:bg-[#2a86ff]"
+                onClick={handleContinue}
+                disabled={saving}
+                className="rounded-[10px] bg-[#1f7cff] px-8 py-4 text-[15px] font-semibold text-white hover:bg-[#2a86ff] disabled:opacity-60"
               >
-                Continue to Payment
+                {saving ? "Saving..." : "Continue to Payment"}
               </button>
             </aside>
           </div>

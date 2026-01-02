@@ -1,3 +1,4 @@
+//src/modules/payments/types/payment.types.ts
 export type PaymentMethod = "esewa" | "khalti";
 
 export type CreatePaymentDto = {
