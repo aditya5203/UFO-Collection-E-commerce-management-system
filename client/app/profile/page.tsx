@@ -38,6 +38,9 @@ export default function ProfilePage() {
     womenSize: "",
   });
 
+  const API =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+
   // -------------------------------
   // INPUT CHANGE
   // -------------------------------
@@ -52,10 +55,7 @@ export default function ProfilePage() {
   React.useEffect(() => {
     const loadProfile = async () => {
       try {
-        const api =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-
-        const res = await fetch(`${api}/auth/me`, { credentials: "include" });
+        const res = await fetch(`${API}/auth/me`, { credentials: "include" });
 
         if (res.status === 401 || !res.ok) {
           router.push("/login");
@@ -87,7 +87,7 @@ export default function ProfilePage() {
     };
 
     loadProfile();
-  }, [router]);
+  }, [API, router]);
 
   // -------------------------------
   // SAVE PROFILE -> PATCH /auth/profile
@@ -97,10 +97,7 @@ export default function ProfilePage() {
     setSaving(true);
 
     try {
-      const api =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-
-      const res = await fetch(`${api}/auth/profile`, {
+      const res = await fetch(`${API}/auth/profile`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -141,10 +138,7 @@ export default function ProfilePage() {
     setLoggingOut(true);
 
     try {
-      const api =
-        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-
-      await fetch(`${api}/auth/logout`, {
+      await fetch(`${API}/auth/logout`, {
         method: "POST",
         credentials: "include",
       });
@@ -296,7 +290,7 @@ export default function ProfilePage() {
 
             {/* Dropdown */}
             {menuOpen ? (
-              <div className="absolute right-0 top-[56px] w-[220px] overflow-hidden rounded-[12px] border border-[#23253a] bg-[#101223] shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
+              <div className="absolute right-0 top-[56px] w-[240px] overflow-hidden rounded-[12px] border border-[#23253a] bg-[#101223] shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
                 <Link
                   href="/order-tracking"
                   onClick={() => setMenuOpen(false)}
@@ -319,6 +313,31 @@ export default function ProfilePage() {
                   className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
                 >
                   Address
+                </Link>
+
+                <Link
+                  href="/live-agent-chat"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
+                >
+                  Live Agent Chat
+                </Link>
+
+                {/* ✅ NEW: My Tickets (customer sees admin replies here) */}
+                <Link
+                  href="/profile/tickets"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
+                >
+                  My Support Tickets
+                </Link>
+
+                <Link
+                  href="/support-ticket"
+                  onClick={() => setMenuOpen(false)}
+                  className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
+                >
+                  Raise Support Ticket
                 </Link>
 
                 <button
@@ -470,6 +489,29 @@ export default function ProfilePage() {
               >
                 {loggingOut ? "Logging out..." : "Logout"}
               </button>
+            </div>
+
+            {/* ✅ quick links */}
+            <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <Link
+                href="/profile/tickets"
+                className="rounded-xl border border-[#23253a] bg-[#0c0e1c] px-4 py-4 text-sm hover:bg-[#12142a]"
+              >
+                <div className="font-semibold text-white">My Support Tickets</div>
+                <div className="mt-1 text-[#8b90ad] text-[12px]">
+                  See admin replies & chat
+                </div>
+              </Link>
+
+              <Link
+                href="/support-ticket"
+                className="rounded-xl border border-[#23253a] bg-[#0c0e1c] px-4 py-4 text-sm hover:bg-[#12142a]"
+              >
+                <div className="font-semibold text-white">Raise Ticket</div>
+                <div className="mt-1 text-[#8b90ad] text-[12px]">
+                  Create a new issue
+                </div>
+              </Link>
             </div>
           </form>
         </div>

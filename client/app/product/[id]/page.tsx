@@ -18,6 +18,22 @@ type Product = {
   shortDesc?: string;
   longDesc?: string;
   sizes?: Size[];
+
+  colors?: string[];
+};
+
+type Review = {
+  _id: string;
+  product: string;
+  customer: string;
+  orderCode: string;
+
+  rating: number;
+  title?: string;
+  comment?: string;
+
+  // ✅ kept for DB but NOT shown to customer
+  createdAt?: string;
 };
 
 type CartItem = {
@@ -29,12 +45,10 @@ type CartItem = {
   image: string;
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
 const DEFAULT_SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
 
-// ✅ This fixed description will be shown for ALL products in Description tab
 const FIXED_DESCRIPTION =
   "UFO Collection is an e-commerce website that allows customers to browse and purchase products online with ease. It functions as a digital marketplace where products are organized into well-defined collections, such as clothing and accessories, enabling users to explore items efficiently. Each collection displays product images, names, prices, and brief details to help customers compare options quickly. When a product is selected from a collection, the user is taken to a dedicated product page that provides complete information, including descriptions, available sizes, colors, and pricing. UFO Collection offers a convenient, accessible, and user-friendly shopping experience, allowing customers to shop anytime and from anywhere with global reach..";
 
@@ -57,6 +71,66 @@ function normalizeSizes(sizes: any): Size[] {
   return clean.length ? clean : DEFAULT_SIZES;
 }
 
+function isHexColor(v: string) {
+  return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v);
+}
+
+const COLOR_NAME_TO_HEX: Record<string, string> = {
+  black: "#16191f",
+  white: "#ffffff",
+  red: "#ef4444",
+  blue: "#3b82f6",
+  green: "#22c55e",
+  yellow: "#eab308",
+  gray: "#9ca3af",
+  grey: "#9ca3af",
+  pink: "#ec4899",
+  purple: "#a855f7",
+  orange: "#f97316",
+};
+
+function toHex(color: string) {
+  const c = (color || "").trim();
+  if (!c) return "#16191f";
+  if (isHexColor(c)) return c;
+  return COLOR_NAME_TO_HEX[c.toLowerCase()] || "#16191f";
+}
+
+function normalizeColors(raw: any): string[] {
+  const value = raw?.colors ?? raw?.color ?? raw?.variants?.colors ?? [];
+
+  if (Array.isArray(value) && value.every((x) => typeof x === "string")) {
+    return value.map((x) => x.trim()).filter(Boolean);
+  }
+
+  if (Array.isArray(value) && value.length && typeof value[0] === "object") {
+    return value
+      .map((x) => x?.hex || x?.value || x?.color || x?.code || x?.name)
+      .map((x) => (typeof x === "string" ? x.trim() : ""))
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    const delim = value.includes(",")
+      ? ","
+      : value.includes("|")
+      ? "|"
+      : value.includes("\n")
+      ? "\n"
+      : null;
+
+    if (delim) {
+      return value
+        .split(delim)
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+    return [value.trim()].filter(Boolean);
+  }
+
+  return [];
+}
+
 export default function ProductPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -71,6 +145,15 @@ export default function ProductPage() {
     "description"
   );
 
+  // Reviews state
+  const [reviews, setReviews] = React.useState<Review[]>([]);
+  const [reviewsLoading, setReviewsLoading] = React.useState(false);
+  const [reviewsError, setReviewsError] = React.useState<string | null>(null);
+  const [reviewSummary, setReviewSummary] = React.useState<{
+    count: number;
+    avgRating: number;
+  }>({ count: 0, avgRating: 0 });
+
   // -------- Fetch product by id --------
   React.useEffect(() => {
     const fetchProduct = async () => {
@@ -84,11 +167,12 @@ export default function ProductPage() {
           cache: "no-store",
         });
 
+        const raw = await res.json().catch(() => ({} as any));
         if (!res.ok) {
-          throw new Error(`Failed to load product (status ${res.status})`);
+          throw new Error(
+            raw?.message || `Failed to load product (status ${res.status})`
+          );
         }
-
-        const raw = await res.json();
 
         const mapped: Product = {
           id: String(raw.id || raw._id || id),
@@ -98,10 +182,12 @@ export default function ProductPage() {
 
           rating: toNumber(raw.rating, 4.8),
           reviews: toNumber(raw.reviews, 0),
-          // ✅ keep your short text under price as it is
+
           shortDesc: toStr(raw.shortDesc, toStr(raw.description, "")),
           longDesc: toStr(raw.longDesc, toStr(raw.description, "")),
           sizes: normalizeSizes(raw.sizes),
+
+          colors: normalizeColors(raw),
         };
 
         setProduct(mapped);
@@ -119,6 +205,39 @@ export default function ProductPage() {
 
     fetchProduct();
   }, [id]);
+
+  // -------- Fetch reviews when Reviews tab opens --------
+  React.useEffect(() => {
+    if (!product?.id) return;
+    if (activeTab !== "reviews") return;
+
+    (async () => {
+      try {
+        setReviewsLoading(true);
+        setReviewsError(null);
+
+        const res = await fetch(`${API_BASE}/products/${product.id}/reviews`, {
+          cache: "no-store",
+        });
+
+        const data = await res.json().catch(() => ({} as any));
+        if (!res.ok) throw new Error(data?.message || "Failed to load reviews");
+
+        setReviews(Array.isArray(data?.reviews) ? data.reviews : []);
+        setReviewSummary(
+          data?.summary && typeof data.summary === "object"
+            ? data.summary
+            : { count: 0, avgRating: 0 }
+        );
+      } catch (e: any) {
+        setReviewsError(e?.message || "Failed to load reviews");
+        setReviews([]);
+        setReviewSummary({ count: 0, avgRating: 0 });
+      } finally {
+        setReviewsLoading(false);
+      }
+    })();
+  }, [activeTab, product?.id]);
 
   // -------- Add to cart (localStorage) --------
   const addToCart = () => {
@@ -165,9 +284,7 @@ export default function ProductPage() {
   if (error || !product) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex flex-col items-center justify-center gap-4 px-4">
-        <div className="text-red-300 text-center">
-          {error || "Product not found."}
-        </div>
+        <div className="text-red-300 text-center">{error || "Product not found."}</div>
         <button
           type="button"
           onClick={() => router.push("/collection")}
@@ -182,13 +299,13 @@ export default function ProductPage() {
   }
 
   const sizes = product.sizes?.length ? product.sizes : DEFAULT_SIZES;
+  const colors = (product.colors ?? []).map((c) => toHex(c));
 
   return (
     <>
       {/* ================= HEADER ================= */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
-          {/* Left: Back + Brand */}
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -224,7 +341,6 @@ export default function ProductPage() {
             </Link>
           </div>
 
-          {/* Nav desktop */}
           <nav className="hidden items-center gap-[42px] md:flex">
             <Link
               href="/homepage"
@@ -252,7 +368,6 @@ export default function ProductPage() {
             </Link>
           </nav>
 
-          {/* Right: Go to cart */}
           <button
             type="button"
             onClick={() => router.push("/cartpage")}
@@ -270,7 +385,6 @@ export default function ProductPage() {
           </button>
         </div>
 
-        {/* Mobile Nav */}
         <div className="border-t border-[#14162a] bg-[rgba(5,6,17,0.92)] md:hidden">
           <div className="mx-auto flex max-w-[1160px] flex-wrap items-center justify-center gap-x-8 gap-y-3 px-4 py-3">
             <Link
@@ -304,7 +418,6 @@ export default function ProductPage() {
       {/* ================= PAGE ================= */}
       <main className="min-h-[calc(100vh-80px)] bg-[#050816] text-[#e5e7eb]">
         <div className="mx-auto max-w-[1120px] px-4 pb-20 pt-8 md:px-8">
-          {/* Breadcrumb */}
           <div className="mb-6 text-[13px] text-[#9ca3af]">
             <Link href="/homepage" className="hover:text-white">
               Home
@@ -312,29 +425,18 @@ export default function ProductPage() {
             / <span className="text-[#e5e7eb]">{product.name}</span>
           </div>
 
-          {/* Top grid */}
           <section className="grid grid-cols-1 gap-8 md:grid-cols-[1.05fr_1.4fr]">
-            {/* Image card */}
             <div className="flex justify-center rounded-[14px] border border-[#111827] bg-[#050816] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
               <div className="relative w-full max-w-[360px] pb-[100%]">
-                <Image
-                  src={product.image}
-                  alt={product.name}
-                  fill
-                  className="object-contain"
-                  priority
-                />
+                <Image src={product.image} alt={product.name} fill className="object-contain" priority />
               </div>
             </div>
 
-            {/* Info */}
             <div>
               <h1 className="text-[26px] font-semibold">{product.name}</h1>
 
               <div className="mt-3 flex items-center gap-3">
-                <span className="text-[22px] font-semibold">
-                  {(product.rating ?? 0).toFixed(1)}
-                </span>
+                <span className="text-[22px] font-semibold">{(product.rating ?? 0).toFixed(1)}</span>
 
                 <div className="flex items-center gap-[2px]" aria-label="Rating stars">
                   {Array.from({ length: 5 }).map((_, i) => {
@@ -352,25 +454,15 @@ export default function ProductPage() {
                 </div>
               </div>
 
-              <div className="mt-1 text-[13px] text-[#9ca3af]">
-                {product.reviews ?? 0} reviews
-              </div>
+              <div className="mt-1 text-[13px] text-[#9ca3af]">{product.reviews ?? 0} reviews</div>
 
-              <div className="mt-3 text-[22px] font-semibold text-[#7dd3fc]">
-                Rs. {product.price}
-              </div>
+              <div className="mt-3 text-[22px] font-semibold text-[#7dd3fc]">Rs. {product.price}</div>
 
-              {/* ✅ keep this short line under price exactly as it is */}
               {product.shortDesc ? (
-                <p className="mt-3 max-w-[460px] text-[14px] leading-[1.7] text-[#d1d5db]">
-                  {product.shortDesc}
-                </p>
+                <p className="mt-3 max-w-[460px] text-[14px] leading-[1.7] text-[#d1d5db]">{product.shortDesc}</p>
               ) : null}
 
-              {/* Sizes */}
-              <div className="mt-6 text-[13px] uppercase tracking-[0.1em] text-[#cbd5f5]">
-                Size
-              </div>
+              <div className="mt-6 text-[13px] uppercase tracking-[0.1em] text-[#cbd5f5]">Size</div>
 
               <div className="mt-2 flex flex-wrap gap-2">
                 {sizes.map((s) => {
@@ -380,12 +472,8 @@ export default function ProductPage() {
                       key={s}
                       type="button"
                       onClick={() => setSelectedSize(s)}
-                      aria-label={`Select size ${s}`}
-                      title={`Select size ${s}`}
                       className={`min-w-[40px] rounded-[6px] border px-3 py-[6px] text-[13px] ${
-                        active
-                          ? "border-[#1d9bf0] bg-[#1d9bf0] text-white"
-                          : "border-[#4b5563] bg-transparent text-[#e5e7eb]"
+                        active ? "border-[#1d9bf0] bg-[#1d9bf0] text-white" : "border-[#4b5563] bg-transparent text-[#e5e7eb]"
                       }`}
                     >
                       {s}
@@ -394,12 +482,29 @@ export default function ProductPage() {
                 })}
               </div>
 
-              {/* Add to cart */}
+              {colors.length > 0 ? (
+                <>
+                  <div className="mt-6 text-[13px] uppercase tracking-[0.1em] text-[#cbd5f5]">Color</div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {colors.map((hex) => (
+                      <div
+                        key={hex}
+                        className="flex items-center gap-2 rounded-full border border-[#2b2f45] bg-transparent px-4 py-2"
+                        title={hex}
+                        aria-label={`Color ${hex}`}
+                      >
+                        <span className="h-4 w-4 rounded-full border border-[#111827]" style={{ backgroundColor: hex }} />
+                        <span className="text-[13px] font-semibold text-white">{hex}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+
               <button
                 type="button"
                 onClick={addToCart}
-                aria-label="Add to cart"
-                title="Add to cart"
                 className="mt-5 rounded-[4px] bg-[#1d9bf0] px-6 py-[10px] text-[14px] font-semibold text-white hover:bg-[#1580c5]"
               >
                 ADD TO CART
@@ -419,13 +524,7 @@ export default function ProductPage() {
               <button
                 type="button"
                 onClick={() => setActiveTab("description")}
-                aria-label="Show description"
-                title="Show description"
-                className={`pb-3 ${
-                  activeTab === "description"
-                    ? "border-b-2 border-white text-white"
-                    : "text-[#9ca3af]"
-                }`}
+                className={`pb-3 ${activeTab === "description" ? "border-b-2 border-white text-white" : "text-[#9ca3af]"}`}
               >
                 Description
               </button>
@@ -433,25 +532,47 @@ export default function ProductPage() {
               <button
                 type="button"
                 onClick={() => setActiveTab("reviews")}
-                aria-label="Show reviews"
-                title="Show reviews"
-                className={`pb-3 ${
-                  activeTab === "reviews"
-                    ? "border-b-2 border-white text-white"
-                    : "text-[#9ca3af]"
-                }`}
+                className={`pb-3 ${activeTab === "reviews" ? "border-b-2 border-white text-white" : "text-[#9ca3af]"}`}
               >
-                Reviews{" "}
-                <span className="text-[13px]">({product.reviews ?? 0})</span>
+                Reviews <span className="text-[13px]">({reviewSummary.count || 0})</span>
               </button>
             </div>
 
             <div className="mt-4 text-[14px] leading-[1.7] text-[#d1d5db]">
               {activeTab === "description" ? (
-                // ✅ ALWAYS show same description for ALL products here
                 <p>{FIXED_DESCRIPTION}</p>
               ) : (
-                <p>Reviews coming soon.</p>
+                <div className="space-y-4">
+                  <div className="text-[#9ca3af] text-sm">
+                    Avg: <span className="text-white font-semibold">{reviewSummary.avgRating || 0}</span> •{" "}
+                    <span className="text-white font-semibold">{reviewSummary.count || 0}</span> reviews
+                  </div>
+
+                  {reviewsLoading ? (
+                    <div className="rounded-xl border border-[#111827] bg-[#0b0f1a]/60 p-4 text-[#9aa3cc]">
+                      Loading reviews...
+                    </div>
+                  ) : reviewsError ? (
+                    <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">{reviewsError}</div>
+                  ) : reviews.length === 0 ? (
+                    <div className="rounded-xl border border-[#111827] bg-[#0b0f1a]/60 p-4 text-[#9aa3cc]">No reviews yet.</div>
+                  ) : (
+                    reviews.map((r) => (
+                      <div key={r._id} className="rounded-xl border border-[#111827] bg-[#0b0f1a]/60 p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="text-white font-semibold">{r.title?.trim() ? r.title : "Review"}</div>
+                          <div className="text-[#7dd3fc] font-semibold">{Number(r.rating || 0).toFixed(1)} / 5</div>
+                        </div>
+
+                        {r.comment?.trim() ? (
+                          <p className="mt-2 text-[#d1d5db] text-sm leading-relaxed">{r.comment}</p>
+                        ) : null}
+
+                        {/* ✅ customer should NOT see date/time -> removed */}
+                      </div>
+                    ))
+                  )}
+                </div>
               )}
             </div>
           </section>

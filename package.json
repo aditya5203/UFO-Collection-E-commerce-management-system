@@ -5,7 +5,8 @@
     "multer-storage-cloudinary": "^4.0.0",
     "next-auth": "^4.24.13",
     "passport": "^0.7.0",
-    "passport-google-oauth20": "^2.0.0"
+    "passport-google-oauth20": "^2.0.0",
+    "rivescript": "^2.2.1"
   },
   "devDependencies": {
     "@types/multer": "^2.0.0",

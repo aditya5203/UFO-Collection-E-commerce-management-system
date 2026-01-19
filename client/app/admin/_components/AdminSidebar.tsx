@@ -20,14 +20,19 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Customers", href: "/admin/customers", icon: "/images/admin/customers.png" },
 
   { label: "Discounts", href: "/admin/discounts", icon: "/images/admin/discount.png" },
-
   { label: "Reviews", href: "/admin/reviews", icon: "/images/admin/reviews.png" },
 
-  // ✅ NEW: Customer Tickets / Issues
   {
     label: "Customer Tickets",
     href: "/admin/customer-tickets",
     icon: "/images/admin/ticket.png",
+  },
+
+  // ✅ NEW: Live Chat Inbox
+  {
+    label: "Live Chat",
+    href: "/admin/chat",
+    icon: "/images/admin/chat.png",
   },
 
   {
@@ -35,13 +40,14 @@ const NAV_ITEMS: NavItem[] = [
     href: "/admin/customer-support",
     icon: "/images/admin/support.png",
   },
+
   {
     label: "Advertisement",
     href: "/admin/advertisement",
     icon: "/images/admin/advertisement.png",
   },
-  { label: "Analytics", href: "/admin/analytics", icon: "/images/admin/analytics.png" },
 
+  { label: "Analytics", href: "/admin/analytics", icon: "/images/admin/analytics.png" },
   { label: "Settings", href: "/admin/settings", icon: "/images/admin/setting.png" },
 ];
 

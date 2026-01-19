@@ -18,7 +18,7 @@ export type AuthRequest = Request & {
 const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
 const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
 
-// ✅ Base middleware factory: only verifies token and sets req.user
+// ✅ Base middleware factory: verifies token and sets req.user
 export const makeAuthMiddleware =
   (cookieName: string) =>
   (req: AuthRequest, _res: Response, next: NextFunction) => {
@@ -60,35 +60,45 @@ export const makeAuthMiddleware =
     }
   };
 
-// ✅ Customer auth (requires customer role)
-export const customerAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
+// ✅ Customer auth: allow ANY logged-in non-admin user
+export const customerAuthMiddleware = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
   return makeAuthMiddleware(CUSTOMER_COOKIE)(req, res, (err?: any) => {
     if (err) return next(err);
 
-    const role = (req.user?.role || "").toLowerCase();
-    if (role !== "customer") {
+    const role = String(req.user?.role || "").toLowerCase();
+
+    // block admin roles from customer endpoints
+    if (role === "admin" || role === "superadmin") {
       return next(new AppError("Customer access only", 403));
     }
 
-    next();
+    return next();
   });
 };
 
-// ✅ Admin auth (requires admin/superadmin role)
-export const adminAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
+// ✅ Admin auth: must be admin/superadmin
+export const adminAuthMiddleware = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
   return makeAuthMiddleware(ADMIN_COOKIE)(req, res, (err?: any) => {
     if (err) return next(err);
 
-    const role = (req.user?.role || "").toLowerCase();
+    const role = String(req.user?.role || "").toLowerCase();
     if (role !== "admin" && role !== "superadmin") {
       return next(new AppError("Admin access only", 403));
     }
 
-    next();
+    return next();
   });
 };
 
-// ✅ Role-based authorization (must run AFTER an auth middleware that sets req.user)
+// ✅ Role-based authorization
 export const authorize =
   (...roles: string[]) =>
   (req: AuthRequest, _res: Response, next: NextFunction) => {
@@ -96,16 +106,15 @@ export const authorize =
       return next(new AppError("User not authenticated", 401));
     }
 
-    const userRole = (req.user.role || "").toLowerCase();
+    const userRole = String(req.user.role || "").toLowerCase();
     const allowed = roles.map((r) => r.toLowerCase());
 
     if (!allowed.includes(userRole)) {
       return next(new AppError("Access denied. Insufficient permissions", 403));
     }
 
-    next();
+    return next();
   };
 
-// ✅ Default export: base "auth only" (NO role restriction)
-// This prevents accidental "customer only" lockouts in admin routers.
+// ✅ Default export: auth only (no role restriction)
 export default makeAuthMiddleware(CUSTOMER_COOKIE);

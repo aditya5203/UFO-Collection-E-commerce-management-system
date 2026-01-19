@@ -10,14 +10,19 @@ type OrderItem = {
   name: string;
   size: string;
   qty: number;
-  price: number; // Rs
+  price: number;
   image: string;
 };
 
-type OrderStatus = "Pending" | "Confirmed" | "Shipped" | "Delivered" | "Cancelled";
+type OrderStatus =
+  | "Pending"
+  | "Confirmed"
+  | "Shipped"
+  | "Delivered"
+  | "Cancelled";
 
 type Order = {
-  orderId: string; // "#123456"
+  orderId: string;
   status: OrderStatus;
 
   customer: {
@@ -43,6 +48,15 @@ type Order = {
     taxes: number;
     total: number;
   };
+};
+
+type ReviewDraft = {
+  productId: string;
+  productName: string;
+  orderId: string;
+  rating: number;
+  title: string;
+  comment: string;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
@@ -75,6 +89,13 @@ export default function CustomerOrderDetailsPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Review modal state
+  const [reviewOpen, setReviewOpen] = React.useState(false);
+  const [reviewSaving, setReviewSaving] = React.useState(false);
+  const [reviewError, setReviewError] = React.useState<string | null>(null);
+  const [reviewOk, setReviewOk] = React.useState<string | null>(null);
+  const [draft, setDraft] = React.useState<ReviewDraft | null>(null);
+
   React.useEffect(() => {
     let mounted = true;
 
@@ -89,7 +110,6 @@ export default function CustomerOrderDetailsPage() {
           return;
         }
 
-        // ✅ cookie-based auth (your backend uses cookie)
         const meRes = await fetch(`${API}/auth/me`, {
           method: "GET",
           credentials: "include",
@@ -101,14 +121,16 @@ export default function CustomerOrderDetailsPage() {
           return;
         }
 
-        const res = await fetch(`${API}/orders/my/${encodeURIComponent(orderIdFromUrl)}`, {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        });
+        const res = await fetch(
+          `${API}/orders/my/${encodeURIComponent(orderIdFromUrl)}`,
+          {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
 
         const data = await res.json().catch(() => ({} as any));
-
         if (!res.ok) throw new Error(data?.message || "Failed to load order");
 
         if (!mounted) return;
@@ -129,6 +151,74 @@ export default function CustomerOrderDetailsPage() {
   }, [orderIdFromUrl, router]);
 
   const trackingNumber = (order?.orderId || orderIdFromUrl).replace("#", "");
+
+  const raiseTicket = (item: OrderItem) => {
+    const params = new URLSearchParams({
+      orderId: order?.orderId || orderIdFromUrl || "",
+      productId: item.id,
+      productName: item.name,
+      size: item.size || "",
+    });
+
+    router.push(`/support-ticket?${params.toString()}`);
+  };
+
+  const openReviewModal = (item: OrderItem) => {
+    setReviewError(null);
+    setReviewOk(null);
+
+    setDraft({
+      productId: item.id,
+      productName: item.name,
+      orderId: order?.orderId || orderIdFromUrl || "",
+      rating: 5,
+      title: "",
+      comment: "",
+    });
+
+    setReviewOpen(true);
+  };
+
+  const closeReviewModal = () => {
+    setReviewOpen(false);
+    setDraft(null);
+    setReviewError(null);
+    setReviewOk(null);
+  };
+
+  const submitReview = async () => {
+    if (!draft) return;
+
+    try {
+      setReviewSaving(true);
+      setReviewError(null);
+      setReviewOk(null);
+
+      const res = await fetch(`${API}/products/${draft.productId}/reviews`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: draft.orderId,
+          rating: draft.rating,
+          title: draft.title,
+          comment: draft.comment,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(data?.message || "Failed to submit review");
+
+      setReviewOk("Review submitted successfully!");
+      setTimeout(() => {
+        closeReviewModal();
+      }, 900);
+    } catch (e: any) {
+      setReviewError(e?.message || "Failed to submit review");
+    } finally {
+      setReviewSaving(false);
+    }
+  };
 
   return (
     <>
@@ -170,16 +260,28 @@ export default function CustomerOrderDetailsPage() {
           </div>
 
           <nav className="hidden md:flex gap-10">
-            <Link href="/homepage" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/homepage"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               HOME
             </Link>
-            <Link href="/collection" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/collection"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               COLLECTION
             </Link>
-            <Link href="/about" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/about"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               ABOUT
             </Link>
-            <Link href="/contact" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/contact"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               CONTACT
             </Link>
           </nav>
@@ -193,7 +295,6 @@ export default function CustomerOrderDetailsPage() {
         <div className="mx-auto max-w-[1280px] px-6 py-10">
           <h1 className="text-[36px] font-semibold">Order Details</h1>
 
-          {/* LOADING / ERROR */}
           {loading && (
             <div className="mt-8 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6 text-[#9aa3cc]">
               Loading order...
@@ -214,10 +315,12 @@ export default function CustomerOrderDetailsPage() {
 
           {!loading && !error && order && (
             <>
-              {/* ✅ Better Order ID + Status UI */}
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <span className="rounded-full border border-[#2b2f45] bg-[#0b0f1a]/60 px-4 py-2 text-[13px] text-[#dfe3ff]">
-                  Order ID: <span className="text-white font-semibold">{order.orderId}</span>
+                  Order ID:{" "}
+                  <span className="text-white font-semibold">
+                    {order.orderId}
+                  </span>
                 </span>
                 <StatusBadge status={order.status} />
               </div>
@@ -226,19 +329,31 @@ export default function CustomerOrderDetailsPage() {
 
               {/* CUSTOMER INFO */}
               <section className="mt-10">
-                <h2 className="text-[18px] font-semibold">Customer Information</h2>
+                <h2 className="text-[18px] font-semibold">
+                  Customer Information
+                </h2>
 
                 <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-2">
                   <div className="grid grid-cols-12 gap-4 py-4 text-sm">
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Name</div>
-                    <div className="col-span-12 md:col-span-9 text-white">{order.customer.name}</div>
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                      Name
+                    </div>
+                    <div className="col-span-12 md:col-span-9 text-white">
+                      {order.customer.name}
+                    </div>
                     <div className="col-span-12 h-px bg-[#2b2f45]" />
 
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Email</div>
-                    <div className="col-span-12 md:col-span-9 text-white">{order.customer.email}</div>
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                      Email
+                    </div>
+                    <div className="col-span-12 md:col-span-9 text-white">
+                      {order.customer.email}
+                    </div>
                     <div className="col-span-12 h-px bg-[#2b2f45]" />
 
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Shipping Address</div>
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                      Shipping Address
+                    </div>
                     <div className="col-span-12 md:col-span-9 text-white whitespace-pre-line">
                       {order.customer.shippingAddress}
                     </div>
@@ -260,32 +375,100 @@ export default function CustomerOrderDetailsPage() {
                   </div>
 
                   {order.items.map((it) => (
-                    <div key={it.id} className="border-b border-[#1b2034] px-6 py-6 last:border-0">
+                    <div
+                      key={`${it.id}-${it.size}`}
+                      className="border-b border-[#1b2034] px-6 py-6 last:border-0"
+                    >
+                      {/* DESKTOP */}
                       <div className="hidden md:grid grid-cols-[1.2fr_0.6fr_0.9fr_0.6fr_0.6fr] items-center gap-4">
                         <div className="flex items-center gap-4">
                           <div className="relative h-[46px] w-[46px] overflow-hidden rounded-full border border-[#2b2f45]">
-                            <Image src={it.image} alt={it.name} fill className="object-cover" />
+                            <Image
+                              src={it.image}
+                              alt={it.name}
+                              fill
+                              className="object-cover"
+                            />
                           </div>
-                          <span>{it.name}</span>
+                          <div className="flex flex-col">
+                            <span>{it.name}</span>
+
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => raiseTicket(it)}
+                                disabled={order.status === "Cancelled"}
+                                className="w-fit rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#c9b9ff] hover:bg-[#1f7cff] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Need Help?
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => openReviewModal(it)}
+                                disabled={order.status !== "Delivered"}
+                                className="w-fit rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#7dd3fc] hover:bg-[#1d9bf0] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                Write Review
+                              </button>
+                            </div>
+                          </div>
                         </div>
 
-                        <span className="text-[#9aa3cc]">{it.size ? `Size: ${it.size}` : "-"}</span>
+                        <span className="text-[#9aa3cc]">
+                          {it.size ? `Size: ${it.size}` : "-"}
+                        </span>
+
                         <div className="text-center text-[#9aa3cc]">{it.qty}</div>
                         <span className="text-[#9aa3cc]">Rs. {it.price}</span>
                         <span className="text-white">Rs. {it.price * it.qty}</span>
                       </div>
 
+                      {/* MOBILE */}
                       <div className="md:hidden flex gap-4">
                         <div className="relative h-[62px] w-[62px] overflow-hidden rounded-[12px] border border-[#2b2f45]">
-                          <Image src={it.image} alt={it.name} fill className="object-cover" />
+                          <Image
+                            src={it.image}
+                            alt={it.name}
+                            fill
+                            className="object-cover"
+                          />
                         </div>
 
                         <div className="flex-1">
                           <div className="font-medium">{it.name}</div>
-                          <div className="mt-1 text-[#9aa3cc] text-sm">Size: {it.size || "-"}</div>
-                          <div className="mt-1 text-[#9aa3cc] text-sm">Qty: {it.qty}</div>
-                          <div className="mt-1 text-[#9aa3cc] text-sm">Price: Rs. {it.price}</div>
-                          <div className="mt-1 text-white text-sm">Total: Rs. {it.price * it.qty}</div>
+                          <div className="mt-1 text-[#9aa3cc] text-sm">
+                            Size: {it.size || "-"}
+                          </div>
+                          <div className="mt-1 text-[#9aa3cc] text-sm">
+                            Qty: {it.qty}
+                          </div>
+                          <div className="mt-1 text-[#9aa3cc] text-sm">
+                            Price: Rs. {it.price}
+                          </div>
+                          <div className="mt-1 text-white text-sm">
+                            Total: Rs. {it.price * it.qty}
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => raiseTicket(it)}
+                              disabled={order.status === "Cancelled"}
+                              className="rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#c9b9ff] hover:bg-[#1f7cff] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Need Help?
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => openReviewModal(it)}
+                              disabled={order.status !== "Delivered"}
+                              className="rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#7dd3fc] hover:bg-[#1d9bf0] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Write Review
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -295,36 +478,54 @@ export default function CustomerOrderDetailsPage() {
 
               {/* PAYMENT */}
               <section className="mt-12">
-                <h2 className="text-[18px] font-semibold">Payment Information</h2>
+                <h2 className="text-[18px] font-semibold">
+                  Payment Information
+                </h2>
 
                 <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-4">
                   <div className="grid grid-cols-12 gap-4 py-2 text-sm">
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Method</div>
-                    <div className="col-span-12 md:col-span-9 text-white">{order.payment.method}</div>
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                      Method
+                    </div>
+                    <div className="col-span-12 md:col-span-9 text-white">
+                      {order.payment.method}
+                    </div>
                   </div>
                 </div>
               </section>
 
               {/* SHIPPING */}
               <section className="mt-12">
-                <h2 className="text-[18px] font-semibold">Shipping Information</h2>
+                <h2 className="text-[18px] font-semibold">
+                  Shipping Information
+                </h2>
 
                 <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-2">
                   <div className="grid grid-cols-12 gap-4 py-4 text-sm">
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Method</div>
-                    <div className="col-span-12 md:col-span-9 text-white">{order.shipping.method}</div>
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                      Method
+                    </div>
+                    <div className="col-span-12 md:col-span-9 text-white">
+                      {order.shipping.method}
+                    </div>
                     <div className="col-span-12 h-px bg-[#2b2f45]" />
 
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Estimated Delivery</div>
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                      Estimated Delivery
+                    </div>
                     <div className="col-span-12 md:col-span-9 text-white">
                       {order.shipping.estimatedDelivery || "—"}
                     </div>
                     <div className="col-span-12 h-px bg-[#2b2f45]" />
 
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">Track Order</div>
+                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                      Track Order
+                    </div>
                     <div className="col-span-12 md:col-span-9">
                       <Link
-                        href={`/order-tracking?tracking=${encodeURIComponent(trackingNumber)}`}
+                        href={`/order-tracking?tracking=${encodeURIComponent(
+                          trackingNumber
+                        )}`}
                         className="text-white underline underline-offset-4 hover:text-[#c9b9ff]"
                       >
                         Click here to track
@@ -354,7 +555,9 @@ export default function CustomerOrderDetailsPage() {
                     </div>
                     <div className="flex justify-between">
                       <span>Total</span>
-                      <span className="text-white font-semibold">Rs. {order.summary.total}</span>
+                      <span className="text-white font-semibold">
+                        Rs. {order.summary.total}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -367,6 +570,143 @@ export default function CustomerOrderDetailsPage() {
           )}
         </div>
       </main>
+
+      {/* REVIEW MODAL */}
+      {reviewOpen && draft ? (
+        <div
+          className="fixed inset-0 z-[999] flex items-center justify-center px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Write a review modal"
+        >
+          {/* Backdrop */}
+          <button
+            type="button"
+            onClick={closeReviewModal}
+            className="absolute inset-0 bg-black/70"
+            aria-label="Close modal backdrop"
+            title="Close"
+          />
+
+          {/* Modal box */}
+          <div className="relative w-full max-w-[560px] rounded-[16px] border border-[#2b2f45] bg-[#0b0f1a] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.8)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-[18px] font-semibold text-white">
+                  Write a Review
+                </div>
+                <div className="mt-1 text-sm text-[#9aa3cc]">
+                  Product:{" "}
+                  <span className="text-white font-medium">
+                    {draft.productName}
+                  </span>
+                </div>
+                <div className="mt-1 text-xs text-[#9aa3cc]">
+                  Order: {draft.orderId}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeReviewModal}
+                className="rounded-lg border border-[#2b2f45] px-3 py-2 text-xs text-[#dfe3ff] hover:bg-white hover:text-[#050611]"
+                aria-label="Close modal"
+                title="Close"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              {/* Rating */}
+              <div>
+                <div className="text-[13px] uppercase tracking-[0.12em] text-[#cbd5f5]">
+                  Rating
+                </div>
+
+                <div className="mt-2 flex items-center gap-2">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setDraft({ ...draft, rating: n })}
+                      className={`h-10 w-10 rounded-xl border text-sm font-semibold ${
+                        draft.rating >= n
+                          ? "border-[#1d9bf0] bg-[#1d9bf0] text-white"
+                          : "border-[#2b2f45] bg-transparent text-[#9aa3cc]"
+                      }`}
+                      aria-label={`Set rating ${n}`}
+                      title={`Set rating ${n}`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Title */}
+              <div>
+                <div className="text-[13px] uppercase tracking-[0.12em] text-[#cbd5f5]">
+                  Title
+                </div>
+                <input
+                  value={draft.title}
+                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                  placeholder="Short title (optional)"
+                  className="mt-2 w-full rounded-xl border border-[#2b2f45] bg-[#070a12] px-4 py-3 text-sm text-white placeholder:text-[#6b7280] outline-none focus:border-[#1d9bf0]"
+                />
+              </div>
+
+              {/* Comment */}
+              <div>
+                <div className="text-[13px] uppercase tracking-[0.12em] text-[#cbd5f5]">
+                  Comment
+                </div>
+                <textarea
+                  value={draft.comment}
+                  onChange={(e) =>
+                    setDraft({ ...draft, comment: e.target.value })
+                  }
+                  placeholder="Write your experience..."
+                  rows={5}
+                  className="mt-2 w-full resize-none rounded-xl border border-[#2b2f45] bg-[#070a12] px-4 py-3 text-sm text-white placeholder:text-[#6b7280] outline-none focus:border-[#1d9bf0]"
+                />
+              </div>
+
+              {reviewError ? (
+                <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {reviewError}
+                </div>
+              ) : null}
+
+              {reviewOk ? (
+                <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-200">
+                  {reviewOk}
+                </div>
+              ) : null}
+
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeReviewModal}
+                  className="rounded-xl border border-[#2b2f45] px-5 py-3 text-sm text-[#dfe3ff] hover:bg-white hover:text-[#050611]"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={submitReview}
+                  disabled={reviewSaving}
+                  className="rounded-xl bg-[#1d9bf0] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1580c5] disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {reviewSaving ? "Submitting..." : "Submit Review"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

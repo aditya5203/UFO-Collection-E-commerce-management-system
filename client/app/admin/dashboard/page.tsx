@@ -3,17 +3,198 @@
 import * as React from "react";
 import Link from "next/link";
 
+type SummaryResponse = {
+  success: boolean;
+  data: {
+    top: {
+      totalOrders: number;
+      totalRevenuePaisa: number;
+      totalCustomers: number;
+      totalProductsLive: number;
+    };
+    ordersByStatus: Record<string, number>;
+    salesLast7Days: Array<{ date: string; totalPaisa: number }>;
+    recentOrders: Array<{
+      id: string;
+      orderCode: string;
+      totalPaisa: number;
+      orderStatus: string;
+      createdAt: string;
+      customerName: string;
+    }>;
+    lowStock: Array<{ id: string; name: string; stock: number }>;
+    newUsers: Array<{ id: string; name: string; createdAt: string }>;
+  };
+};
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+
+const formatMoneyNPR = (paisa: number) => {
+  const rs = Math.round(Number(paisa || 0) / 100);
+  return `Rs. ${rs.toLocaleString("en-US")}`;
+};
+
+const formatDate = (iso: string) => {
+  try {
+    const d = new Date(iso);
+    return d.toISOString().slice(0, 10);
+  } catch {
+    return iso || "";
+  }
+};
+
 export default function AdminDashboardPage() {
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [summary, setSummary] = React.useState<SummaryResponse["data"] | null>(
+    null
+  );
+
+  const fetchSummary = React.useCallback(async () => {
+    try {
+      setError(null);
+      const res = await fetch(`${API_BASE_URL}/api/admin/dashboard/summary`, {
+        method: "GET",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        // If you have admin login route, redirect there
+        window.location.href = "/admin/login";
+        return;
+      }
+
+      const json = (await res.json().catch(() => ({}))) as SummaryResponse;
+
+      if (!res.ok || !json?.success) {
+        throw new Error((json as any)?.message || "Failed to load dashboard");
+      }
+
+      setSummary(json.data);
+    } catch (e: any) {
+      setError(e?.message || "Failed to load dashboard");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchSummary();
+
+    // auto-refresh (10s)
+    const interval = setInterval(fetchSummary, 10000);
+
+    // refresh on focus
+    const onFocus = () => fetchSummary();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [fetchSummary]);
+
+  // -------------------------
+  // compute chart bars from API
+  // -------------------------
+  const salesBars = React.useMemo(() => {
+    const arr = summary?.salesLast7Days || [];
+    const totals = arr.map((x) => Number(x.totalPaisa || 0));
+    const max = Math.max(1, ...totals);
+
+    // we want exactly 7 bars (Mon-Sun style). If less, pad.
+    const padded =
+      arr.length >= 7
+        ? arr.slice(-7)
+        : [
+            ...Array.from({ length: 7 - arr.length }).map(() => ({
+              date: "",
+              totalPaisa: 0,
+            })),
+            ...arr,
+          ];
+
+    return padded.map((x) => {
+      const ratio = Number(x.totalPaisa || 0) / max; // 0..1
+      const px = Math.round(18 + ratio * 82); // height range 18..100
+      return {
+        date: x.date,
+        heightPx: px,
+      };
+    });
+  }, [summary]);
+
+  // orders by status -> counts
+  const statusCount = (k: string) => Number(summary?.ordersByStatus?.[k] || 0);
+  const totalOrdersByStatus =
+    statusCount("Pending") +
+    statusCount("Shipped") +
+    statusCount("Delivered") +
+    statusCount("Cancelled");
+
+  // status bar height
+  const statusBars = React.useMemo(() => {
+    const pending = statusCount("Pending");
+    const shipped = statusCount("Shipped");
+    const delivered = statusCount("Delivered");
+    const cancelled = statusCount("Cancelled");
+
+    const max = Math.max(1, pending, shipped, delivered, cancelled);
+
+    const toH = (v: number) => `${Math.round(40 + (v / max) * 70)}px`; // 40..110px
+
+    return [
+      { label: "Pending", height: toH(pending) },
+      { label: "Shipped", height: toH(shipped) },
+      { label: "Delivered", height: toH(delivered) },
+      { label: "Cancelled", height: toH(cancelled) },
+    ];
+  }, [summary]);
+
+  if (loading) {
+    return <div className="text-[13px] text-[#9ca3af]">Loading dashboard…</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-[14px] border border-[#111827] bg-[#020617] p-4 text-[13px] text-[#fca5a5]">
+        {error}
+        <div className="mt-2">
+          <button
+            onClick={fetchSummary}
+            className="rounded-lg bg-[#2563eb] px-3 py-2 text-[12px] text-white hover:bg-[#1d4ed8]"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const top = summary?.top;
+
   return (
     <div className="space-y-6">
       <h1 className="text-[22px] font-semibold text-white">Dashboard</h1>
 
       {/* Top stats */}
       <section className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total Orders" value="1,234" />
-        <StatCard label="Total Revenue" value="$56,789" />
-        <StatCard label="Total Customers" value="456" />
-        <StatCard label="Total Products Live" value="123" />
+        <StatCard label="Total Orders" value={String(top?.totalOrders ?? 0)} />
+        <StatCard
+          label="Total Revenue"
+          value={formatMoneyNPR(top?.totalRevenuePaisa ?? 0)}
+        />
+        <StatCard
+          label="Total Customers"
+          value={String(top?.totalCustomers ?? 0)}
+        />
+        <StatCard
+          label="Total Products Live"
+          value={String(top?.totalProductsLive ?? 0)}
+        />
       </section>
 
       {/* Sales overview + Orders by status */}
@@ -26,29 +207,29 @@ export default function AdminDashboardPage() {
                 Sales Overview
               </div>
               <div className="text-[12px] text-[#9ca3af]">
-                Sales last 7 days · Last 7 days{" "}
-                <span className="text-[#4ade80]">+15%</span>
+                Sales last 7 days
               </div>
             </div>
             <div className="text-[12px] text-[#9ca3af]">This Week</div>
           </div>
 
           <div className="mb-2 text-[24px] font-semibold text-white">
-            $12,345
+            {formatMoneyNPR(
+              (summary?.salesLast7Days || []).reduce(
+                (sum, x) => sum + Number(x.totalPaisa || 0),
+                0
+              )
+            )}
           </div>
 
-          {/* Chart mock */}
+          {/* Chart */}
           <div className="relative mt-[6px] h-[180px] overflow-hidden rounded-[12px] border border-[#111827] bg-[radial-gradient(circle_at_0_0,#1f2937,#020617_55%)]">
             <div className="absolute inset-[14px_10px_16px_10px] rounded-[10px] border-b border-l border-dashed border-[#1f2937]" />
 
             <div className="absolute inset-[20px_16px_18px_16px] flex items-end gap-[10px]">
-              <ChartBar h="h-[20px]" />
-              <ChartBar h="h-[40px]" />
-              <ChartBar h="h-[30px]" />
-              <ChartBar h="h-[60px]" />
-              <ChartBar h="h-[45px]" />
-              <ChartBar h="h-[70px]" />
-              <ChartBar h="h-[25px]" />
+              {salesBars.map((b, idx) => (
+                <ChartBar key={idx} px={b.heightPx} />
+              ))}
             </div>
 
             <div className="absolute bottom-[6px] left-[18px] right-[18px] flex justify-between text-[11px] text-[#6b7280]">
@@ -71,16 +252,15 @@ export default function AdminDashboardPage() {
                 Orders by Status
               </div>
               <div className="text-[12px] text-[#9ca3af]">
-                1,234 total · <span className="text-[#4ade80]">+10%</span>
+                {totalOrdersByStatus.toLocaleString("en-US")} total
               </div>
             </div>
           </div>
 
           <div className="mt-[6px] flex h-[120px] items-end gap-[12px]">
-            <StatusBar label="Pending" height="h-[70px]" />
-            <StatusBar label="Shipped" height="h-[60px]" />
-            <StatusBar label="Delivered" height="h-[80px]" />
-            <StatusBar label="Cancelled" height="h-[40px]" />
+            {statusBars.map((s) => (
+              <StatusBar key={s.label} label={s.label} heightPx={s.height} />
+            ))}
           </div>
         </div>
       </section>
@@ -106,43 +286,41 @@ export default function AdminDashboardPage() {
               </thead>
 
               <tbody>
-                <Tr
-                  id="#12345"
-                  name="Ethan Harper"
-                  total="$123"
-                  date="2023-08-15"
-                  badge={<Badge variant="shipped">Shipped</Badge>}
-                />
-                <Tr
-                  id="#12346"
-                  name="Olivia Bennett"
-                  total="$456"
-                  date="2023-08-14"
-                  badge={<Badge variant="delivered">Delivered</Badge>}
-                />
-                <Tr
-                  id="#12347"
-                  name="Liam Carter"
-                  total="$789"
-                  date="2023-08-13"
-                  badge={<Badge variant="pending">Pending</Badge>}
-                />
-                <Tr
-                  id="#12348"
-                  name="Sophia Evans"
-                  total="$101"
-                  date="2023-08-12"
-                  badge={<Badge variant="cancelled">Cancelled</Badge>}
-                />
-                <Tr
-                  id="#12349"
-                  name="Noah Foster"
-                  total="$234"
-                  date="2023-08-11"
-                  badge={<Badge variant="shipped">Shipped</Badge>}
-                />
+                {(summary?.recentOrders || []).map((o) => (
+                  <Tr
+                    key={o.id}
+                    id={o.orderCode || o.id}
+                    name={o.customerName || "Customer"}
+                    total={formatMoneyNPR(o.totalPaisa)}
+                    date={formatDate(o.createdAt)}
+                    badge={
+                      <Badge
+                        variant={
+                          (String(o.orderStatus || "Pending").toLowerCase() as any) ===
+                          "delivered"
+                            ? "delivered"
+                            : (String(o.orderStatus || "Pending").toLowerCase() as any) ===
+                              "shipped"
+                            ? "shipped"
+                            : (String(o.orderStatus || "Pending").toLowerCase() as any) ===
+                              "cancelled"
+                            ? "cancelled"
+                            : "pending"
+                        }
+                      >
+                        {o.orderStatus || "Pending"}
+                      </Badge>
+                    }
+                  />
+                ))}
               </tbody>
             </table>
+
+            {(!summary?.recentOrders || summary.recentOrders.length === 0) && (
+              <div className="py-3 text-[13px] text-[#9ca3af]">
+                No recent orders yet.
+              </div>
+            )}
           </div>
         </div>
 
@@ -153,9 +331,12 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="mt-2 grid gap-[6px] text-[13px]">
-            <SmallItem left="Product A" right="10 items left" />
-            <SmallItem left="Product B" right="5 items left" />
-            <SmallItem left="Product C" right="2 items left" />
+            {(summary?.lowStock || []).map((p) => (
+              <SmallItem key={p.id} left={p.name} right={`${p.stock} items left`} />
+            ))}
+            {(!summary?.lowStock || summary.lowStock.length === 0) && (
+              <SmallItem left="No low stock items" right="" />
+            )}
           </div>
 
           <div className="mt-[22px]">
@@ -164,9 +345,16 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="mt-2 grid gap-[6px] text-[13px]">
-              <SmallItem left="Alex Johnson" right="2023-08-15" />
-              <SmallItem left="Maria Lopez" right="2023-08-14" />
-              <SmallItem left="David Kim" right="2023-08-13" />
+              {(summary?.newUsers || []).map((u) => (
+                <SmallItem
+                  key={u.id}
+                  left={u.name}
+                  right={formatDate(u.createdAt)}
+                />
+              ))}
+              {(!summary?.newUsers || summary.newUsers.length === 0) && (
+                <SmallItem left="No new users" right="" />
+              )}
             </div>
           </div>
         </div>
@@ -186,22 +374,25 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ChartBar({ h }: { h: string }) {
+function ChartBar({ px }: { px: number }) {
   return (
     <div
       className={[
         "flex-1 rounded-full opacity-50",
         "bg-gradient-to-t from-[#1d4ed8] to-[#38bdf8]",
-        h,
       ].join(" ")}
+      style={{ height: `${px}px` }}
     />
   );
 }
 
-function StatusBar({ label, height }: { label: string; height: string }) {
+function StatusBar({ label, heightPx }: { label: string; heightPx: string }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-end gap-[6px]">
-      <div className={["w-[70%] rounded-[8px] bg-[#1f2937]", height].join(" ")} />
+      <div
+        className="w-[70%] rounded-[8px] bg-[#1f2937]"
+        style={{ height: heightPx }}
+      />
       <div className="text-[11px] text-[#9ca3af]">{label}</div>
     </div>
   );
@@ -259,7 +450,12 @@ function Badge({
   };
 
   return (
-    <span className={["rounded-full px-[10px] py-[3px] text-[11px]", styles[variant]].join(" ")}>
+    <span
+      className={[
+        "rounded-full px-[10px] py-[3px] text-[11px]",
+        styles[variant],
+      ].join(" ")}
+    >
       {children}
     </span>
   );

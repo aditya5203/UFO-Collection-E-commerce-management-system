@@ -1,0 +1,17 @@
+! version = 2.0
+
++ hello
+- Hello! I’m UFO Support (no-AI helper). Ask about order tracking, delivery, returns, payments, or size.
+
++ hi
+- Hi! How can I help you today?
+
++ namaste
+- Namaste! Ma UFO Support (no-AI helper) ho. Tapai order, delivery, return, payment, size bare sodhna saknuhuncha.
+
++ (help|support|customer support)
+- I can help with: order tracking, delivery, returns/refunds, payments (eSewa/Khalti), and size guidance.
+- You can ask: order tracking, delivery time, return policy, payment issue, size guide.
+
++ (madad|sahayog|help chahiyo|support chahiyo)
+- Ma yesto kura ma help garna sakchu: order tracking, delivery time, return/refund, payment (eSewa/Khalti), size guide.

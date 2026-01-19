@@ -32,9 +32,6 @@ type CheckoutAddressLS = {
   postalCode?: string;
   phone?: string;
 
-  city?: string;
-  area?: string;
-
   savedAddressId?: string | null;
 };
 
@@ -47,10 +44,41 @@ type OrderAddressAPI = {
   street: string;
 };
 
+type OrderSummaryLS = {
+  subtotal: number; // Rs
+  shipping: number; // Rs
+  discount: number; // Rs
+  total: number; // Rs
+  currency?: string;
+  updatedAt?: string;
+  couponCode?: string | null;
+};
+
 function joinUrl(base: string, path: string) {
   const b = base.replace(/\/+$/, "");
   const p = path.replace(/^\/+/, "");
   return `${b}/${p}`;
+}
+
+function getOrderSummary(): OrderSummaryLS | null {
+  try {
+    const raw = localStorage.getItem("ufo_order_summary");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+
+    return {
+      subtotal: Number(parsed.subtotal || 0),
+      shipping: Number(parsed.shipping || 0),
+      discount: Number(parsed.discount || 0),
+      total: Number(parsed.total || 0),
+      currency: parsed.currency || "NPR",
+      updatedAt: parsed.updatedAt,
+      couponCode: parsed.couponCode ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export default function PaymentPage() {
@@ -58,19 +86,16 @@ export default function PaymentPage() {
   const searchParams = useSearchParams();
 
   const [items, setItems] = React.useState<CartItem[]>([]);
-  const [cartReady, setCartReady] = React.useState(false); // ✅ NEW
+  const [cartReady, setCartReady] = React.useState(false);
   const [method, setMethod] = React.useState<PayMethod>("card");
   const [placing, setPlacing] = React.useState(false);
 
-  const API_BASE =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  const [summary, setSummary] = React.useState<OrderSummaryLS | null>(null);
 
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
   const apiBase = React.useMemo(() => joinUrl(API_BASE, "/api"), [API_BASE]);
 
-  // ✅ only calculate shipping after cart ready
-  const shipping = cartReady && items.length ? 100 : 0;
-
-  // ✅ Load cart FIRST
+  // ✅ Load cart
   React.useEffect(() => {
     try {
       const raw = localStorage.getItem("ufo_cart");
@@ -79,26 +104,33 @@ export default function PaymentPage() {
     } catch {
       setItems([]);
     } finally {
-      setCartReady(true); // ✅ NEW
+      setCartReady(true);
     }
   }, []);
 
-  const subtotal = React.useMemo(() => {
-    return items.reduce(
-      (sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0),
-      0
-    );
+  // ✅ Load order summary saved from CartPage
+  React.useEffect(() => {
+    const s = getOrderSummary();
+    setSummary(s);
+  }, []);
+
+  // ✅ Use totals from summary (fallback to old calc if not found)
+  const fallbackSubtotal = React.useMemo(() => {
+    return items.reduce((sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0), 0);
   }, [items]);
 
-  const total = subtotal + shipping; // Rs
+  const fallbackShipping = cartReady && items.length ? 100 : 0;
+  const fallbackTotal = fallbackSubtotal + fallbackShipping;
+
+  const subtotal = summary ? summary.subtotal : fallbackSubtotal;
+  const shipping = summary ? summary.shipping : fallbackShipping;
+  const discount = summary ? summary.discount : 0;
+  const total = summary ? summary.total : fallbackTotal;
 
   const savePaymentMeta = (label: string) => {
     try {
       localStorage.setItem("ufo_payment_method", label);
-      localStorage.setItem(
-        "ufo_last_total_paisa",
-        String(Math.round(total * 100))
-      );
+      localStorage.setItem("ufo_last_total_paisa", String(Math.round(total * 100)));
     } catch {}
   };
 
@@ -111,26 +143,21 @@ export default function PaymentPage() {
         "";
 
       if (!raw) return undefined;
-
       const addr = JSON.parse(raw);
-      return addr && typeof addr === "object"
-        ? (addr as CheckoutAddressLS)
-        : undefined;
+      return addr && typeof addr === "object" ? (addr as CheckoutAddressLS) : undefined;
     } catch {
       return undefined;
     }
   };
 
-  const mapToOrderAddress = (
-    a?: CheckoutAddressLS
-  ): OrderAddressAPI | undefined => {
+  const mapToOrderAddress = (a?: CheckoutAddressLS): OrderAddressAPI | undefined => {
     if (!a) return undefined;
 
     const fullName = `${a.firstName || ""} ${a.lastName || ""}`.trim();
     const phone = String(a.phone || "").trim();
 
-    const city = String(a.cityOrMunicipality || a.city || "").trim();
-    const area = String(a.district || a.area || "").trim();
+    const city = String(a.cityOrMunicipality || "").trim();
+    const area = String(a.district || "").trim();
     const street = String(a.street || a.addressLine || "").trim();
 
     if (!fullName && !phone && !city && !area && !street) return undefined;
@@ -150,7 +177,6 @@ export default function PaymentPage() {
     paymentRef?: string,
     paymentStatus?: "Paid" | "Pending" | "Failed"
   ) => {
-    // ✅ read cart again from localStorage (extra safety after redirects)
     let safeItems: CartItem[] = items;
     if (!safeItems.length) {
       try {
@@ -162,18 +188,23 @@ export default function PaymentPage() {
       }
     }
 
-    if (!safeItems.length) {
-      throw new Error("Cart is empty (no items found in localStorage)");
-    }
+    if (!safeItems.length) throw new Error("Cart is empty");
 
     const addrLS = getCheckoutAddressLS();
     const mappedAddress = mapToOrderAddress(addrLS);
 
-    const payload = {
+    const payload: any = {
       paymentMethod,
       paymentRef: paymentRef || undefined,
       paymentStatus: paymentStatus || undefined,
+
+      // ✅ totals from cart summary
       shippingPaisa: Math.round(shipping * 100),
+
+      // ✅ optional - include coupon info (if your backend supports)
+      couponCode: summary?.couponCode || null,
+      discountPaisa: Math.round(discount * 100),
+
       items: safeItems.map((it) => ({
         productId: it.id,
         size: it.size || "",
@@ -194,34 +225,24 @@ export default function PaymentPage() {
     return json?.data as { id: string; orderCode: string; totalPaisa: number };
   };
 
-  const finishToThankYou = (data: {
-    id: string;
-    orderCode: string;
-    totalPaisa: number;
-  }) => {
+  const finishToThankYou = (data: { id: string; orderCode: string; totalPaisa: number }) => {
     localStorage.setItem("ufo_last_order_id", data.id);
     localStorage.setItem("ufo_last_order_number", data.orderCode);
     localStorage.setItem("ufo_last_total_paisa", String(data.totalPaisa));
     localStorage.removeItem("ufo_cart");
+    localStorage.removeItem("ufo_order_summary"); // ✅ clean
     router.replace("/ThankYou");
   };
 
-  // ===============================
-  // ✅ FINALIZE: FAILED message
-  // ===============================
   React.useEffect(() => {
     const status = searchParams.get("status");
-    if (status === "failed") {
-      alert("Payment failed. Please try again.");
-    }
+    if (status === "failed") alert("Payment failed. Please try again.");
   }, [searchParams]);
 
-  // ===============================
-  // ✅ FINALIZE: Khalti return
-  // /payment?pidx=XXXX
-  // ===============================
+  // (Khalti/eSewa finalize logic kept same, only uses `total` now)
+
   React.useEffect(() => {
-    if (!cartReady) return; // ✅ wait for cart load
+    if (!cartReady) return;
 
     const pidx = searchParams.get("pidx");
     if (!pidx) return;
@@ -243,12 +264,7 @@ export default function PaymentPage() {
 
         const vj = await vr.json().catch(() => ({} as any));
         if (!vr.ok) throw new Error(vj?.message || "Khalti lookup failed");
-
-        if (!vj?.paid) {
-          throw new Error(
-            `Khalti not completed (status: ${vj?.status || "Unknown"})`
-          );
-        }
+        if (!vj?.paid) throw new Error(`Khalti not completed (status: ${vj?.status || "Unknown"})`);
 
         savePaymentMeta("Khalti");
 
@@ -267,12 +283,8 @@ export default function PaymentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartReady, searchParams, apiBase]);
 
-  // ===============================
-  // ✅ FINALIZE: eSewa return
-  // /payment?esewa=success&data=....
-  // ===============================
   React.useEffect(() => {
-    if (!cartReady) return; // ✅ wait for cart load
+    if (!cartReady) return;
 
     const esewa = searchParams.get("esewa");
     const data = searchParams.get("data") || "";
@@ -296,16 +308,10 @@ export default function PaymentPage() {
         const vj = await vr.json().catch(() => ({} as any));
         if (!vr.ok) throw new Error(vj?.message || "eSewa verify failed");
 
-        const ref =
-          String(
-            vj?.transaction_uuid || vj?.payload?.transaction_uuid || ""
-          ).trim() || "ESEWA_OK";
-
+        const ref = String(vj?.transaction_uuid || vj?.payload?.transaction_uuid || "").trim() || "ESEWA_OK";
         savePaymentMeta("eSewa");
 
-        // ✅ Paid only if statusOk, else Pending (safe)
         const payStatus: "Paid" | "Pending" = vj?.statusOk ? "Paid" : "Pending";
-
         const order = await createOrder("eSewa", ref, payStatus);
         finishToThankYou(order);
       } catch (e: any) {
@@ -321,70 +327,38 @@ export default function PaymentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartReady, searchParams, apiBase]);
 
-  // ===============================
-  // PAY BUTTON HANDLERS
-  // ===============================
   const handleEsewaPay = () => {
     if (!cartReady) return;
-    if (!items.length) {
-      alert("Your cart is empty.");
-      router.push("/collection");
-      return;
-    }
+    if (!items.length) return router.push("/collection");
     savePaymentMeta("eSewa");
-    window.location.href = joinUrl(
-      apiBase,
-      `/payments/esewa/initiate?amount=${encodeURIComponent(String(total))}`
-    );
+    window.location.href = joinUrl(apiBase, `/payments/esewa/initiate?amount=${encodeURIComponent(String(total))}`);
   };
 
   const handleKhaltiPay = async () => {
     if (!cartReady) return;
-    if (!items.length) {
-      alert("Your cart is empty.");
-      router.push("/collection");
-      return;
-    }
+    if (!items.length) return router.push("/collection");
     savePaymentMeta("Khalti");
 
-    try {
-      const res = await fetch(joinUrl(apiBase, "/payments/khalti/initiate"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          amount: Math.round(total * 100),
-          orderId: `ORDER_${Date.now()}`,
-          orderName: "UFO Collection Order",
-        }),
-      });
+    const res = await fetch(joinUrl(apiBase, "/payments/khalti/initiate"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        amount: Math.round(total * 100),
+        orderId: `ORDER_${Date.now()}`,
+        orderName: "UFO Collection Order",
+      }),
+    });
 
-      const data = await res.json().catch(() => ({} as any));
-      if (!res.ok) {
-        alert(data?.message || "Failed to initiate Khalti payment");
-        return;
-      }
-
-      if (data?.payment_url) {
-        window.location.href = data.payment_url;
-        return;
-      }
-
-      alert("Khalti initiate did not return payment_url");
-    } catch (err) {
-      console.error(err);
-      alert("Something went wrong initiating Khalti payment");
-    }
+    const data = await res.json().catch(() => ({} as any));
+    if (!res.ok) return alert(data?.message || "Failed to initiate Khalti payment");
+    if (data?.payment_url) window.location.href = data.payment_url;
+    else alert("Khalti initiate did not return payment_url");
   };
 
   const handleContinue = async () => {
     if (!cartReady) return;
-
-    if (!items.length) {
-      alert("Your cart is empty.");
-      router.push("/collection");
-      return;
-    }
+    if (!items.length) return router.push("/collection");
 
     if (method === "esewa") return handleEsewaPay();
     if (method === "khalti") return void handleKhaltiPay();
@@ -438,14 +412,7 @@ export default function PaymentPage() {
 
             <Link href="/homepage" className="flex items-center gap-[10px]">
               <div className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white sm:h-[48px] sm:w-[48px]">
-                <Image
-                  src="/images/logo.png"
-                  alt="UFO Collection logo"
-                  width={48}
-                  height={48}
-                  className="h-full w-full object-cover"
-                  priority
-                />
+                <Image src="/images/logo.png" alt="UFO Collection logo" width={48} height={48} className="h-full w-full object-cover" priority />
               </div>
               <div className="text-[22px] font-bold uppercase tracking-[0.18em] text-white sm:text-[26px]">
                 UFO Collection
@@ -454,45 +421,14 @@ export default function PaymentPage() {
           </div>
 
           <nav className="hidden items-center gap-[42px] md:flex">
-            <Link
-              href="/homepage"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              HOME
-            </Link>
-            <Link
-              href="/collection"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              COLLECTION
-            </Link>
-            <Link
-              href="/about"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              ABOUT
-            </Link>
-            <Link
-              href="/contact"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              CONTACT
-            </Link>
+            <Link href="/homepage" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">HOME</Link>
+            <Link href="/collection" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">COLLECTION</Link>
+            <Link href="/about" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">ABOUT</Link>
+            <Link href="/contact" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">CONTACT</Link>
           </nav>
 
-          <button
-            type="button"
-            onClick={() => router.push("/cartpage")}
-            aria-label="Wishlist"
-            title="Wishlist"
-          >
-            <Image
-              src="/images/wishlist.png"
-              width={26}
-              height={26}
-              alt=""
-              className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
-            />
+          <button type="button" onClick={() => router.push("/cartpage")} aria-label="Wishlist" title="Wishlist">
+            <Image src="/images/wishlist.png" width={26} height={26} alt="" className="brightness-0 invert contrast-[2.8] saturate-[2.6]" />
           </button>
         </div>
       </header>
@@ -508,27 +444,13 @@ export default function PaymentPage() {
           <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1fr_460px]">
             {/* LEFT */}
             <section className="max-w-[520px]">
-              <h2 className="mb-6 text-[22px] font-semibold">
-                Payment Information
-              </h2>
+              <h2 className="mb-6 text-[22px] font-semibold">Payment Information</h2>
 
-              <input
-                placeholder="Card Number"
-                disabled={method !== "card"}
-                className="input mb-4 disabled:opacity-50"
-              />
+              <input placeholder="Card Number" disabled={method !== "card"} className="input mb-4 disabled:opacity-50" />
 
               <div className="grid grid-cols-2 gap-4">
-                <input
-                  placeholder="Expiry Date"
-                  disabled={method !== "card"}
-                  className="input disabled:opacity-50"
-                />
-                <input
-                  placeholder="CVV"
-                  disabled={method !== "card"}
-                  className="input disabled:opacity-50"
-                />
+                <input placeholder="Expiry Date" disabled={method !== "card"} className="input disabled:opacity-50" />
+                <input placeholder="CVV" disabled={method !== "card"} className="input disabled:opacity-50" />
               </div>
 
               <div className="mt-6 flex flex-wrap gap-3">
@@ -546,9 +468,7 @@ export default function PaymentPage() {
                       type="button"
                       onClick={() => setMethod(m.key as PayMethod)}
                       className={`rounded-[10px] border px-4 py-2 text-[14px] ${
-                        active
-                          ? "border-[#1f7cff] bg-[#0b0f1a] text-white"
-                          : "border-[#2b2f45] bg-transparent text-[#9aa3cc]"
+                        active ? "border-[#1f7cff] bg-[#0b0f1a] text-white" : "border-[#2b2f45] bg-transparent text-[#9aa3cc]"
                       }`}
                     >
                       {m.label}
@@ -568,10 +488,17 @@ export default function PaymentPage() {
                     <span>Subtotal</span>
                     <span className="text-white">Rs. {subtotal}</span>
                   </div>
+
                   <div className="flex items-center justify-between text-[#9aa3cc]">
                     <span>Shipping</span>
                     <span className="text-white">Rs. {shipping}</span>
                   </div>
+
+                  <div className="flex items-center justify-between text-[#9aa3cc]">
+                    <span>Discount {summary?.couponCode ? `(${summary.couponCode})` : ""}</span>
+                    <span className="text-green-400">- Rs. {discount}</span>
+                  </div>
+
                   <div className="flex items-center justify-between text-[#9aa3cc]">
                     <span>Total</span>
                     <span className="text-white">Rs. {total}</span>
@@ -590,32 +517,17 @@ export default function PaymentPage() {
             </aside>
           </div>
 
-          {/* FOOTER */}
           <div className="mt-24 flex flex-col items-center gap-6 text-center">
             <div className="flex items-center gap-6 opacity-90">
               <a href="#" aria-label="Instagram" className="hover:opacity-100">
-                <Image
-                  src="/images/instagram.png"
-                  width={18}
-                  height={18}
-                  alt=""
-                  className="brightness-0 invert"
-                />
+                <Image src="/images/instagram.png" width={18} height={18} alt="" className="brightness-0 invert" />
               </a>
               <a href="#" aria-label="Facebook" className="hover:opacity-100">
-                <Image
-                  src="/images/facebook.png"
-                  width={18}
-                  height={18}
-                  alt=""
-                  className="brightness-0 invert"
-                />
+                <Image src="/images/facebook.png" width={18} height={18} alt="" className="brightness-0 invert" />
               </a>
             </div>
 
-            <div className="text-[14px] text-[#93a0c8]">
-              © 2025 UFO Collection — All Rights Reserved
-            </div>
+            <div className="text-[14px] text-[#93a0c8]">© 2025 UFO Collection — All Rights Reserved</div>
           </div>
         </div>
       </main>

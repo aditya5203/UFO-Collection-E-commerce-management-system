@@ -115,56 +115,71 @@ export default function AdminProductsPage() {
   }, [toast]);
 
   // -----------------------------
-  // LOAD PRODUCTS
+  // LOAD PRODUCTS (auto refresh)
   // -----------------------------
-  React.useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+  const fetchProducts = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        const res = await fetch(`${API_BASE_URL}/api/admin/products`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-        });
+      const res = await fetch(`${API_BASE_URL}/api/admin/products`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        cache: "no-store", // ✅ avoid cached response
+      });
 
-        if (res.status === 401 || res.status === 403) {
-          router.replace("/admin/login");
-          return;
-        }
-
-        if (!res.ok) throw new Error(`Failed to load products (status ${res.status})`);
-
-        const body = await res.json();
-        const data: any[] = body.data ?? body;
-
-        const normalized: Product[] = data.map((p) => ({
-          id: p._id || p.id,
-          name: p.name,
-          slug: p.slug,
-          description: p.description,
-          price: Number(p.price) || 0,
-          stock: Number(p.stock) || 0,
-          status: (p.status as ProductStatus) ?? "Active",
-          image: p.image,
-          images: p.images ?? [],
-          gender: p.gender,
-          colors: p.colors ?? [],
-          sizes: p.sizes ?? [],
-          categoryId: p.categoryId,
-        }));
-
-        setProducts(normalized);
-      } catch (err: any) {
-        setError(err.message || "Something went wrong while loading products.");
-      } finally {
-        setLoading(false);
+      if (res.status === 401 || res.status === 403) {
+        router.replace("/admin/login");
+        return;
       }
-    };
 
-    fetchProducts();
+      if (!res.ok) throw new Error(`Failed to load products (status ${res.status})`);
+
+      const body = await res.json();
+      const data: any[] = body.data ?? body;
+
+      const normalized: Product[] = data.map((p) => ({
+        id: p._id || p.id,
+        name: p.name,
+        slug: p.slug,
+        description: p.description,
+        price: Number(p.price) || 0,
+        stock: Number(p.stock) || 0,
+        status: (p.status as ProductStatus) ?? "Active",
+        image: p.image,
+        images: p.images ?? [],
+        gender: p.gender,
+        colors: p.colors ?? [],
+        sizes: p.sizes ?? [],
+        categoryId: p.categoryId,
+      }));
+
+      setProducts(normalized);
+    } catch (err: any) {
+      setError(err.message || "Something went wrong while loading products.");
+    } finally {
+      setLoading(false);
+    }
   }, [router]);
+
+  React.useEffect(() => {
+    fetchProducts();
+
+    // ✅ Auto refresh every 10 seconds
+    const interval = setInterval(() => {
+      fetchProducts();
+    }, 10000);
+
+    // ✅ Refresh when admin comes back to tab
+    const onFocus = () => fetchProducts();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [fetchProducts]);
 
   // -----------------------------
   // LOAD CATEGORIES
@@ -174,6 +189,7 @@ export default function AdminProductsPage() {
       try {
         const res = await fetch(`${API_BASE_URL}/api/admin/categories`, {
           credentials: "include",
+          cache: "no-store",
         });
 
         if (res.status === 401 || res.status === 403) {
@@ -192,7 +208,10 @@ export default function AdminProductsPage() {
           }))
         );
       } catch (err: any) {
-        setToast({ type: "error", message: err.message || "Failed to load categories" });
+        setToast({
+          type: "error",
+          message: err.message || "Failed to load categories",
+        });
       }
     };
     fetchCategories();
@@ -644,7 +663,9 @@ export default function AdminProductsPage() {
                       min={0}
                       className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
                       value={price}
-                      onChange={(e) => setPrice(e.target.value === "" ? "" : Number(e.target.value))}
+                      onChange={(e) =>
+                        setPrice(e.target.value === "" ? "" : Number(e.target.value))
+                      }
                       required
                     />
                   </div>
@@ -659,7 +680,9 @@ export default function AdminProductsPage() {
                       min={0}
                       className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
                       value={stock}
-                      onChange={(e) => setStock(e.target.value === "" ? "" : Number(e.target.value))}
+                      onChange={(e) =>
+                        setStock(e.target.value === "" ? "" : Number(e.target.value))
+                      }
                       required
                     />
                   </div>

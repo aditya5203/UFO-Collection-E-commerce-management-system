@@ -1,3 +1,4 @@
+// app/checkout/page.tsx
 "use client";
 
 import * as React from "react";
@@ -23,20 +24,16 @@ export default function CheckoutPage() {
   const [district, setDistrict] = React.useState<string>("");
   const [cityOrMunicipality, setCityOrMunicipality] = React.useState<string>("");
 
-  // ✅ Autofill fields from DB
   const [email, setEmail] = React.useState<string>("");
   const [firstName, setFirstName] = React.useState<string>("");
   const [lastName, setLastName] = React.useState<string>("");
 
-  // ✅ Address inputs (needed for Address.model.ts)
-  const [addressLine, setAddressLine] = React.useState<string>(""); // "Address"
+  const [addressLine, setAddressLine] = React.useState<string>("");
   const [street, setStreet] = React.useState<string>("");
   const [postalCode, setPostalCode] = React.useState<string>("");
   const [phone, setPhone] = React.useState<string>("");
 
-  // ✅ Save checkbox
   const [saveForNextTime, setSaveForNextTime] = React.useState(false);
-
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string>("");
 
@@ -45,7 +42,7 @@ export default function CheckoutPage() {
     return NEPAL_DISTRICTS.filter((d) => d.provinceId === provinceId);
   }, [provinceId]);
 
-  // ✅ Fetch current user (cookie-based auth)
+  // ✅ Fetch current user
   React.useEffect(() => {
     const loadMe = async () => {
       try {
@@ -57,13 +54,12 @@ export default function CheckoutPage() {
         if (!res.ok) return;
 
         const data = await res.json().catch(() => ({} as any));
-        if (!data?.success || !data?.user) return;
+        const me = data?.user || data?.data?.user || data?.data;
+        if (!me) return;
 
-        const user = data.user as { email?: string; name?: string };
+        setEmail(String(me.email || ""));
 
-        setEmail(user.email || "");
-
-        const fullName = (user.name || "").trim();
+        const fullName = String(me.name || "").trim();
         const parts = fullName.split(/\s+/).filter(Boolean);
         setFirstName(parts[0] || "");
         setLastName(parts.length > 1 ? parts.slice(1).join(" ") : "");
@@ -75,28 +71,23 @@ export default function CheckoutPage() {
     loadMe();
   }, []);
 
-  // ✅ Optional: load default address and pre-fill checkout
+  // ✅ Optional: load default address
   React.useEffect(() => {
     const loadDefaultAddress = async () => {
       try {
         const res = await fetch(`${API_BASE}/api/addresses`, {
           credentials: "include",
         });
-
         if (!res.ok) return;
 
         const json = await res.json().catch(() => ({} as any));
-        if (!json?.success) return;
-
-        // your addressController.listMine returns { success:true, shipping, billing }
         const shipping = Array.isArray(json?.shipping) ? json.shipping : [];
         const def = shipping.find((x: any) => x.isDefault) || shipping[0];
-
         if (!def) return;
 
-        setEmail(def.email || email);
-        setFirstName(def.firstName || firstName);
-        setLastName(def.lastName || lastName);
+        setEmail(def.email || "");
+        setFirstName(def.firstName || "");
+        setLastName(def.lastName || "");
 
         setProvinceId(def.provinceId || "");
         setDistrict(def.district || "");
@@ -112,7 +103,6 @@ export default function CheckoutPage() {
     };
 
     loadDefaultAddress();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const validate = () => {
@@ -127,10 +117,9 @@ export default function CheckoutPage() {
     return "";
   };
 
-  // ✅ SAVE ADDRESS TO DB (if checkbox checked)
   const saveAddressToDB = async () => {
     const payload = {
-      type: "Shipping", // Address.model.ts expects Shipping/Billing
+      type: "Shipping",
       label: "Home",
       email: email.trim(),
       firstName: firstName.trim(),
@@ -143,7 +132,7 @@ export default function CheckoutPage() {
       street: street.trim(),
       postalCode: postalCode.trim(),
       phone: phone.trim(),
-      isDefault: true, // optional: make default
+      isDefault: true,
     };
 
     const res = await fetch(`${API_BASE}/api/addresses`, {
@@ -154,32 +143,24 @@ export default function CheckoutPage() {
     });
 
     const json = await res.json().catch(() => ({} as any));
-
     if (!res.ok || !json?.success) {
       throw new Error(json?.message || "Failed to save address");
     }
 
-    return json?.data; // created address
+    return json?.data;
   };
 
   const handleContinue = async () => {
     setError("");
+
     const msg = validate();
-    if (msg) {
-      setError(msg);
-      return;
-    }
+    if (msg) return setError(msg);
 
     setSaving(true);
     try {
       let savedAddress: any = null;
+      if (saveForNextTime) savedAddress = await saveAddressToDB();
 
-      // ✅ only save if checkbox checked
-      if (saveForNextTime) {
-        savedAddress = await saveAddressToDB();
-      }
-
-      // ✅ Store checkout address in localStorage so Payment page can use it
       const checkoutAddress = {
         email,
         firstName,
@@ -197,6 +178,7 @@ export default function CheckoutPage() {
 
       localStorage.setItem("checkout_address", JSON.stringify(checkoutAddress));
 
+      // ✅ IMPORTANT: do not change ufo_order_summary here
       router.push("/payment");
     } catch (e: any) {
       setError(e?.message || "Something went wrong");
@@ -207,10 +189,9 @@ export default function CheckoutPage() {
 
   return (
     <>
-      {/* ================= HEADER ================= */}
+      {/* HEADER */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] max-w-[1160px] items-center justify-between px-4">
-          {/* Left */}
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -229,12 +210,7 @@ export default function CheckoutPage() {
 
             <div className="flex items-center gap-3">
               <div className="h-[48px] w-[48px] overflow-hidden rounded-full border border-white">
-                <Image
-                  src="/images/logo.png"
-                  alt="UFO Collection"
-                  width={48}
-                  height={48}
-                />
+                <Image src="/images/logo.png" alt="UFO Collection" width={48} height={48} />
               </div>
               <span className="text-[26px] font-semibold tracking-[0.18em] text-white">
                 UFO Collection
@@ -242,7 +218,6 @@ export default function CheckoutPage() {
             </div>
           </div>
 
-          {/* Center nav */}
           <nav className="hidden gap-10 md:flex">
             {["HOME", "COLLECTION", "ABOUT", "CONTACT"].map((item) => (
               <Link
@@ -255,13 +230,12 @@ export default function CheckoutPage() {
             ))}
           </nav>
 
-          {/* Right */}
           <button
             type="button"
             onClick={() => router.push("/cartpage")}
+            className="rounded-md p-1 hover:bg-[#12182a]"
             aria-label="Wishlist"
             title="Wishlist"
-            className="rounded-md p-1 hover:bg-[#12182a]"
           >
             <Image
               src="/images/wishlist.png"
@@ -274,19 +248,16 @@ export default function CheckoutPage() {
         </div>
       </header>
 
-      {/* ================= BODY ================= */}
+      {/* BODY */}
       <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
         <div className="mx-auto max-w-[1160px] px-4 py-10">
-          {/* Breadcrumb */}
           <div className="mb-10 text-[14px] text-[#9aa3cc]">
             Cart <span className="mx-2">/</span>
             <span className="text-white">Information</span>
           </div>
 
           <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1fr_420px]">
-            {/* ================= LEFT FORM ================= */}
             <section className="max-w-[520px]">
-              {/* Contact */}
               <h2 className="mb-4 text-[20px] font-semibold">Contact</h2>
 
               {error ? (
@@ -296,7 +267,6 @@ export default function CheckoutPage() {
               ) : null}
 
               <input
-                id="email"
                 type="email"
                 placeholder="Email"
                 value={email}
@@ -309,10 +279,7 @@ export default function CheckoutPage() {
                 Email me with news and offers
               </label>
 
-              {/* Shipping */}
-              <h2 className="mt-10 mb-4 text-[20px] font-semibold">
-                Shipping address
-              </h2>
+              <h2 className="mt-10 mb-4 text-[20px] font-semibold">Shipping address</h2>
 
               <div className="grid grid-cols-2 gap-4">
                 <input
@@ -329,14 +296,8 @@ export default function CheckoutPage() {
                 />
               </div>
 
-              {/* Country */}
-              <input
-                value="Nepal"
-                disabled
-                className="input mt-4 text-[#cfd3ff]"
-              />
+              <input value="Nepal" disabled className="input mt-4 text-[#cfd3ff]" />
 
-              {/* Province */}
               <select
                 value={provinceId}
                 onChange={(e) => {
@@ -354,7 +315,6 @@ export default function CheckoutPage() {
                 ))}
               </select>
 
-              {/* District */}
               <select
                 value={district}
                 onChange={(e) => setDistrict(e.target.value)}
@@ -371,7 +331,6 @@ export default function CheckoutPage() {
                 ))}
               </select>
 
-              {/* City / Municipality */}
               <input
                 value={cityOrMunicipality}
                 onChange={(e) => setCityOrMunicipality(e.target.value)}
@@ -380,7 +339,6 @@ export default function CheckoutPage() {
                 className="input mt-4 disabled:opacity-60"
               />
 
-              {/* AddressLine */}
               <input
                 placeholder="Address"
                 className="input mt-4"
@@ -420,7 +378,6 @@ export default function CheckoutPage() {
               </label>
             </section>
 
-            {/* ================= RIGHT ACTION ================= */}
             <aside className="flex items-end justify-end">
               <button
                 onClick={handleContinue}
@@ -432,14 +389,12 @@ export default function CheckoutPage() {
             </aside>
           </div>
 
-          {/* Footer */}
           <div className="mt-24 text-center text-[13px] text-[#8b90ad]">
             © 2025 UFO Collection — All Rights Reserved
           </div>
         </div>
       </main>
 
-      {/* Tailwind helper */}
       <style jsx>{`
         .input {
           height: 48px;

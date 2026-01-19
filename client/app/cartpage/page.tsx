@@ -14,12 +14,25 @@ type CartItem = {
   image: string;
 };
 
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
 export default function CartPage() {
   const router = useRouter();
 
   const [items, setItems] = React.useState<CartItem[]>([]);
-  const [discount, setDiscount] = React.useState("");
+  const [discount, setDiscount] = React.useState(""); // optional manual input
+  const [discountAmount, setDiscountAmount] = React.useState(0); // Rs
   const shipping = 100;
+
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "http://localhost:8080/api";
 
   // ✅ Load cart from localStorage
   React.useEffect(() => {
@@ -42,7 +55,8 @@ export default function CartPage() {
     [items]
   );
 
-  const total = subtotal + (items.length ? shipping : 0);
+  // ✅ total after discount
+  const total = Math.max(0, subtotal + (items.length ? shipping : 0) - discountAmount);
 
   const updateQty = (id: string, size: string, qty: number) => {
     const safe = Math.max(1, Math.min(99, qty || 1));
@@ -55,6 +69,67 @@ export default function CartPage() {
   const removeItem = (id: string, size: string) => {
     const next = items.filter((it) => !(it.id === id && it.size === size));
     saveCart(next);
+  };
+
+  // ✅ Auto-apply discount from backend (best collected coupon)
+  React.useEffect(() => {
+    if (!items.length) {
+      setDiscountAmount(0);
+      return;
+    }
+
+    const run = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/discounts/validate`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            couponCode: "", // backend decides best (or returns 0 if none collected)
+            items: items.map((i) => ({
+              productId: i.id,
+              qty: i.qty,
+            })),
+            shippingPaisa: shipping * 100,
+          }),
+        });
+
+        const json = await safeJson(res);
+        const dp = Number(json?.data?.discountPaisa || 0);
+        setDiscountAmount(Math.round(dp / 100)); // paisa -> Rs
+      } catch {
+        setDiscountAmount(0);
+      }
+    };
+
+    run();
+  }, [API_BASE, items]);
+
+  // ✅ Optional: manual apply with discount input
+  const applyManualCoupon = async () => {
+    if (!items.length) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/discounts/validate`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          couponCode: discount.trim(),
+          items: items.map((i) => ({
+            productId: i.id,
+            qty: i.qty,
+          })),
+          shippingPaisa: shipping * 100,
+        }),
+      });
+
+      const json = await safeJson(res);
+      const dp = Number(json?.data?.discountPaisa || 0);
+      setDiscountAmount(Math.round(dp / 100));
+    } catch {
+      // ignore
+    }
   };
 
   return (
@@ -178,12 +253,7 @@ export default function CartPage() {
                     <div className="hidden md:grid grid-cols-[1.2fr_0.6fr_0.9fr_0.6fr_0.25fr] items-center gap-4">
                       <div className="flex items-center gap-4">
                         <div className="relative h-[46px] w-[46px] overflow-hidden rounded-full border border-[#2b2f45]">
-                          <Image
-                            src={it.image}
-                            alt={it.name}
-                            fill
-                            className="object-cover"
-                          />
+                          <Image src={it.image} alt={it.name} fill className="object-cover" />
                         </div>
                         <span>{it.name}</span>
                       </div>
@@ -191,10 +261,7 @@ export default function CartPage() {
                       <span>{it.size}</span>
 
                       <div className="flex justify-center">
-                        <label
-                          htmlFor={`qty-${it.id}-${it.size}`}
-                          className="sr-only"
-                        >
+                        <label htmlFor={`qty-${it.id}-${it.size}`} className="sr-only">
                           Quantity for {it.name}
                         </label>
                         <input
@@ -203,11 +270,7 @@ export default function CartPage() {
                           min={1}
                           max={99}
                           value={it.qty}
-                          onChange={(e) =>
-                            updateQty(it.id, it.size, Number(e.target.value))
-                          }
-                          aria-label={`Quantity for ${it.name}`}
-                          title={`Quantity for ${it.name}`}
+                          onChange={(e) => updateQty(it.id, it.size, Number(e.target.value))}
                           className="w-[80px] rounded border border-[#3a3f58] bg-transparent px-3 py-2 text-white"
                         />
                       </div>
@@ -217,8 +280,6 @@ export default function CartPage() {
                       <button
                         type="button"
                         onClick={() => removeItem(it.id, it.size)}
-                        aria-label={`Remove ${it.name}`}
-                        title={`Remove ${it.name}`}
                         className="flex justify-center"
                       >
                         <Image
@@ -234,49 +295,27 @@ export default function CartPage() {
                     {/* Mobile Row */}
                     <div className="md:hidden flex gap-4">
                       <div className="relative h-[62px] w-[62px] overflow-hidden rounded-[12px] border border-[#2b2f45]">
-                        <Image
-                          src={it.image}
-                          alt={it.name}
-                          fill
-                          className="object-cover"
-                        />
+                        <Image src={it.image} alt={it.name} fill className="object-cover" />
                       </div>
 
                       <div className="flex-1">
                         <div className="font-medium">{it.name}</div>
-                        <div className="mt-1 text-[#9aa3cc] text-sm">
-                          Size: {it.size}
-                        </div>
-                        <div className="mt-1 text-[#9aa3cc] text-sm">
-                          Price: Rs. {it.price}
-                        </div>
+                        <div className="mt-1 text-[#9aa3cc] text-sm">Size: {it.size}</div>
+                        <div className="mt-1 text-[#9aa3cc] text-sm">Price: Rs. {it.price}</div>
 
                         <div className="mt-3 flex items-center gap-3">
-                          <label
-                            htmlFor={`qty-m-${it.id}-${it.size}`}
-                            className="sr-only"
-                          >
-                            Quantity for {it.name}
-                          </label>
                           <input
-                            id={`qty-m-${it.id}-${it.size}`}
                             type="number"
                             min={1}
                             max={99}
                             value={it.qty}
-                            onChange={(e) =>
-                              updateQty(it.id, it.size, Number(e.target.value))
-                            }
-                            aria-label={`Quantity for ${it.name}`}
-                            title={`Quantity for ${it.name}`}
+                            onChange={(e) => updateQty(it.id, it.size, Number(e.target.value))}
                             className="w-[90px] rounded border border-[#3a3f58] bg-transparent px-3 py-2 text-white"
                           />
 
                           <button
                             type="button"
                             onClick={() => removeItem(it.id, it.size)}
-                            aria-label={`Remove ${it.name}`}
-                            title={`Remove ${it.name}`}
                             className="rounded border border-[#2b2f45] px-3 py-2 text-sm text-white"
                           >
                             Remove
@@ -293,18 +332,29 @@ export default function CartPage() {
                 <h2 className="text-[22px] font-semibold">Order Summary</h2>
 
                 <div className="mt-6 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6">
-                  <label htmlFor="discount-code" className="sr-only">
-                    Discount code
-                  </label>
-                  <input
-                    id="discount-code"
-                    value={discount}
-                    onChange={(e) => setDiscount(e.target.value)}
-                    placeholder="Discount code"
-                    aria-label="Discount code"
-                    title="Discount code"
-                    className="w-full rounded-[10px] border border-[#2b2f45] bg-[#070a12] px-4 py-3 text-white placeholder:text-[#7c86b1]"
-                  />
+                  <div className="flex gap-3">
+                    <input
+                      value={discount}
+                      onChange={(e) => setDiscount(e.target.value)}
+                      placeholder="Discount code (optional)"
+                      className="w-full rounded-[10px] border border-[#2b2f45] bg-[#070a12] px-4 py-3 text-white placeholder:text-[#7c86b1]"
+                    />
+                    <button
+                      type="button"
+                      onClick={applyManualCoupon}
+                      className="rounded-[10px] border border-[#2b2f45] bg-white/5 px-4 text-sm hover:bg-white/10"
+                    >
+                      Apply
+                    </button>
+                  </div>
+
+                  <div className="mt-3 text-[12px] text-[#9aa3cc]">
+                    Tip: Collect coupons from{" "}
+                    <Link href="/discounts" className="underline text-white">
+                      Discounts
+                    </Link>{" "}
+                    and they will auto-apply here.
+                  </div>
 
                   <div className="mt-8 space-y-4 text-[#9aa3cc]">
                     <div className="flex justify-between">
@@ -313,8 +363,14 @@ export default function CartPage() {
                     </div>
                     <div className="flex justify-between">
                       <span>Shipping</span>
-                      <span className="text-white">Rs. {shipping}</span>
+                      <span className="text-white">Rs. {items.length ? shipping : 0}</span>
                     </div>
+
+                    <div className="flex justify-between">
+                      <span>Discount</span>
+                      <span className="text-green-400">- Rs. {discountAmount}</span>
+                    </div>
+
                     <div className="flex justify-between">
                       <span>Total</span>
                       <span className="text-white">Rs. {total}</span>
@@ -324,21 +380,20 @@ export default function CartPage() {
                   <button
                     type="button"
                     onClick={() => {
-  const orderSummary = {
-    subtotal,
-    shipping: items.length ? shipping : 0,
-    total,
-    currency: "NPR",
-    updatedAt: new Date().toISOString(),
-  };
+                      const orderSummary = {
+                        subtotal,
+                        shipping: items.length ? shipping : 0,
+                        discount: discountAmount,
+                        total,
+                        currency: "NPR",
+                        updatedAt: new Date().toISOString(),
+                        couponCode: discount.trim() || null,
+                      };
 
-  localStorage.setItem("ufo_order_summary", JSON.stringify(orderSummary));
-  router.push("/checkout");
-}}
-
+                      localStorage.setItem("ufo_order_summary", JSON.stringify(orderSummary));
+                      router.push("/checkout");
+                    }}
                     className="mt-8 w-full rounded-[10px] bg-[#1f7cff] py-3 font-semibold"
-                    aria-label="Proceed to checkout"
-                    title="Proceed to checkout"
                   >
                     Proceed to Checkout
                   </button>

@@ -52,15 +52,37 @@ const shippingSchema = new Schema(
   { _id: false }
 );
 
+// ✅ Coupon snapshot schema (NEW)
+const couponSchema = new Schema(
+  {
+    code: { type: String, trim: true, default: "" },
+    title: { type: String, trim: true, default: "" },
+    type: { type: String, trim: true, default: "" },  // PERCENT | FLAT | FREESHIP
+    scope: { type: String, trim: true, default: "" }, // ALL | CATEGORY | PRODUCT
+    value: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
 const orderSchema = new Schema(
   {
     orderCode: { type: String, required: true, unique: true, index: true },
-    customer: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    customer: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
 
     items: { type: [orderItemSchema], default: [] },
 
     subtotalPaisa: { type: Number, default: 0, min: 0 },
     shippingPaisa: { type: Number, default: 0, min: 0 },
+
+    // ✅ NEW: discount fields
+    discountPaisa: { type: Number, default: 0, min: 0 },
+    coupon: { type: couponSchema, required: false, default: null },
+
     totalPaisa: { type: Number, default: 0, min: 0 },
 
     paymentMethod: {
@@ -93,4 +115,5 @@ const orderSchema = new Schema(
 
 orderSchema.index({ createdAt: -1 });
 
-export const Order = mongoose.models.Order || mongoose.model("Order", orderSchema);
+export const Order =
+  mongoose.models.Order || mongoose.model("Order", orderSchema);

@@ -44,8 +44,7 @@ export default function ThankYouPage() {
     to.setDate(today.getDate() + 4);
 
     const sameMonth =
-      from.getMonth() === to.getMonth() &&
-      from.getFullYear() === to.getFullYear();
+      from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
 
     if (sameMonth) {
       // Example: "January 5–6, 2026"
@@ -72,9 +71,6 @@ export default function ThankYouPage() {
     return `Rs. ${(safe / 100).toFixed(2)}`;
   };
 
-  // -------------------------------
-  // LOAD LOCAL STORAGE DATA
-  // -------------------------------
   React.useEffect(() => {
     try {
       const pm = localStorage.getItem("ufo_payment_method") || "";
@@ -94,19 +90,11 @@ export default function ThankYouPage() {
       const on = localStorage.getItem("ufo_last_order_number");
       if (on) setOrderNumber(on);
 
-      // IMPORTANT: this must match what you saved on PaymentPage
-      // Example: localStorage.setItem("ufo_last_order_id", createdOrder.id);
-      const oid =
-        localStorage.getItem("ufo_last_order_id") ||
-        localStorage.getItem("ufo_last_orderId") || // backup if you used different key accidentally
-        "";
+      const oid = localStorage.getItem("ufo_last_order_id");
       if (oid) setOrderId(oid);
     } catch {}
   }, []);
 
-  // -------------------------------
-  // VERIFY PAYMENT (KHALTI)
-  // -------------------------------
   React.useEffect(() => {
     // ✅ No pidx => treat as success (COD / eSewa)
     if (!pidx) {
@@ -141,69 +129,26 @@ export default function ThankYouPage() {
 
         setVerifyState("failed");
         setVerifyMsg("Payment not completed.");
-        router.replace(
-          `/payment?status=failed&pidx=${encodeURIComponent(pidx)}`
-        );
+        router.replace(`/payment?status=failed&pidx=${encodeURIComponent(pidx)}`);
       } catch {
         setVerifyState("failed");
         setVerifyMsg("Payment verification failed.");
-        router.replace(
-          `/payment?status=failed&pidx=${encodeURIComponent(pidx)}`
-        );
+        router.replace(`/payment?status=failed&pidx=${encodeURIComponent(pidx)}`);
       }
     };
 
     verifyKhalti();
   }, [pidx, apiBase, router]);
 
-  // -------------------------------
-  // VIEW ORDER (always open /customerorderdetails/[orderId])
-  // -------------------------------
-  const handleViewOrder = async () => {
-    try {
-      // 1) if orderId exists -> go directly
-      if (orderId) {
-        router.push(`/customerorderdetails/${encodeURIComponent(orderId)}`);
-        return;
-      }
-
-      // 2) if orderId missing BUT pidx exists -> try to get orderId from backend
-      // You need to implement this endpoint if you want this fallback:
-      // POST /api/orders/by-khalti-pidx  body: { pidx } -> { orderId }
-      if (pidx) {
-        const res = await fetch(joinUrl(apiBase, "/orders/by-khalti-pidx"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ pidx }),
-        });
-
-        const data = await res.json().catch(() => ({} as any));
-        const oid = data?.orderId;
-
-        if (res.ok && oid) {
-          setOrderId(String(oid));
-          try {
-            localStorage.setItem("ufo_last_order_id", String(oid));
-          } catch {}
-          router.push(`/customerorderdetails/${encodeURIComponent(String(oid))}`);
-          return;
-        }
-      }
-
-      // 3) fallback -> order history
+  const handleViewOrder = () => {
+    if (!orderId) {
       alert("Order ID not found. Please check Order History.");
-      router.push("/order-history");
-    } catch (err) {
-      console.error(err);
-      alert("Something went wrong while opening your order.");
-      router.push("/order-history");
+      router.push("/order-history"); // change to your actual page if different
+      return;
     }
+    router.push(`/customerorderdetails/${encodeURIComponent(orderId)}`);
   };
 
-  // -------------------------------
-  // UI STATES
-  // -------------------------------
   if (verifyState === "checking") {
     return (
       <main className="min-h-screen bg-[#070a12] text-white flex items-center justify-center px-4">
@@ -235,9 +180,6 @@ export default function ThankYouPage() {
     );
   }
 
-  // -------------------------------
-  // SUCCESS PAGE
-  // -------------------------------
   return (
     <>
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
@@ -365,8 +307,7 @@ export default function ThankYouPage() {
 
             {paymentMethod ? (
               <p className="mt-4 text-[13px] text-[#93a0c8]">
-                Payment Method:{" "}
-                <span className="text-white">{paymentMethod}</span>
+                Payment Method: <span className="text-white">{paymentMethod}</span>
               </p>
             ) : null}
 
@@ -375,9 +316,6 @@ export default function ThankYouPage() {
                 Khalti Ref: <span className="text-white">{pidx}</span>
               </p>
             ) : null}
-
-            {/* ✅ debug (remove later) */}
-            {/* <p className="mt-2 text-[12px] text-[#6f7aa6]">orderId: {orderId || "(empty)"}</p> */}
           </div>
 
           <div className="mx-auto mt-12 max-w-[920px] text-left">
@@ -399,9 +337,7 @@ export default function ThankYouPage() {
 
               <div className="grid grid-cols-[220px_1fr] py-6 max-sm:grid-cols-1 max-sm:gap-2">
                 <div className="text-[14px] text-[#9aa3cc]">Total</div>
-                <div className="text-[14px] text-white">
-                  {formatNPR(totalPaisa)}
-                </div>
+                <div className="text-[14px] text-white">{formatNPR(totalPaisa)}</div>
               </div>
             </div>
           </div>

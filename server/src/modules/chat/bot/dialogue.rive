@@ -1,0 +1,58 @@
+! version = 2.0
+
+// ---------- ORDER TRACKING ----------
++ (track my order|order tracking|where is my order|track order)
+- Please open Profile → Order Tracking and enter your tracking number.
+- Go to Profile → Order History to view your order status.
+
++ (order status|my order status|status of my order)
+- Profile → Order History मा गएर आफ्नो order status हेर्न सक्नुहुन्छ।
+
++ (order tracking kasari|order track kasari|mero order kaha cha|mero order track)
+- Profile → Order Tracking मा गएर tracking number राख्नुहोस्।
+- Profile → Order History मा गएर order status हेर्नुहोस्।
+
+// ---------- DELIVERY ----------
++ (delivery time|when will it arrive|estimated delivery|shipping time)
+- Delivery time depends on your location. Usually 2–5 days inside valley and 4–7 days outside valley.
+- If you share your city/district, I can guide typical delivery time.
+
++ (delivery kati din|delivery time kati|kahile aaucha|delivery kahile aaucha)
+- Location अनुसार फरक पर्छ। Valley भित्र 2–5 दिन, valley बाहिर 4–7 दिन लाग्न सक्छ।
+
+// ---------- RETURNS / REFUNDS ----------
++ (return policy|refund policy|i want to return|return item|exchange)
+- Returns are allowed if unused and in original packaging (within your return window). If damaged/wrong item, please open a customer ticket.
+- Share your Order ID and issue (size/defect/wrong item) and I’ll guide next steps.
+
++ (return kasari|refund kasari|exchange kasari|mal saman return)
+- Return/Refund का लागि Order ID चाहिन्छ। कृपया Order ID र issue लेख्नुहोस् (size/defect/wrong item)।
+
+// ---------- PAYMENTS ----------
++ (esewa|khalti|fonepay|payment methods|payment)
+- We support eSewa and Khalti (and other available options). If payment failed, share your Order ID and wallet name.
+
++ (esewa problem|khalti problem|payment failed|payment problem)
+- Please share your Order ID and which wallet you used. I’ll guide you.
+
++ (esewa chalena|khalti chalena|payment vayena|payment fail)
+- कृपया Order ID र कुन wallet प्रयोग गर्नुभयो (eSewa/Khalti) लेख्नुहोस्। म help गर्छु।
+
+// ---------- SIZE HELP ----------
++ (size help|which size|size guide|size)
+- For best fit: go to Profile → update height/weight. Your recommended size will show there.
+
++ (size kasari thaha paune|kun size|size guide cha|size help)
+- Profile मा गएर height/weight update गर्नुहोस्। Recommended size त्यहीँ देखिन्छ।
+
+// ---------- ESCALATE ----------
++ (talk to human|talk to agent|live agent|customer care|agent)
+- Okay — please open “Live Agent Chat” from your Profile menu. An agent will respond soon.
+
++ (manche sanga kura|agent sanga kura|support agent|customer care)
+- ठीक छ — Profile menu बाट “Live Agent Chat” खोल्नुहोस्। Agent ले छिट्टै reply गर्छ।
+
+// ---------- FALLBACK ----------
++ *
+- I’m not sure yet. Ask about order tracking, delivery, returns, payments, or size. Or request a live agent.
+- Tapai le order, delivery, return, payment, size bare sodhna saknuhuncha — athawa live agent magnuहोस्।
