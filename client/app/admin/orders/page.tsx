@@ -6,7 +6,7 @@ import Link from "next/link";
 type PaymentStatus = "Paid" | "Pending" | "Failed";
 type OrderStatus = "Delivered" | "Shipped" | "Pending" | "Cancelled";
 
-// ✅ NEW
+// ✅ Payment method types (kept same)
 type PaymentMethod =
   | "eSewa"
   | "Khalti"
@@ -30,21 +30,18 @@ type OrderRow = {
     email?: string;
   };
 
-  // fallback if your backend still sends these directly
   customerName?: string;
   customerEmail?: string;
 
-  // ✅ NEW (preferred from backend)
   paymentMethod?: PaymentMethod | string;
 
-  // ✅ OPTIONAL fallbacks if backend sends nested info
   payment?: {
     method?: PaymentMethod | string;
     provider?: string;
     gateway?: string;
   };
 
-  paymentProvider?: string; // another common backend field
+  paymentProvider?: string;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
@@ -67,18 +64,16 @@ function formatNPR(paisa: number) {
   return `Rs. ${(safe / 100).toFixed(2)}`;
 }
 
-// ✅ NEW: normalize payment method from whatever backend returns
+// ✅ normalize payment method from any backend shape
 function normalizePaymentMethod(v?: string) {
   const s = (v || "").toLowerCase().trim();
-
   if (!s) return "—";
-
   if (s.includes("esewa") || s === "e-sewa") return "eSewa";
   if (s.includes("khalti")) return "Khalti";
   if (s.includes("cod") || s.includes("cash")) return "Cash on Delivery";
-  if (s.includes("card") || s.includes("visa") || s.includes("master")) return "Card";
+  if (s.includes("card") || s.includes("visa") || s.includes("master"))
+    return "Card";
   if (s.includes("bank") || s.includes("transfer")) return "Bank Transfer";
-
   return "Other";
 }
 
@@ -88,9 +83,13 @@ export default function OrdersPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
 
+  // ✅ per-row downloading state
+  const [downloadingId, setDownloadingId] = React.useState<string>("");
+
   const load = React.useCallback(async (search: string) => {
     setLoading(true);
     setError("");
+
     try {
       const res = await fetch(
         `${API_BASE}/api/admin/orders?search=${encodeURIComponent(search)}`,
@@ -123,6 +122,45 @@ export default function OrdersPage() {
     return () => clearTimeout(t);
   }, [q, load]);
 
+  // ✅ NEW: Download invoice PDF (Admin)
+  const downloadInvoice = async (orderId: string, orderCode?: string) => {
+    try {
+      setDownloadingId(orderId);
+
+      // You can use Mongo _id OR orderCode.
+      // Using _id is safest for admin.
+      const target = encodeURIComponent(orderId);
+
+      const res = await fetch(`${API_BASE}/api/orders/${target}/invoice`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || "Failed to download invoice");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const fileBase = (orderCode || orderId || "invoice").replace("#", "");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoice-${fileBase}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Failed to download invoice");
+    } finally {
+      setDownloadingId("");
+    }
+  };
+
   return (
     <div className="space-y-5">
       <h1 className="text-3xl font-extrabold tracking-tight">Orders</h1>
@@ -144,16 +182,13 @@ export default function OrdersPage() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-700/50 bg-[#0A1324]">
         <div className="overflow-x-auto">
-          <table className="min-w-[1220px] w-full border-collapse">
+          <table className="min-w-[1320px] w-full border-collapse">
             <thead className="bg-slate-900/30">
               <tr className="text-left text-sm font-semibold text-slate-200">
                 <th className="px-6 py-4">Order ID</th>
                 <th className="px-6 py-4">Customer</th>
                 <th className="px-6 py-4">Total</th>
-
-                {/* ✅ NEW COLUMN */}
                 <th className="px-6 py-4">Payment Method</th>
-
                 <th className="px-6 py-4">Payment Status</th>
                 <th className="px-6 py-4">Order Status</th>
                 <th className="px-6 py-4">Created</th>
@@ -181,7 +216,6 @@ export default function OrdersPage() {
                     ? (o.totalPaisa as number)
                     : Math.round(Number(o.total || 0) * 100);
 
-                  // ✅ NEW: compute payment method from multiple possible fields
                   const methodRaw =
                     (o.paymentMethod as string) ||
                     (o.payment?.method as string) ||
@@ -192,6 +226,8 @@ export default function OrdersPage() {
 
                   const methodLabel = normalizePaymentMethod(methodRaw);
 
+                  const downloading = downloadingId === o.id;
+
                   return (
                     <tr
                       key={o.id}
@@ -201,14 +237,17 @@ export default function OrdersPage() {
 
                       <td className="px-6 py-5">
                         <div className="space-y-1">
-                          <div className="font-semibold text-slate-200">{cname}</div>
+                          <div className="font-semibold text-slate-200">
+                            {cname}
+                          </div>
                           <div className="text-slate-400">{cemail}</div>
                         </div>
                       </td>
 
-                      <td className="px-6 py-5 text-slate-300">{formatNPR(paisa)}</td>
+                      <td className="px-6 py-5 text-slate-300">
+                        {formatNPR(paisa)}
+                      </td>
 
-                      {/* ✅ NEW CELL */}
                       <td className="px-6 py-5">
                         <Pill>{methodLabel}</Pill>
                       </td>
@@ -232,13 +271,27 @@ export default function OrdersPage() {
                         >
                           View
                         </Link>
+
                         <span className="mx-2 text-slate-500">/</span>
+
                         <Link
                           href={`/admin/orders/${o.id}/update`}
                           className="font-semibold text-slate-200 hover:text-slate-100"
                         >
                           Update
                         </Link>
+
+                        <span className="mx-2 text-slate-500">/</span>
+
+                        {/* ✅ NEW: Download Invoice */}
+                        <button
+                          type="button"
+                          onClick={() => downloadInvoice(o.id, o.orderCode)}
+                          disabled={downloading}
+                          className="font-semibold text-slate-200 hover:text-slate-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {downloading ? "Downloading..." : "Invoice"}
+                        </button>
                       </td>
                     </tr>
                   );

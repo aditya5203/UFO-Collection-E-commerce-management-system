@@ -5,6 +5,7 @@ import {
   customerAuthMiddleware,
   adminAuthMiddleware,
   authorize,
+  anyAuthMiddleware, // ✅ NEW
 } from "../../auth/middleware/auth.middleware";
 import { orderController } from "../controllers/order.controller";
 
@@ -67,11 +68,7 @@ const adminRouter = Router();
  *       401:
  *         description: Unauthorized
  */
-publicRouter.post(
-  "/",
-  customerAuthMiddleware,
-  orderController.create
-);
+publicRouter.post("/", customerAuthMiddleware, orderController.create);
 
 /**
  * @swagger
@@ -87,11 +84,7 @@ publicRouter.post(
  *       401:
  *         description: Unauthorized
  */
-publicRouter.get(
-  "/my",
-  customerAuthMiddleware,
-  orderController.getMyOrders
-);
+publicRouter.get("/my", customerAuthMiddleware, orderController.getMyOrders);
 
 /**
  * @swagger
@@ -141,10 +134,16 @@ publicRouter.get(
  *       404:
  *         description: Order not found
  */
-publicRouter.get(
-  "/track/:code",
-  orderController.track
-);
+publicRouter.get("/track/:code", orderController.track);
+
+/**
+ * ✅ NEW: Download Invoice PDF (Admin OR Customer)
+ * GET /api/orders/:id/invoice
+ *
+ * - Admin can download any order invoice
+ * - Customer can download only their own invoice
+ */
+publicRouter.get("/:id/invoice", anyAuthMiddleware, orderController.downloadInvoice);
 
 /* ------------------------------------------------------------------
  * ✅ ADMIN Endpoints

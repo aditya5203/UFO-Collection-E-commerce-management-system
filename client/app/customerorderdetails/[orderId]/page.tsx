@@ -80,6 +80,16 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   );
 }
 
+// ✅ NEW: extract filename from Content-Disposition header
+function getFilenameFromDisposition(disposition: string | null) {
+  if (!disposition) return "";
+  // examples:
+  // attachment; filename="INV-2026-#123456.pdf"
+  const m = disposition.match(/filename\*?=(?:UTF-8''|")?([^";\n]+)"?/i);
+  if (!m?.[1]) return "";
+  return decodeURIComponent(m[1]);
+}
+
 export default function CustomerOrderDetailsPage() {
   const router = useRouter();
   const params = useParams<{ orderId: string }>();
@@ -88,6 +98,10 @@ export default function CustomerOrderDetailsPage() {
   const [order, setOrder] = React.useState<Order | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+
+  // ✅ NEW: invoice download state
+  const [invoiceLoading, setInvoiceLoading] = React.useState(false);
+  const [invoiceError, setInvoiceError] = React.useState<string | null>(null);
 
   // Review modal state
   const [reviewOpen, setReviewOpen] = React.useState(false);
@@ -220,6 +234,49 @@ export default function CustomerOrderDetailsPage() {
     }
   };
 
+  // ✅ NEW: download invoice (PDF)
+  const downloadInvoice = async () => {
+    try {
+      setInvoiceLoading(true);
+      setInvoiceError(null);
+
+      const idOrCode = order?.orderId || orderIdFromUrl;
+      if (!idOrCode) throw new Error("Order id not found");
+
+      const res = await fetch(
+        `${API}/orders/${encodeURIComponent(idOrCode)}/invoice`,
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || "Failed to download invoice");
+      }
+
+      const blob = await res.blob();
+
+      const dispo = res.headers.get("content-disposition");
+      const filename =
+        getFilenameFromDisposition(dispo) || `invoice-${idOrCode}.pdf`;
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setInvoiceError(e?.message || "Invoice download failed");
+    } finally {
+      setInvoiceLoading(false);
+    }
+  };
+
   return (
     <>
       {/* HEADER */}
@@ -322,8 +379,27 @@ export default function CustomerOrderDetailsPage() {
                     {order.orderId}
                   </span>
                 </span>
+
                 <StatusBadge status={order.status} />
+
+                {/* ✅ NEW: Download Invoice button */}
+                <button
+                  type="button"
+                  onClick={downloadInvoice}
+                  disabled={invoiceLoading}
+                  className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#2b2f45] bg-[#0b0f1a]/60 px-4 py-2 text-[12px] font-semibold text-white hover:bg-white hover:text-[#050611] disabled:opacity-60 disabled:cursor-not-allowed"
+                  title="Download Invoice PDF"
+                >
+                  {invoiceLoading ? "Downloading..." : "Download Invoice (PDF)"}
+                </button>
               </div>
+
+              {/* ✅ NEW: Invoice error UI */}
+              {invoiceError ? (
+                <div className="mt-4 rounded-[12px] border border-red-500/40 bg-red-500/10 p-4 text-red-200 text-sm">
+                  {invoiceError}
+                </div>
+              ) : null}
 
               <div className="mt-6 h-px bg-[#2b2f45]" />
 
@@ -543,11 +619,15 @@ export default function CustomerOrderDetailsPage() {
                   <div className="space-y-4 text-[#9aa3cc]">
                     <div className="flex justify-between">
                       <span>Subtotal</span>
-                      <span className="text-white">Rs. {order.summary.subtotal}</span>
+                      <span className="text-white">
+                        Rs. {order.summary.subtotal}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Shipping</span>
-                      <span className="text-white">Rs. {order.summary.shipping}</span>
+                      <span className="text-white">
+                        Rs. {order.summary.shipping}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span>Taxes</span>

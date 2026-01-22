@@ -44,6 +44,11 @@ export const authService = {
   // ---------- Register new user (email/password) ----------
   registerUser: async (userData: RegisterDto) => {
     const email = String(userData.email || "").trim().toLowerCase();
+    const name = String(userData.name || "").trim();
+
+    if (!email || !name || !userData.password) {
+      throw new AppError("Email, password, and name are required", 400);
+    }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -68,7 +73,7 @@ export const authService = {
     // ✅ IMPORTANT: DO NOT HASH HERE (your UserSchema.pre("save") will hash)
     const user = new User({
       email,
-      name: userData.name,
+      name,
       password: userData.password, // ✅ plain here → pre-save hook hashes it
       address: userData.address,
       role: "customer",
@@ -123,6 +128,7 @@ export const authService = {
     avatar?: string;
   }) => {
     const email = String(payload.email || "").trim().toLowerCase();
+    const name = String(payload.name || "").trim();
 
     let user = await User.findOne({ email });
 
@@ -136,7 +142,7 @@ export const authService = {
     if (!user) {
       user = new User({
         email,
-        name: payload.name,
+        name,
         provider: "google",
         providerId: payload.providerId,
         avatar: payload.avatar,
@@ -178,8 +184,8 @@ export const authService = {
     const user = await User.findById(userId);
     if (!user) throw new AppError("User not found", 404);
 
-    if (data.name !== undefined) user.name = data.name;
-    if (data.address !== undefined) user.address = data.address;
+    if (data.name !== undefined) user.name = String(data.name).trim();
+    if (data.address !== undefined) user.address = String(data.address).trim();
 
     if (data.height !== undefined && data.height !== null) {
       const h = Number(data.height);
@@ -209,13 +215,15 @@ export const authService = {
     if (existingSuperAdmin) throw new AppError("Superadmin already exists", 409);
 
     const email = String(userData.email || "").trim().toLowerCase();
+    const name = String(userData.name || "").trim();
+
     const existingUser = await User.findOne({ email });
     if (existingUser) throw new AppError("User with this email already exists", 409);
 
     // ✅ IMPORTANT: DO NOT HASH HERE (pre-save hook will hash)
     const superAdmin = new User({
       email,
-      name: userData.name,
+      name,
       password: userData.password, // plain → hashed by hook
       role: "superadmin",
       provider: "credentials",

@@ -52,7 +52,7 @@ const shippingSchema = new Schema(
   { _id: false }
 );
 
-// ✅ Coupon snapshot schema (NEW)
+// ✅ Coupon snapshot schema
 const couponSchema = new Schema(
   {
     code: { type: String, trim: true, default: "" },
@@ -79,7 +79,7 @@ const orderSchema = new Schema(
     subtotalPaisa: { type: Number, default: 0, min: 0 },
     shippingPaisa: { type: Number, default: 0, min: 0 },
 
-    // ✅ NEW: discount fields
+    // ✅ Discount fields
     discountPaisa: { type: Number, default: 0, min: 0 },
     coupon: { type: couponSchema, required: false, default: null },
 
@@ -109,6 +109,10 @@ const orderSchema = new Schema(
 
     shipping: { type: shippingSchema, required: false, default: null },
     address: { type: addressSchema, required: false, default: null },
+
+    // ✅ NEW: Invoice fields
+    invoiceNo: { type: String, default: null },
+    invoiceSentAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

@@ -19,6 +19,10 @@ export interface IUser extends Document {
   providerId?: string;
   avatar?: string;
 
+  // ✅ Password reset fields
+  resetPasswordTokenHash?: string | null;
+  resetPasswordExpires?: Date | null;
+
   createdAt: Date;
   updatedAt: Date;
 
@@ -81,13 +85,16 @@ const UserSchema = new Schema<IUser>(
 
     providerId: { type: String },
     avatar: { type: String },
+
+    // ✅ Password reset
+    resetPasswordTokenHash: { type: String, default: null },
+    resetPasswordExpires: { type: Date, default: null },
   },
   { timestamps: true }
 );
 
 /**
  * ✅ FIXED: async pre hook WITHOUT next()
- * (removes TS SaveOptions overload issue)
  */
 UserSchema.pre("save", async function () {
   const user = this as IUser;
@@ -113,9 +120,6 @@ UserSchema.methods.toJSON = function () {
   delete userObject.password;
   return userObject;
 };
-
-// ✅ email already has unique: true, this index is optional (safe to remove)
-// UserSchema.index({ email: 1 }, { unique: true });
 
 // ✅ avoid OverwriteModelError in dev
 export const User =

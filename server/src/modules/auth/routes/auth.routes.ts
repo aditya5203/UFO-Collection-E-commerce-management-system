@@ -11,7 +11,7 @@ const router = Router();
  * /api/auth/register:
  *   post:
  *     summary: Register a new user
- *     description: Create a new user account
+ *     description: Create a new user account (also sends a Welcome email after successful registration)
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -48,7 +48,7 @@ const router = Router();
  *                 description: Weight in kilograms
  *     responses:
  *       201:
- *         description: User successfully registered
+ *         description: User successfully registered (welcome email is sent)
  *         content:
  *           application/json:
  *             schema:
@@ -132,6 +132,72 @@ router.post("/register", authController.register);
  *               $ref: '#/components/schemas/Error'
  */
 router.post("/login", authController.login);
+
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Forgot password
+ *     description: Sends password reset link to email (always returns success to prevent user enumeration)
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *     responses:
+ *       200:
+ *         description: Reset link sent (if user exists)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ */
+router.post("/forgot-password", authController.forgotPassword);
+
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Reset password
+ *     description: Resets password using token from reset email
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - token
+ *               - password
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 example: 9c4f5d...
+ *               password:
+ *                 type: string
+ *                 example: NewPassword123
+ *     responses:
+ *       200:
+ *         description: Password reset successful
+ *       400:
+ *         description: Invalid or expired token
+ */
+router.post("/reset-password", authController.resetPassword);
 
 /**
  * @swagger
@@ -225,8 +291,7 @@ router.get(
   "/google/callback",
   passport.authenticate("google", {
     session: false,
-    failureRedirect:
-      process.env.CLIENT_BASE_URL || "http://localhost:3000/login",
+    failureRedirect: process.env.CLIENT_BASE_URL || "http://localhost:3000/login",
   }),
   authController.googleCallback
 );

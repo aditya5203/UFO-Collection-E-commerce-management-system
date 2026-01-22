@@ -9,6 +9,9 @@ import { Address } from "../../../models/Address.model";
 // ✅ NEW: discount service
 import discountService from "../../discounts/services/discount.service";
 
+// ✅ NEW: invoice workflow
+import { maybeSendInvoiceForOrder } from "../../../services/invoiceWorkflow.service";
+
 type ListInput = {
   search?: string;
   customerId?: string;
@@ -266,6 +269,12 @@ export const orderService = {
 
     const estimatedDelivery = computeEstimatedDeliveryRange();
 
+    // ✅ IMPORTANT: paymentStatus logic
+    // - COD: Pending (or can set Paid if you want later)
+    // - Khalti/eSewa: your frontend may already verify, but safe default is Pending
+    const initialPaymentStatus: "Paid" | "Pending" | "Failed" =
+      body.paymentMethod === "COD" ? "Pending" : "Pending";
+
     const payload: any = {
       orderCode,
       customer: new mongoose.Types.ObjectId(userId),
@@ -274,14 +283,13 @@ export const orderService = {
       subtotalPaisa,
       shippingPaisa,
 
-      // ✅ NEW: discount snapshot
       discountPaisa,
       coupon: couponSnapshot || null,
 
       totalPaisa,
 
       paymentMethod: body.paymentMethod,
-      paymentStatus: "Pending",
+      paymentStatus: initialPaymentStatus,
       orderStatus: "Pending",
       paymentRef: body.paymentRef || null,
 
@@ -290,6 +298,10 @@ export const orderService = {
         method: "Standard Shipping",
         estimatedDelivery,
       },
+
+      // ✅ invoice fields default (if in schema)
+      invoiceNo: null,
+      invoiceSentAt: null,
     };
 
     const doc: any = await Order.create(payload);
@@ -297,6 +309,15 @@ export const orderService = {
     // ✅ Mark coupon used ONLY after order success
     if (userCouponId) {
       await discountService.markUsed(userCouponId, String(doc._id));
+    }
+
+    // ✅ AUTO SEND INVOICE:
+    // COD -> send immediately
+    // Online -> send only when Paid (so here it will not send unless Paid)
+    try {
+      await maybeSendInvoiceForOrder(String(doc._id));
+    } catch (e: any) {
+      console.log("Invoice send failed (ignored):", e?.message);
     }
 
     return {
@@ -362,6 +383,8 @@ export const orderService = {
           }
         : { id: "", name: "", email: "" },
       shipping: o.shipping || null,
+      invoiceNo: o.invoiceNo || null,
+      invoiceSentAt: o.invoiceSentAt || null,
     }));
   },
 
@@ -402,6 +425,16 @@ export const orderService = {
       .lean();
 
     if (!updated) return null;
+
+    // ✅ If paymentStatus is updated to Paid, send invoice (only once)
+    try {
+      if (input.paymentStatus === "Paid") {
+        await maybeSendInvoiceForOrder(String(id));
+      }
+    } catch (e: any) {
+      console.log("Invoice send failed (ignored):", e?.message);
+    }
+
     return this.mapOrder(updated);
   },
 
@@ -429,6 +462,10 @@ export const orderService = {
       items: Array.isArray(o.items) ? o.items : [],
       address: o.address || null,
       shipping: o.shipping || null,
+
+      // ✅ invoice fields
+      invoiceNo: o.invoiceNo || null,
+      invoiceSentAt: o.invoiceSentAt || null,
     };
   },
 
@@ -518,6 +555,10 @@ export const orderService = {
       shipping: { method: shipMethod, estimatedDelivery: estDelivery },
       summary: { subtotal, shipping, discount, taxes: 0, total },
       coupon: o.coupon || null,
+
+      // ✅ invoice info (optional for UI)
+      invoiceNo: o.invoiceNo || null,
+      invoiceSentAt: o.invoiceSentAt || null,
     };
   },
 

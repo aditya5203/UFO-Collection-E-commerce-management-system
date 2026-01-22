@@ -1,4 +1,5 @@
 // server/src/modules/auth/middleware/auth.middleware.ts
+
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../../../config";
@@ -115,6 +116,24 @@ export const authorize =
 
     return next();
   };
+
+// ✅ NEW: allow BOTH admin OR customer (used for invoice download)
+export const anyAuthMiddleware = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  // Try admin token first
+  makeAuthMiddleware(ADMIN_COOKIE)(req, res, (adminErr?: any) => {
+    if (!adminErr && req.user?.userId) return next();
+
+    // If admin token not valid, try customer token
+    makeAuthMiddleware(CUSTOMER_COOKIE)(req, res, (custErr?: any) => {
+      if (custErr) return next(custErr);
+      return next();
+    });
+  });
+};
 
 // ✅ Default export: auth only (no role restriction)
 export default makeAuthMiddleware(CUSTOMER_COOKIE);

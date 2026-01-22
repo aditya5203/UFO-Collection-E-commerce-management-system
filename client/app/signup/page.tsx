@@ -5,8 +5,83 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API = `${API_BASE}/api`;
+
 export default function SignupPage() {
   const router = useRouter();
+
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string>("");
+  const [success, setSuccess] = React.useState<string>("");
+
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    // ✅ FIX: store the form element BEFORE any await
+    const form = e.currentTarget;
+
+    const formData = new FormData(form);
+    const name = formData.get("name")?.toString().trim() || "";
+    const email = formData.get("email")?.toString().trim() || "";
+    const password = formData.get("password")?.toString() || "";
+    const height = formData.get("height")?.toString().trim() || "";
+    const weight = formData.get("weight")?.toString().trim() || "";
+
+    if (!name || !email || !password) {
+      setError("Name, email and password are required.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const res = await fetch(`${API}/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          height: height ? Number(height) : undefined,
+          weight: weight ? Number(weight) : undefined,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({} as any));
+
+      if (!res.ok) {
+        setError(data?.message || "Signup failed");
+        return;
+      }
+
+      // ✅ Welcome email is sent by backend after registration
+      setSuccess(
+        "✅ Account created! Welcome to UFO Collection. Please check your email for a welcome message, then log in to continue."
+      );
+
+      // ✅ FIX: reset using stored form reference (safe after await)
+      form.reset();
+
+      // redirect after a short moment (no async background, just UX)
+      setTimeout(() => {
+        router.push("/login");
+      }, 900);
+    } catch (err) {
+      console.error(err);
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onGoogleSignup = () => {
+    window.location.href = `${API}/auth/google/oauth`;
+  };
 
   return (
     <div className="min-h-screen bg-[#050611] text-[#f5f5f7]">
@@ -24,7 +99,7 @@ export default function SignupPage() {
                 className="h-full w-full object-cover"
               />
             </div>
-            <div className="text-[28px] font-bold uppercase tracking-[0.18em] text-white">
+            <div className="text-[28px] font-bold uppercase tracking-[0.18em] text-white max-[640px]:text-[22px]">
               UFO Collection
             </div>
           </div>
@@ -116,70 +191,29 @@ export default function SignupPage() {
                 access to exclusive UFO Collection deals.
               </p>
 
-              <form
-                className="grid gap-3"
-                onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
-                  e.preventDefault();
-
-                  const formData = new FormData(e.currentTarget);
-                  const name = formData.get("name")?.toString() || "";
-                  const email = formData.get("email")?.toString() || "";
-                  const password = formData.get("password")?.toString() || "";
-                  const height = formData.get("height")?.toString() || "";
-                  const weight = formData.get("weight")?.toString() || "";
-
-                  try {
-                    const apiBase =
-                      process.env.NEXT_PUBLIC_API_URL ||
-                      "http://localhost:8080/api";
-
-                    const res = await fetch(`${apiBase}/auth/register`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      credentials: "include",
-                      body: JSON.stringify({
-                        name,
-                        email,
-                        password,
-                        height: height ? Number(height) : undefined,
-                        weight: weight ? Number(weight) : undefined,
-                      }),
-                    });
-
-                    const data = await res.json().catch(() => ({} as any));
-
-                    if (!res.ok) {
-                      alert((data && data.message) || "Signup failed");
-                      return;
-                    }
-
-                    alert("Account created! Please log in to continue ✉️");
-                    router.push("/login");
-                  } catch (err) {
-                    console.error(err);
-                    alert("Something went wrong. Please try again.");
-                  }
-                }}
-              >
+              <form className="grid gap-3" onSubmit={onSubmit}>
                 <input
                   name="name"
                   placeholder="Name"
                   required
-                  className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)]"
+                  disabled={loading}
+                  className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)] disabled:opacity-60"
                 />
                 <input
                   name="email"
                   type="email"
                   placeholder="Email Address"
                   required
-                  className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)]"
+                  disabled={loading}
+                  className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)] disabled:opacity-60"
                 />
                 <input
                   name="password"
                   type="password"
                   placeholder="Password"
                   required
-                  className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)]"
+                  disabled={loading}
+                  className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)] disabled:opacity-60"
                 />
 
                 {/* Measurements */}
@@ -195,33 +229,45 @@ export default function SignupPage() {
                     <input
                       name="height"
                       placeholder="Height (ft)"
-                      className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)]"
+                      disabled={loading}
+                      className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)] disabled:opacity-60"
                     />
                     <input
                       name="weight"
                       placeholder="Weight (kg)"
-                      className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)]"
+                      disabled={loading}
+                      className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)] disabled:opacity-60"
                     />
                   </div>
                 </div>
 
+                {/* SUCCESS / ERROR */}
+                {success ? (
+                  <div className="mt-1 rounded-lg border border-green-500/30 bg-green-500/10 px-3 py-2 text-[12px] text-green-200">
+                    {success}
+                  </div>
+                ) : null}
+
+                {error ? (
+                  <div className="mt-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-200">
+                    {error}
+                  </div>
+                ) : null}
+
                 {/* Buttons */}
                 <button
                   type="submit"
-                  className="mt-2 w-full rounded-full bg-[linear-gradient(90deg,#b49cff,#e2c4ff)] px-4 py-[11px] text-[13px] font-medium text-[#070818] shadow-[0_10px_26px_rgba(116,92,255,0.5)] transition active:translate-y-[1px] active:shadow-[0_6px_18px_rgba(116,92,255,0.4)] hover:brightness-[1.05]"
+                  disabled={loading}
+                  className="mt-2 w-full rounded-full bg-[linear-gradient(90deg,#b49cff,#e2c4ff)] px-4 py-[11px] text-[13px] font-medium text-[#070818] shadow-[0_10px_26px_rgba(116,92,255,0.5)] transition active:translate-y-[1px] active:shadow-[0_6px_18px_rgba(116,92,255,0.4)] hover:brightness-[1.05] disabled:opacity-60"
                 >
-                  Create Account
+                  {loading ? "Creating..." : "Create Account"}
                 </button>
 
                 <button
                   type="button"
-                  className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-[#23253a] bg-transparent px-4 py-[10px] text-[13px] text-[#f5f5f7] transition hover:bg-[#15182a] hover:border-[#2b3050]"
-                  onClick={() => {
-                    const apiBase =
-                      process.env.NEXT_PUBLIC_API_URL ||
-                      "http://localhost:8080/api";
-                    window.location.href = `${apiBase}/auth/google/oauth`;
-                  }}
+                  disabled={loading}
+                  className="mt-2 flex w-full items-center justify-center gap-2.5 rounded-full border border-[#23253a] bg-transparent px-4 py-[10px] text-[13px] text-[#f5f5f7] transition hover:bg-[#15182a] hover:border-[#2b3050] disabled:opacity-60"
+                  onClick={onGoogleSignup}
                 >
                   <Image
                     src="/images/google.png"
@@ -328,7 +374,7 @@ export default function SignupPage() {
             </div>
             <ul className="grid gap-2 text-[12px] text-[#d4d6ea]">
               <li>+977 9804880758</li>
-              <li>ufocollection@gmail.com</li>
+              <li>ufocollection075@gmail.com</li>
             </ul>
           </div>
         </div>

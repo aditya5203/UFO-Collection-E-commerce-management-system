@@ -1,10 +1,14 @@
 // server/src/modules/auth/controllers/auth.controller.ts
 import { Request, Response, NextFunction } from "express";
 import type { Profile } from "passport-google-oauth20";
+import crypto from "crypto";
+
 import { authService } from "../services/auth.service";
 import { RegisterDto, LoginDto } from "../types/auth.types";
 import { AppError } from "../../../middleware/error.middleware";
 import { config } from "../../../config";
+import { User } from "../../../models/User.model";
+import { emailService } from "../../../services/email.services";
 
 // Local type for requests where we use req.user
 type AuthRequest = Request & {
@@ -70,6 +74,50 @@ function clearCookie(res: Response, cookieName: string) {
   });
 }
 
+function sha256(input: string) {
+  return crypto.createHash("sha256").update(input).digest("hex");
+}
+
+/** ✅ Welcome email template (Option 4) */
+function buildWelcomeEmailHtml(name: string) {
+  return `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
+      <h2>Welcome to UFO Collection</h2>
+
+      <p>Dear <strong>${name || "Customer"}</strong>,</p>
+
+      <p>
+        We’re delighted to welcome you to <strong>UFO Collection</strong>.
+      </p>
+
+      <p>
+        Your account has been successfully created, and you can now explore our full
+        range of products, curated collections, and exclusive features designed to
+        enhance your shopping experience.
+      </p>
+
+      <p>
+        If you need any assistance, our support team is always here to help.
+      </p>
+
+      <p>
+        Thank you for choosing UFO Collection.
+      </p>
+
+      <p style="margin-top: 20px;">
+        Kind regards,<br />
+        <strong>UFO Collection Team</strong>
+      </p>
+
+      <hr style="margin-top: 30px; border: none; border-top: 1px solid #ddd;" />
+
+      <p style="font-size: 12px; color: #666;">
+        © 2025 UFO Collection. All rights reserved.
+      </p>
+    </div>
+  `;
+}
+
 export const authController = {
   // ---------- Register user ----------
   register: async (req: Request, res: Response, next: NextFunction) => {
@@ -84,6 +132,19 @@ export const authController = {
 
       // ✅ CUSTOMER cookie
       setCookie(res, CUSTOMER_COOKIE, result.token);
+
+      // ✅ Send Welcome Email (non-blocking)
+      // If email fails, registration still succeeds
+      emailService
+        .sendMail({
+          to: result.user.email,
+          subject: "Welcome to UFO Collection",
+          html: buildWelcomeEmailHtml(result.user.name),
+        })
+        .then(() => console.log("✅ Welcome email sent to:", result.user.email))
+        .catch((err: any) =>
+          console.error("❌ Welcome email failed:", err?.message || err)
+        );
 
       res.status(201).json({
         success: true,
@@ -115,6 +176,97 @@ export const authController = {
         message: "Login successful",
         token: result.token,
         user: result.user,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // ---------- Forgot Password ----------
+  forgotPassword: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { email } = req.body as { email?: string };
+      if (!email) throw new AppError("Email is required", 400);
+
+      const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+      // ✅ Always return success to avoid user enumeration
+      if (!user) {
+        return res.status(200).json({
+          success: true,
+          message: "If your email exists, we sent a password reset link.",
+        });
+      }
+
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = sha256(rawToken);
+
+      // NOTE: your User model must have these fields:
+      // resetPasswordTokenHash, resetPasswordExpires
+      (user as any).resetPasswordTokenHash = tokenHash;
+      (user as any).resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      await user.save();
+
+      const clientBase = process.env.CLIENT_BASE_URL || "http://localhost:3000";
+      const resetLink = `${clientBase}/reset-password?token=${rawToken}`;
+
+      await emailService.sendMail({
+        to: user.email,
+        subject: "Reset your UFO Collection password",
+        html: `
+          <div style="font-family:Arial,sans-serif;line-height:1.6">
+            <h2>Reset Password</h2>
+            <p>We received a request to reset your password.</p>
+            <p>
+              <a href="${resetLink}"
+                 style="display:inline-block;padding:10px 16px;background:#b49cff;color:#070818;text-decoration:none;border-radius:999px">
+                Reset Password
+              </a>
+            </p>
+            <p>This link expires in 15 minutes.</p>
+            <p>If you didn’t request this, you can ignore this email.</p>
+          </div>
+        `,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "If your email exists, we sent a password reset link.",
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // ---------- Reset Password ----------
+  resetPassword: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { token, password } = req.body as { token?: string; password?: string };
+
+      if (!token || !password) throw new AppError("Token and password are required", 400);
+      if (password.length < 6)
+        throw new AppError("Password must be at least 6 characters", 400);
+
+      const tokenHash = sha256(token);
+
+      const user = await User.findOne({
+        resetPasswordTokenHash: tokenHash,
+        resetPasswordExpires: { $gt: new Date() },
+      }).select("+password");
+
+      if (!user) throw new AppError("Invalid or expired reset token", 400);
+
+      // ✅ set new password (hashed by pre-save hook)
+      (user as any).password = password;
+      (user as any).provider = "credentials"; // allow google users to set password too
+      (user as any).resetPasswordTokenHash = null;
+      (user as any).resetPasswordExpires = null;
+
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Password reset successful. Please login.",
       });
     } catch (error) {
       next(error);
