@@ -95,7 +95,15 @@ function SmartImage({
   }
 
   return (
-    <Image src={src} alt={alt} fill={fill} width={width} height={height} priority={priority} className={className} />
+    <Image
+      src={src}
+      alt={alt}
+      fill={fill}
+      width={width}
+      height={height}
+      priority={priority}
+      className={className}
+    />
   );
 }
 
@@ -354,9 +362,7 @@ function HeroAdSlider({ API_BASE }: { API_BASE: string }) {
 
         <div className="absolute left-6 top-6 max-w-[560px] max-sm:left-4 max-sm:top-4">
           <div className="text-[12px] uppercase tracking-[0.18em] text-white/70">Advertisement</div>
-          <div className="mt-2 text-[28px] font-semibold text-white max-sm:text-[22px]">
-            {currentAd.title}
-          </div>
+          <div className="mt-2 text-[28px] font-semibold text-white max-sm:text-[22px]">{currentAd.title}</div>
 
           {currentAd.clickUrl && (
             <button
@@ -380,7 +386,9 @@ function HeroAdSlider({ API_BASE }: { API_BASE: string }) {
                     if (isCarouselDots) setSlideIdx(i);
                     else setAdIdx(i);
                   }}
-                  className={`h-[8px] w-[8px] rounded-full border border-white/30 ${active ? "bg-white" : "bg-white/20"}`}
+                  className={`h-[8px] w-[8px] rounded-full border border-white/30 ${
+                    active ? "bg-white" : "bg-white/20"
+                  }`}
                   aria-label={`Go to ${isCarouselDots ? "slide" : "ad"} ${i + 1}`}
                 />
               );
@@ -442,6 +450,9 @@ export default function HomePage() {
   const [loadingCoupons, setLoadingCoupons] = React.useState(true);
   const [collectingCode, setCollectingCode] = React.useState<string | null>(null);
 
+  // ✅ notifications badge count
+  const [unreadCount, setUnreadCount] = React.useState(0);
+
   const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "http://localhost:8080/api";
 
   // ---------- Fetch /auth/me ----------
@@ -466,6 +477,44 @@ export default function HomePage() {
 
     fetchMe();
   }, [API_BASE]);
+
+  // ✅ Fetch unread notifications count (polling)
+  React.useEffect(() => {
+    if (!user) {
+      setUnreadCount(0);
+      return;
+    }
+
+    const run = async () => {
+      try {
+        // ✅ Change this endpoint if your backend is different
+        const res = await fetch(`${API_BASE}/notifications/unread-count`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          setUnreadCount(0);
+          return;
+        }
+
+        const json = await safeJson(res);
+        const count =
+          Number(json?.count) ||
+          Number(json?.data?.count) ||
+          Number(json?.data) ||
+          0;
+
+        setUnreadCount(count);
+      } catch {
+        setUnreadCount(0);
+      }
+    };
+
+    run();
+    const t = setInterval(run, 25000);
+    return () => clearInterval(t);
+  }, [API_BASE, user]);
 
   // ---------- Fetch products ----------
   React.useEffect(() => {
@@ -512,7 +561,6 @@ export default function HomePage() {
           (Array.isArray(json?.items) && json.items) ||
           [];
 
-        // show newest first, keep few on home
         setCoupons(items.slice(0, 6));
       } catch (e) {
         setCoupons([]);
@@ -547,7 +595,6 @@ export default function HomePage() {
         return;
       }
 
-      // after collect -> open /discounts page so they can see all collected
       router.push("/discounts");
     } catch (e) {
       alert("Failed to collect coupon");
@@ -572,7 +619,13 @@ export default function HomePage() {
           {/* Brand */}
           <div className="flex items-center gap-[10px]">
             <div className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white">
-              <Image src="/images/logo.png" alt="UFO Collection logo" width={44} height={44} className="h-full w-full object-cover" />
+              <Image
+                src="/images/logo.png"
+                alt="UFO Collection logo"
+                width={44}
+                height={44}
+                className="h-full w-full object-cover"
+              />
             </div>
             <div className="text-[28px] font-bold uppercase tracking-[0.18em] text-white max-sm:text-[22px]">
               UFO Collection
@@ -581,16 +634,28 @@ export default function HomePage() {
 
           {/* Nav */}
           <nav className="flex gap-[42px] max-sm:flex-wrap max-sm:gap-5">
-            <Link href="/homepage" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/homepage"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               HOME
             </Link>
-            <Link href="/collection" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/collection"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               COLLECTION
             </Link>
-            <Link href="/about" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/about"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               ABOUT
             </Link>
-            <Link href="/contact" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/contact"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               CONTACT
             </Link>
           </nav>
@@ -598,8 +663,41 @@ export default function HomePage() {
           {/* Icons */}
           <div className="flex items-center gap-5 max-sm:mt-1">
             <Link href="/collection" aria-label="Search">
-              <Image src="/images/search.png" width={26} height={26} alt="Search" className="brightness-0 invert contrast-[2.8] saturate-[2.6]" />
+              <Image
+                src="/images/search.png"
+                width={26}
+                height={26}
+                alt="Search"
+                className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
+              />
             </Link>
+
+            {/* ✅ Notifications button + image (only for logged-in users) */}
+            {loadingUser ? (
+              <div className="h-[26px] w-[26px] animate-pulse rounded-full bg-white/10" />
+            ) : user ? (
+              <button
+                type="button"
+                onClick={() => router.push("/notifications")}
+                aria-label="Notifications"
+                className="relative"
+                title="Notifications"
+              >
+                <Image
+                  src="/images/notification.png"
+                  width={26}
+                  height={26}
+                  alt="Notifications"
+                  className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
+                />
+
+                {unreadCount > 0 ? (
+                  <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-[5px] text-[11px] font-bold text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                ) : null}
+              </button>
+            ) : null}
 
             {loadingUser ? (
               <div className="h-[32px] w-[32px] animate-pulse rounded-full bg-white/10" />
@@ -615,12 +713,24 @@ export default function HomePage() {
               </button>
             ) : (
               <Link href="/signup" aria-label="Signup">
-                <Image src="/images/profile.png" width={26} height={26} alt="Profile" className="brightness-0 invert contrast-[2.8] saturate-[2.6]" />
+                <Image
+                  src="/images/profile.png"
+                  width={26}
+                  height={26}
+                  alt="Profile"
+                  className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
+                />
               </Link>
             )}
 
             <Link href="/wishlist" aria-label="Wishlist">
-              <Image src="/images/wishlist.png" width={26} height={26} alt="Wishlist" className="brightness-0 invert contrast-[2.8] saturate-[2.6]" />
+              <Image
+                src="/images/wishlist.png"
+                width={26}
+                height={26}
+                alt="Wishlist"
+                className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
+              />
             </Link>
 
             <button
@@ -652,7 +762,8 @@ export default function HomePage() {
                   <div className="text-[12px] uppercase tracking-[0.18em] text-[#8b90ad]">OUR BESTSELLERS</div>
                   <h1 className="text-[40px] font-semibold leading-tight max-sm:text-[30px]">Latest Arrivals</h1>
                   <p className="max-w-[360px] text-[14px] leading-[1.8] text-[#8b90ad]">
-                    Discover new-season pieces designed for everyday comfort and statement looks. Curated drops from UFO Collection, just landed.
+                    Discover new-season pieces designed for everyday comfort and statement looks. Curated drops from UFO
+                    Collection, just landed.
                   </p>
                   <button
                     onClick={() => router.push("/collection")}
@@ -682,9 +793,7 @@ export default function HomePage() {
               <div>
                 <div className="text-[12px] uppercase tracking-[0.18em] text-[#8b90ad]">DISCOUNTS</div>
                 <div className="mt-2 text-[22px] font-semibold text-white">Available Coupons</div>
-                <div className="mt-1 text-[13px] text-[#8b90ad]">
-                  Collect coupons and they will auto-apply in your cart.
-                </div>
+                <div className="mt-1 text-[13px] text-[#8b90ad]">Collect coupons and they will auto-apply in your cart.</div>
               </div>
 
               <div className="flex gap-3">
@@ -742,9 +851,7 @@ export default function HomePage() {
 
                       <div className="mt-3 grid gap-1 text-[12px] text-[#8b90ad]">
                         {c.minOrder != null ? <div>Min order: Rs. {c.minOrder}</div> : null}
-                        {c.type === "PERCENT" && c.maxDiscountCap != null ? (
-                          <div>Max cap: Rs. {c.maxDiscountCap}</div>
-                        ) : null}
+                        {c.type === "PERCENT" && c.maxDiscountCap != null ? <div>Max cap: Rs. {c.maxDiscountCap}</div> : null}
                         {c.endAt ? <div>Valid till: {formatDateShort(c.endAt)}</div> : null}
                       </div>
 
@@ -753,9 +860,7 @@ export default function HomePage() {
                           onClick={() => collectCoupon(c.code)}
                           disabled={collectingCode === c.code}
                           className={`rounded-[12px] px-4 py-2 text-[12px] font-semibold ${
-                            collectingCode === c.code
-                              ? "bg-white/10 text-white/60"
-                              : "bg-white text-[#050611] hover:bg-white/90"
+                            collectingCode === c.code ? "bg-white/10 text-white/60" : "bg-white text-[#050611] hover:bg-white/90"
                           }`}
                         >
                           {collectingCode === c.code ? "Collecting..." : "Collect"}
@@ -919,21 +1024,25 @@ export default function HomePage() {
           </div>
 
           <div>
-            <div className="mb-[10px] text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
-              COMPANY
-            </div>
+            <div className="mb-[10px] text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">COMPANY</div>
             <ul className="grid list-none gap-2 p-0 text-[12px] text-[#d4d6ea]">
-              <li><Link href="/homepage">Home</Link></li>
-              <li><Link href="/about">About us</Link></li>
-              <li><a href="#">Delivery</a></li>
-              <li><a href="#">Privacy policy</a></li>
+              <li>
+                <Link href="/homepage">Home</Link>
+              </li>
+              <li>
+                <Link href="/about">About us</Link>
+              </li>
+              <li>
+                <a href="#">Delivery</a>
+              </li>
+              <li>
+                <a href="#">Privacy policy</a>
+              </li>
             </ul>
           </div>
 
           <div>
-            <div className="mb-[10px] text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
-              GET IN TOUCH
-            </div>
+            <div className="mb-[10px] text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">GET IN TOUCH</div>
             <ul className="grid list-none gap-2 p-0 text-[12px] text-[#d4d6ea]">
               <li>+977 9804880758</li>
               <li>ufocollection@gmail.com</li>

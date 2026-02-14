@@ -10,6 +10,7 @@ export type TicketStatus = "Open" | "Pending" | "Closed";
 
 export const ticketService = {
   async createTicket(input: {
+    customerId?: string | null;
     issueType: string;
     subject: string;
     message: string;
@@ -20,12 +21,21 @@ export const ticketService = {
   }) {
     let code = makeTicketCode();
 
-    // try to avoid unique collision
     for (let i = 0; i < 10; i++) {
       const exists = await Ticket.findOne({ ticketCode: code }).lean();
       if (!exists) break;
       code = makeTicketCode();
     }
+
+    const customerObjId =
+      input.customerId && mongoose.Types.ObjectId.isValid(input.customerId)
+        ? new mongoose.Types.ObjectId(input.customerId)
+        : null;
+
+    const productObjId =
+      input.productId && mongoose.Types.ObjectId.isValid(input.productId)
+        ? new mongoose.Types.ObjectId(input.productId)
+        : null;
 
     const doc = await Ticket.create({
       ticketCode: code,
@@ -33,11 +43,13 @@ export const ticketService = {
       issueType: input.issueType,
       subject: input.subject,
       message: input.message,
+
+      customer: customerObjId,
+
       customerName: input.customerName,
       customerEmail: input.customerEmail,
-      productId: input.productId
-        ? new mongoose.Types.ObjectId(input.productId)
-        : null,
+
+      productId: productObjId,
       imageUrl: input.imageUrl || null,
       replies: [],
     });
@@ -75,15 +87,19 @@ export const ticketService = {
   },
 
   async addAdminReply(id: string, text: string) {
+    // ✅ optional: admin reply sets Pending
     return Ticket.findByIdAndUpdate(
       id,
-      { $push: { replies: { sender: "admin", text } } },
+      {
+        $push: { replies: { sender: "admin", text } },
+        $set: { status: "Pending" },
+      },
       { new: true }
     ).lean();
   },
 
   // ---------------------------
-  // CUSTOMER (see admin replies)
+  // CUSTOMER (keep email-based for now)
   // ---------------------------
   async listCustomerTicketsByEmail(email: string) {
     return Ticket.find({ customerEmail: email })
@@ -96,7 +112,6 @@ export const ticketService = {
   },
 
   async addCustomerReply(id: string, email: string, text: string) {
-    // ensures customer can only reply on their own ticket
     return Ticket.findOneAndUpdate(
       { _id: id, customerEmail: email },
       { $push: { replies: { sender: "customer", text } } },

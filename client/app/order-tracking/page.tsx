@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type StepKey = "PLACED" | "SHIPPED" | "IN_TRANSIT" | "DELIVERED";
 
@@ -71,17 +71,17 @@ function TimelineIcon({ step, active }: { step: StepKey; active: StepKey }) {
   );
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+// ✅ SAME AS HOMEPAGE (includes /api)
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "http://localhost:8080/api";
 
 /** Backend orderStatus -> step */
 function statusToStep(orderStatus: string): StepKey {
-  // your backend: "Pending" | "Shipped" | "Delivered" | "Cancelled"
   if (orderStatus === "Shipped") return "SHIPPED";
   if (orderStatus === "Delivered") return "DELIVERED";
   return "PLACED";
 }
 
-/** Format createdAt nicely */
 function fmtDate(input?: string) {
   if (!input) return "";
   const d = new Date(input);
@@ -95,6 +95,7 @@ function fmtDate(input?: string) {
 
 export default function OrderTrackingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -102,21 +103,19 @@ export default function OrderTrackingPage() {
   const [data, setData] = React.useState<TrackingData>({
     trackingNumber: "",
     currentStatus: "",
-    estimatedDelivery: "July 26, 2024, 2:00 PM",
-    activeStep: "IN_TRANSIT",
+    estimatedDelivery: "—",
+    activeStep: "PLACED",
     timeline: [
-      { key: "PLACED", title: "Order Placed", date: "July 22, 2024" },
-      { key: "SHIPPED", title: "Shipped", date: "July 23, 2024" },
-      { key: "IN_TRANSIT", title: "In Transit", date: "July 24, 2024" },
-      { key: "DELIVERED", title: "Delivered", date: "July 26, 2024" },
+      { key: "PLACED", title: "Order Placed", date: "—" },
+      { key: "SHIPPED", title: "Shipped", date: "—" },
+      { key: "IN_TRANSIT", title: "In Transit", date: "—" },
+      { key: "DELIVERED", title: "Delivered", date: "—" },
     ],
-    locationUpdates:
-      "Package is currently in transit and moving towards its destination. Last scanned at the distribution center in Metropolis on July 24, 2024, at 10:00 AM.",
-    carrierInfo:
-      "Shipped via Speedy Delivery. For more details, contact their customer service at 1-800-SPEEDY.",
+    locationUpdates: "Enter your order code and click Track.",
+    carrierInfo: "Standard Shipping — UFO Collection",
   });
 
-  async function handleTrack() {
+  const handleTrack = React.useCallback(async () => {
     const raw = (data.trackingNumber || "").trim();
     if (!raw) {
       setError("Please enter tracking number.");
@@ -127,36 +126,35 @@ export default function OrderTrackingPage() {
       setLoading(true);
       setError(null);
 
-      // allow "123456" OR "#123456"
-      const code = raw;
+      const code = raw.startsWith("#") ? raw : `#${raw}`;
 
-      const res = await fetch(`${API_BASE}/api/orders/track/${encodeURIComponent(code)}`, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `${API_BASE}/orders/track/${encodeURIComponent(code)}`,
+        {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        }
+      );
 
       const json = await res.json().catch(() => ({} as any));
-      if (!res.ok) {
-        throw new Error(json?.message || "Order not found");
-      }
+      if (!res.ok) throw new Error(json?.message || "Order not found");
 
       const o = json?.order || {};
       const orderStatus = String(o.orderStatus || "Pending");
       const activeStep = statusToStep(orderStatus);
 
-      const placedDate = fmtDate(o.createdAt) || "";
-      const estDelivery =
-        String(o.shipping?.estimatedDelivery || "").trim() || data.estimatedDelivery;
+      const placedDate = fmtDate(o.createdAt) || "—";
+      const estDelivery = String(o.shipping?.estimatedDelivery || "").trim() || "—";
 
       setData((p) => ({
         ...p,
-        trackingNumber: String(o.orderCode || raw).replace("#", ""),
+        trackingNumber: String(o.orderCode || code), // keep "#xxxx"
         currentStatus: orderStatus,
         estimatedDelivery: estDelivery,
         activeStep,
         timeline: [
-          { key: "PLACED", title: "Order Placed", date: placedDate || "—" },
+          { key: "PLACED", title: "Order Placed", date: placedDate },
           { key: "SHIPPED", title: "Shipped", date: "—" },
           { key: "IN_TRANSIT", title: "In Transit", date: "—" },
           { key: "DELIVERED", title: "Delivered", date: "—" },
@@ -174,19 +172,36 @@ export default function OrderTrackingPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [data.trackingNumber]);
+
+  // ✅ AUTO-FILL + AUTO-TRACK FROM NOTIFICATION LINK
+  React.useEffect(() => {
+    const code = searchParams.get("code");
+    if (!code) return;
+
+    const clean = code.replace("#", "");
+    setData((p) => ({ ...p, trackingNumber: clean }));
+
+    // allow state update to apply
+    setTimeout(() => {
+      // call track using the now-filled value
+      // (we pass clean directly by setting temporarily)
+      setData((p) => ({ ...p, trackingNumber: clean }));
+    }, 0);
+
+    setTimeout(() => {
+      handleTrack();
+    }, 80);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const percent = progressPercent(data.activeStep);
 
-  // ✅ tracking for review link
-  const trackingForUrl = encodeURIComponent((data.trackingNumber || "").replace("#", ""));
-
-  // ✅ show review only if delivered (keep as you had it)
+  const trackingForUrl = encodeURIComponent(String(data.trackingNumber || "").replace("#", ""));
   const canReview = data.activeStep === "DELIVERED" || data.currentStatus === "Delivered";
 
   return (
     <>
-      {/* ✅ HEADER (same as CartPage, NO cart/wishlist) */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
           <div className="flex items-center gap-4">
@@ -224,43 +239,21 @@ export default function OrderTrackingPage() {
           </div>
 
           <nav className="hidden md:flex gap-10">
-            <Link
-              href="/homepage"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              HOME
-            </Link>
-            <Link
-              href="/collection"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              COLLECTION
-            </Link>
-            <Link
-              href="/about"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              ABOUT
-            </Link>
-            <Link
-              href="/contact"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              CONTACT
-            </Link>
+            <Link href="/homepage" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">HOME</Link>
+            <Link href="/collection" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">COLLECTION</Link>
+            <Link href="/about" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">ABOUT</Link>
+            <Link href="/contact" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">CONTACT</Link>
           </nav>
 
           <div className="w-[26px]" />
         </div>
       </header>
 
-      {/* PAGE */}
       <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
         <div className="mx-auto max-w-[1200px] px-6 py-12">
           <div className="rounded-[14px] border border-white/10 bg-white/[0.03] px-10 py-10">
             <h1 className="text-[36px] font-semibold">Order Tracking</h1>
 
-            {/* Inputs */}
             <div className="mt-10 space-y-8 max-w-[520px]">
               <div>
                 <label htmlFor="trackingNumber" className="text-sm text-white/85">
@@ -271,11 +264,9 @@ export default function OrderTrackingPage() {
                   <input
                     id="trackingNumber"
                     value={data.trackingNumber}
-                    onChange={(e) =>
-                      setData((p) => ({ ...p, trackingNumber: e.target.value }))
-                    }
+                    onChange={(e) => setData((p) => ({ ...p, trackingNumber: e.target.value }))}
                     className="h-[44px] w-full rounded-[8px] border border-white/15 bg-[#0b0f1a]/70 px-4 text-white outline-none focus:border-white/35"
-                    placeholder="Enter order code (e.g. 123456)"
+                    placeholder="Enter order code (e.g. 597320)"
                   />
 
                   <button
@@ -309,15 +300,11 @@ export default function OrderTrackingPage() {
               </div>
             </div>
 
-            {/* Progress */}
             <div className="mt-12">
               <div className="text-sm text-white/85">Order Progress</div>
 
               <div className="mt-4 h-[6px] w-full rounded-full bg-white/15">
-                <div
-                  className="h-[6px] rounded-full bg-[#1f7cff]"
-                  style={{ width: `${percent}%` }}
-                />
+                <div className="h-[6px] rounded-full bg-[#1f7cff]" style={{ width: `${percent}%` }} />
               </div>
 
               <div className="mt-4 text-sm text-white/60">
@@ -325,7 +312,6 @@ export default function OrderTrackingPage() {
               </div>
             </div>
 
-            {/* Timeline */}
             <div className="mt-12 grid gap-7 max-w-[520px]">
               {data.timeline.map((t, idx) => {
                 const isLast = idx === data.timeline.length - 1;
@@ -353,7 +339,6 @@ export default function OrderTrackingPage() {
               })}
             </div>
 
-            {/* Location Updates */}
             <div className="mt-14">
               <h2 className="text-[22px] font-semibold">Location Updates</h2>
               <p className="mt-4 max-w-[900px] text-white/75 leading-relaxed">
@@ -361,7 +346,6 @@ export default function OrderTrackingPage() {
               </p>
             </div>
 
-            {/* Carrier Information */}
             <div className="mt-12">
               <div className="flex items-start justify-between gap-6">
                 <div className="min-w-0">
@@ -371,7 +355,6 @@ export default function OrderTrackingPage() {
                   </p>
                 </div>
 
-                {/* ✅ ADD THIS BUTTON (no design change to your existing layout) */}
                 {canReview ? (
                   <Link
                     href={`/review?tracking=${trackingForUrl}`}
@@ -388,7 +371,6 @@ export default function OrderTrackingPage() {
             </div>
           </div>
 
-          {/* Footer */}
           <div className="mt-14 flex flex-col items-center gap-4 text-white/60">
             <div className="flex items-center gap-6">
               <span className="text-lg">◎</span>

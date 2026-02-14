@@ -31,15 +31,71 @@ export default function SupportTicketPage() {
   const [err, setErr] = React.useState<string>("");
   const [ok, setOk] = React.useState<string>("");
 
+  // ✅ Autofill name/email from BACKEND (with safe fallback)
   React.useEffect(() => {
-    try {
-      const raw = localStorage.getItem("auth_user");
-      if (!raw) return;
-      const u = JSON.parse(raw);
-      if (u?.name && !name) setName(u.name);
-      if (u?.email && !email) setEmail(u.email);
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const loadMe = async () => {
+      try {
+        setErr("");
+
+        // Optional: if your auth uses token in localStorage
+        const token =
+          localStorage.getItem("accessToken") ||
+          localStorage.getItem("token") ||
+          "";
+
+        // Try common "me/profile" endpoints (use whichever exists in your backend)
+        const candidates = [
+          `${API}/auth/me`,
+          `${API}/customers/me`,
+          `${API}/users/me`,
+          `${API}/profile/me`,
+        ];
+
+        let me: any = null;
+
+        for (const url of candidates) {
+          const res = await fetch(url, {
+            method: "GET",
+            credentials: "include", // IMPORTANT if auth uses cookies
+            headers: {
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+          });
+
+          if (res.ok) {
+            const data = await res.json().catch(() => null);
+            // Supports {data:{...}} OR {user:{...}} OR {...}
+            me = data?.data || data?.user || data;
+            break;
+          }
+        }
+
+        // If backend didn't return, fallback to localStorage auth_user
+        if (!me) {
+          try {
+            const raw = localStorage.getItem("auth_user");
+            if (raw) me = JSON.parse(raw);
+          } catch {}
+        }
+
+        if (!me) return;
+
+        if (me?.name) setName(String(me.name));
+        if (me?.email) setEmail(String(me.email));
+      } catch (e: any) {
+        console.log("Failed to autofill from backend:", e?.message);
+        // fallback to localStorage if backend fails
+        try {
+          const raw = localStorage.getItem("auth_user");
+          if (!raw) return;
+          const u = JSON.parse(raw);
+          if (u?.name) setName(u.name);
+          if (u?.email) setEmail(u.email);
+        } catch {}
+      }
+    };
+
+    loadMe();
   }, []);
 
   React.useEffect(() => {
@@ -91,9 +147,19 @@ export default function SupportTicketPage() {
       fd.append("message", message.trim());
       if (file) fd.append("image", file);
 
+      // Optional: attach token if your backend expects Authorization header
+      const token =
+        localStorage.getItem("accessToken") ||
+        localStorage.getItem("token") ||
+        "";
+
       const res = await fetch(`${API}/tickets`, {
         method: "POST",
         body: fd,
+        credentials: "include",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
 
       const data = await res.json().catch(() => null);
@@ -148,16 +214,28 @@ export default function SupportTicketPage() {
           </div>
 
           <nav className="hidden md:flex gap-10">
-            <Link href="/homepage" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/homepage"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               HOME
             </Link>
-            <Link href="/collection" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/collection"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               COLLECTION
             </Link>
-            <Link href="/about" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/about"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               ABOUT
             </Link>
-            <Link href="/contact" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
+            <Link
+              href="/contact"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
               CONTACT
             </Link>
           </nav>
@@ -176,7 +254,9 @@ export default function SupportTicketPage() {
 
       <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
         <div className="mx-auto max-w-[1100px] px-6 py-12">
-          <h1 className="text-[38px] font-semibold">Raise a Product Support Ticket</h1>
+          <h1 className="text-[38px] font-semibold">
+            Raise a Product Support Ticket
+          </h1>
           <div className="mt-6 h-px bg-[#2b2f45]" />
 
           <div className="mt-10 grid gap-10 md:grid-cols-[520px_1fr]">
@@ -198,30 +278,46 @@ export default function SupportTicketPage() {
                 onChange={(e) => setType(e.target.value as any)}
                 className="mt-2 w-full rounded-[12px] border border-[#2b2f45] bg-[#0f1626] px-4 py-3 text-white outline-none focus:border-[#1f7cff]"
               >
-                <option value="" className="bg-[#0f1626]">Choose ticket type</option>
-                <option value="Damaged Item" className="bg-[#0f1626]">Damaged Item</option>
-                <option value="Late Delivery" className="bg-[#0f1626]">Late Delivery</option>
-                <option value="Wrong Item" className="bg-[#0f1626]">Wrong Item</option>
-                <option value="Payment Issue" className="bg-[#0f1626]">Payment Issue</option>
-                <option value="Other" className="bg-[#0f1626]">Other</option>
+                <option value="" className="bg-[#0f1626]">
+                  Choose ticket type
+                </option>
+                <option value="Damaged Item" className="bg-[#0f1626]">
+                  Damaged Item
+                </option>
+                <option value="Late Delivery" className="bg-[#0f1626]">
+                  Late Delivery
+                </option>
+                <option value="Wrong Item" className="bg-[#0f1626]">
+                  Wrong Item
+                </option>
+                <option value="Payment Issue" className="bg-[#0f1626]">
+                  Payment Issue
+                </option>
+                <option value="Other" className="bg-[#0f1626]">
+                  Other
+                </option>
               </select>
 
+              {/* ✅ Autofilled from backend */}
               <input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                readOnly
                 placeholder="Name"
-                className="mt-5 w-full rounded-[12px] border border-[#2b2f45] bg-[#0f1626] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none focus:border-[#1f7cff]"
+                className="mt-5 w-full rounded-[12px] border border-[#2b2f45] bg-[#0f1626] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none focus:border-[#1f7cff] opacity-90"
               />
 
+              {/* ✅ Autofilled from backend */}
               <input
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                readOnly
                 placeholder="Email"
                 type="email"
-                className="mt-4 w-full rounded-[12px] border border-[#2b2f45] bg-[#0f1626] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none focus:border-[#1f7cff]"
+                className="mt-4 w-full rounded-[12px] border border-[#2b2f45] bg-[#0f1626] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none focus:border-[#1f7cff] opacity-90"
               />
 
-              <label className="mt-5 block text-sm text-[#b8bfdc]">Subject</label>
+              <label className="mt-5 block text-sm text-[#b8bfdc]">
+                Subject
+              </label>
               <input
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
@@ -239,7 +335,9 @@ export default function SupportTicketPage() {
 
               <div className="mt-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-[#b8bfdc]">Upload Image (optional)</span>
+                  <span className="text-sm text-[#b8bfdc]">
+                    Upload Image (optional)
+                  </span>
                   {file ? (
                     <button
                       type="button"
@@ -278,13 +376,19 @@ export default function SupportTicketPage() {
             </section>
 
             <aside className="rounded-[14px] border border-[#2b2f45] bg-[#0b0f1a]/40 p-6">
-              <div className="text-sm uppercase tracking-[0.18em] text-[#8b90ad]">Attachment Preview</div>
+              <div className="text-sm uppercase tracking-[0.18em] text-[#8b90ad]">
+                Attachment Preview
+              </div>
 
               <div className="mt-4 rounded-[14px] border border-[#2b2f45] bg-[#0f1626] p-4">
                 {previewUrl ? (
                   <div className="relative aspect-[16/10] w-full overflow-hidden rounded-[12px] border border-[#2b2f45]">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={previewUrl} alt="Uploaded preview" className="h-full w-full object-cover" />
+                    <img
+                      src={previewUrl}
+                      alt="Uploaded preview"
+                      className="h-full w-full object-cover"
+                    />
                   </div>
                 ) : (
                   <div className="flex min-h-[220px] items-center justify-center text-[#9aa3cc]">
@@ -294,7 +398,8 @@ export default function SupportTicketPage() {
               </div>
 
               <div className="mt-6 text-sm text-[#9aa3cc] leading-6">
-                Tip: Upload a clear photo of the product label / defect so the admin can solve your issue faster.
+                Tip: Upload a clear photo of the product label / defect so the
+                admin can solve your issue faster.
               </div>
             </aside>
           </div>

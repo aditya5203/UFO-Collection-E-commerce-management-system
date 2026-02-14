@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 type SummaryResponse = {
   success: boolean;
@@ -27,6 +28,17 @@ type SummaryResponse = {
   };
 };
 
+type AdminNotification = {
+  _id?: string;
+  id?: string;
+  title?: string;
+  message?: string;
+  type?: string; // "order" | "payment" | "ticket" | ...
+  link?: string;
+  isRead?: boolean;
+  createdAt?: string;
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
@@ -44,12 +56,41 @@ const formatDate = (iso: string) => {
   }
 };
 
+function timeAgo(iso?: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const diff = Date.now() - d.getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  return `${days}d ago`;
+}
+
+function pickId(n: AdminNotification) {
+  return (n._id || n.id || "") as string;
+}
+
 export default function AdminDashboardPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [summary, setSummary] = React.useState<SummaryResponse["data"] | null>(
     null
   );
+
+  // -------------------------
+  // notifications state
+  // -------------------------
+  const [notifOpen, setNotifOpen] = React.useState(false);
+  const [notifLoading, setNotifLoading] = React.useState(false);
+  const [notifications, setNotifications] = React.useState<AdminNotification[]>(
+    []
+  );
+  const [unreadCount, setUnreadCount] = React.useState(0);
 
   const fetchSummary = React.useCallback(async () => {
     try {
@@ -62,7 +103,6 @@ export default function AdminDashboardPage() {
       });
 
       if (res.status === 401 || res.status === 403) {
-        // If you have admin login route, redirect there
         window.location.href = "/admin/login";
         return;
       }
@@ -81,21 +121,88 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
+  // -------------------------
+  // fetch notifications (UI-ready)
+  // NOTE: Adjust endpoints if yours are different.
+  // -------------------------
+  const fetchNotifications = React.useCallback(async () => {
+    try {
+      setNotifLoading(true);
+
+      // ✅ Recommended backend endpoints:
+      // GET  /api/notifications/admin?limit=10
+      // GET  /api/notifications/admin/unread-count
+      const [listRes, countRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/notifications/admin?limit=10`, {
+          method: "GET",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+        }),
+        fetch(`${API_BASE_URL}/api/notifications/admin/unread-count`, {
+          method: "GET",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+        }),
+      ]);
+
+      // If your API returns {success:true, items:[...]} etc, update below mapping.
+      const listJson = await listRes.json().catch(() => ({} as any));
+      const countJson = await countRes.json().catch(() => ({} as any));
+
+      const items: AdminNotification[] =
+        listJson?.items || listJson?.data || listJson?.notifications || [];
+
+      const count: number =
+        Number(countJson?.count ?? countJson?.data ?? countJson?.unreadCount) ||
+        0;
+
+      setNotifications(Array.isArray(items) ? items : []);
+      setUnreadCount(count);
+    } catch {
+      // keep silent (dashboard should not break)
+    } finally {
+      setNotifLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     fetchSummary();
 
     // auto-refresh (10s)
-    const interval = setInterval(fetchSummary, 10000);
+    const interval = setInterval(() => {
+      fetchSummary();
+      // keep notification badge fresh
+      fetchNotifications();
+    }, 10000);
 
     // refresh on focus
-    const onFocus = () => fetchSummary();
+    const onFocus = () => {
+      fetchSummary();
+      fetchNotifications();
+    };
     window.addEventListener("focus", onFocus);
+
+    // initial notifications
+    fetchNotifications();
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [fetchSummary]);
+  }, [fetchSummary, fetchNotifications]);
+
+  // Close dropdown on outside click
+  const notifRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!notifRef.current) return;
+      if (!notifRef.current.contains(e.target as Node)) setNotifOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
 
   // -------------------------
   // compute chart bars from API
@@ -105,7 +212,6 @@ export default function AdminDashboardPage() {
     const totals = arr.map((x) => Number(x.totalPaisa || 0));
     const max = Math.max(1, ...totals);
 
-    // we want exactly 7 bars (Mon-Sun style). If less, pad.
     const padded =
       arr.length >= 7
         ? arr.slice(-7)
@@ -118,16 +224,12 @@ export default function AdminDashboardPage() {
           ];
 
     return padded.map((x) => {
-      const ratio = Number(x.totalPaisa || 0) / max; // 0..1
-      const px = Math.round(18 + ratio * 82); // height range 18..100
-      return {
-        date: x.date,
-        heightPx: px,
-      };
+      const ratio = Number(x.totalPaisa || 0) / max;
+      const px = Math.round(18 + ratio * 82);
+      return { date: x.date, heightPx: px };
     });
   }, [summary]);
 
-  // orders by status -> counts
   const statusCount = (k: string) => Number(summary?.ordersByStatus?.[k] || 0);
   const totalOrdersByStatus =
     statusCount("Pending") +
@@ -135,7 +237,6 @@ export default function AdminDashboardPage() {
     statusCount("Delivered") +
     statusCount("Cancelled");
 
-  // status bar height
   const statusBars = React.useMemo(() => {
     const pending = statusCount("Pending");
     const shipped = statusCount("Shipped");
@@ -143,8 +244,7 @@ export default function AdminDashboardPage() {
     const cancelled = statusCount("Cancelled");
 
     const max = Math.max(1, pending, shipped, delivered, cancelled);
-
-    const toH = (v: number) => `${Math.round(40 + (v / max) * 70)}px`; // 40..110px
+    const toH = (v: number) => `${Math.round(40 + (v / max) * 70)}px`;
 
     return [
       { label: "Pending", height: toH(pending) },
@@ -178,7 +278,123 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-[22px] font-semibold text-white">Dashboard</h1>
+      {/* HEADER (title + notification image button) */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-[22px] font-semibold text-white">Dashboard</h1>
+
+        {/* Notification button */}
+        <div className="relative" ref={notifRef}>
+          <button
+            type="button"
+            onClick={() => {
+              const next = !notifOpen;
+              setNotifOpen(next);
+              // refresh list when opening
+              if (next) fetchNotifications();
+            }}
+            className="relative grid h-[42px] w-[42px] place-items-center rounded-[12px] border border-[#111827] bg-[#020617] hover:bg-[#0b1220]"
+            aria-label="Notifications"
+          >
+            <Image
+              src="/images/notification.png"
+              alt="Notifications"
+              width={22}
+              height={22}
+              className="opacity-95"
+            />
+
+            {/* unread badge */}
+            {unreadCount > 0 && (
+              <span className="absolute -right-[6px] -top-[6px] grid min-h-[18px] min-w-[18px] place-items-center rounded-full bg-[#ef4444] px-[5px] text-[11px] font-semibold text-white">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Dropdown */}
+          {notifOpen && (
+            <div className="absolute right-0 top-[48px] z-50 w-[340px] overflow-hidden rounded-[14px] border border-[#111827] bg-[#020617] shadow-[0_12px_40px_rgba(0,0,0,0.55)]">
+              <div className="flex items-center justify-between border-b border-[#111827] px-[14px] py-[12px]">
+                <div className="text-[13px] font-semibold text-white">
+                  Notifications
+                </div>
+                <button
+                  className="text-[12px] text-[#60a5fa] hover:underline"
+                  onClick={fetchNotifications}
+                >
+                  Refresh
+                </button>
+              </div>
+
+              <div className="max-h-[340px] overflow-y-auto">
+                {notifLoading && (
+                  <div className="px-[14px] py-[12px] text-[12px] text-[#9ca3af]">
+                    Loading...
+                  </div>
+                )}
+
+                {!notifLoading && notifications.length === 0 && (
+                  <div className="px-[14px] py-[12px] text-[12px] text-[#9ca3af]">
+                    No notifications yet.
+                  </div>
+                )}
+
+                {!notifLoading &&
+                  notifications.map((n) => {
+                    const id = pickId(n);
+                    const isRead = Boolean(n.isRead);
+                    return (
+                      <Link
+                        key={id || Math.random()}
+                        href={n.link || "#"}
+                        onClick={() => setNotifOpen(false)}
+                        className={[
+                          "block border-b border-[#111827] px-[14px] py-[12px] hover:bg-[#0b1220]",
+                          isRead ? "opacity-80" : "opacity-100",
+                        ].join(" ")}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-medium text-white">
+                              {n.title || "Notification"}
+                            </div>
+                            <div className="mt-[2px] line-clamp-2 text-[12px] text-[#9ca3af]">
+                              {n.message || ""}
+                            </div>
+                            <div className="mt-[6px] text-[11px] text-[#6b7280]">
+                              {timeAgo(n.createdAt)}
+                              {n.type ? ` • ${n.type}` : ""}
+                            </div>
+                          </div>
+
+                          {!isRead && (
+                            <span className="mt-[4px] h-[8px] w-[8px] flex-none rounded-full bg-[#60a5fa]" />
+                          )}
+                        </div>
+                      </Link>
+                    );
+                  })}
+              </div>
+
+              <div className="flex items-center justify-between px-[14px] py-[10px]">
+                <Link
+                  href="/admin/notifications"
+                  className="text-[12px] text-[#60a5fa] hover:underline"
+                  onClick={() => setNotifOpen(false)}
+                >
+                  View all
+                </Link>
+                <button
+                  className="text-[12px] text-[#9ca3af] hover:text-white"
+                  onClick={() => setNotifOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Top stats */}
       <section className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-4">

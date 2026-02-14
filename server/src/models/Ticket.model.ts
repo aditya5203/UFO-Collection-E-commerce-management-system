@@ -11,6 +11,7 @@ const ReplySchema = new Schema(
 const TicketSchema = new Schema(
   {
     ticketCode: { type: String, required: true, unique: true }, // "#12345"
+
     status: {
       type: String,
       enum: ["Open", "Pending", "Closed"],
@@ -21,11 +22,14 @@ const TicketSchema = new Schema(
     subject: { type: String, required: true, trim: true },
     message: { type: String, required: true, trim: true },
 
+    // ✅ IMPORTANT: link ticket to real user (for notifications)
+    customer: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true },
+
     // optional references
     productId: { type: Schema.Types.ObjectId, ref: "Product", default: null },
 
     customerName: { type: String, required: true, trim: true },
-    customerEmail: { type: String, required: true, trim: true },
+    customerEmail: { type: String, required: true, trim: true, index: true },
 
     imageUrl: { type: String, default: null },
 

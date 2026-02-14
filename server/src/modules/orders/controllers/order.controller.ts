@@ -7,6 +7,9 @@ import { Order } from "../../../models/Order.model";
 import { User } from "../../../models/User.model";
 import { generateInvoicePdf } from "../../../services/invoice.service";
 
+// ✅ Notifications
+import { notificationService } from "../../notifications/services/notification.service";
+
 /* -------------------------------------------------------
  * Helpers
  * -----------------------------------------------------*/
@@ -41,6 +44,29 @@ function resolveCustomerName(order: any, fallbackUserName?: string) {
   return fallbackUserName || "Customer";
 }
 
+function norm(s: any) {
+  return String(s || "").trim().toLowerCase();
+}
+
+function isPaidLike(s: any) {
+  const v = norm(s);
+  return ["paid", "success", "successful", "completed"].includes(v);
+}
+
+function statusLabel(statusLower: string) {
+  if (statusLower === "pending") return "Order Pending";
+  if (statusLower === "shipped") return "Order Shipped";
+  if (statusLower === "delivered") return "Order Delivered";
+  if (statusLower === "cancelled" || statusLower === "canceled") return "Order Cancelled";
+  return "Order Updated";
+}
+
+// ✅ always use the tracking page with query param
+function trackingLink(orderCode: string) {
+  // orderCode is like "#597320"
+  return `/order-tracking?code=${encodeURIComponent(orderCode)}`;
+}
+
 /* -------------------------------------------------------
  * Controller
  * -----------------------------------------------------*/
@@ -53,12 +79,24 @@ export const orderController = {
       const userId = req.user?.userId;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-      const data = await orderService.createOrder(userId, req.body);
+      const data: any = await orderService.createOrder(userId, req.body);
+
+      // 🔔 Notification: Order Confirmed
+      try {
+        const oc = String(data?.orderCode || "");
+        await notificationService.create({
+          userId,
+          title: "Order Confirmed",
+          message: `Your order ${oc} has been placed successfully.`,
+          type: "order",
+          link: trackingLink(oc),
+          meta: { orderId: data?._id, orderCode: oc },
+        });
+      } catch {}
+
       return res.status(201).json({ data });
     } catch (err: any) {
-      return res
-        .status(500)
-        .json({ message: err?.message || "Failed to create order" });
+      return res.status(500).json({ message: err?.message || "Failed to create order" });
     }
   },
 
@@ -78,9 +116,7 @@ export const orderController = {
 
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res
-        .status(500)
-        .json({ message: err?.message || "Failed to fetch orders" });
+      return res.status(500).json({ message: err?.message || "Failed to fetch orders" });
     }
   },
 
@@ -96,19 +132,33 @@ export const orderController = {
 
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res
-        .status(500)
-        .json({ message: err?.message || "Failed to fetch order" });
+      return res.status(500).json({ message: err?.message || "Failed to fetch order" });
     }
   },
 
   // =====================================================
-  // UPDATE ORDER (Admin)
+  // UPDATE ORDER (Admin) ✅ supports _id OR orderCode
+  // Notifications:
+  // - status changed to shipped/delivered/cancelled/pending/other
+  // - payment changed to paid-like
   // =====================================================
   async update(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
       const { paymentStatus, orderStatus } = req.body || {};
+
+      const isObjId = mongoose.Types.ObjectId.isValid(id);
+      const existingOrder: any = isObjId
+        ? await Order.findById(id).lean()
+        : await Order.findOne({ orderCode: id }).lean();
+
+      if (!existingOrder) return res.status(404).json({ message: "Order not found" });
+
+      const prevOrderStatus = norm(existingOrder.orderStatus);
+      const nextOrderStatus = norm(orderStatus);
+
+      const prevPaymentStatus = norm(existingOrder.paymentStatus);
+      const nextPaymentStatus = norm(paymentStatus);
 
       const data = await orderService.updateOrder(id, {
         paymentStatus,
@@ -117,11 +167,80 @@ export const orderController = {
 
       if (!data) return res.status(404).json({ message: "Order not found" });
 
+      const customerId = String(existingOrder.customer);
+      const orderCode = String(existingOrder.orderCode || "");
+
+      const safeNotify = async (payload: any) => {
+        try {
+          await notificationService.create(payload);
+        } catch {}
+      };
+
+      // 🔔 order status notification (only if changed)
+      if (orderStatus && nextOrderStatus && nextOrderStatus !== prevOrderStatus) {
+        if (nextOrderStatus === "shipped") {
+          await safeNotify({
+            userId: customerId,
+            title: "Order Shipped",
+            message: `Good news! Your order ${orderCode} has been shipped.`,
+            type: "order",
+            link: trackingLink(orderCode),
+            meta: { orderId: existingOrder._id, orderCode },
+          });
+        } else if (nextOrderStatus === "delivered") {
+          await safeNotify({
+            userId: customerId,
+            title: "Order Delivered",
+            message: `Your order ${orderCode} has been delivered. Thank you for shopping with us!`,
+            type: "order",
+            link: trackingLink(orderCode),
+            meta: { orderId: existingOrder._id, orderCode },
+          });
+        } else if (nextOrderStatus === "cancelled" || nextOrderStatus === "canceled") {
+          await safeNotify({
+            userId: customerId,
+            title: "Order Cancelled",
+            message: `Your order ${orderCode} has been cancelled.`,
+            type: "order",
+            link: trackingLink(orderCode),
+            meta: { orderId: existingOrder._id, orderCode },
+          });
+        } else if (nextOrderStatus === "pending") {
+          await safeNotify({
+            userId: customerId,
+            title: "Order Pending",
+            message: `Your order ${orderCode} is now pending.`,
+            type: "order",
+            link: trackingLink(orderCode),
+            meta: { orderId: existingOrder._id, orderCode },
+          });
+        } else {
+          await safeNotify({
+            userId: customerId,
+            title: statusLabel(nextOrderStatus),
+            message: `Your order ${orderCode} status was updated.`,
+            type: "order",
+            link: trackingLink(orderCode),
+            meta: { orderId: existingOrder._id, orderCode, orderStatus },
+          });
+        }
+      }
+
+      // 🔔 payment success (only if becomes paid-like)
+      if (paymentStatus && nextPaymentStatus && isPaidLike(nextPaymentStatus) && !isPaidLike(prevPaymentStatus)) {
+        await safeNotify({
+          userId: customerId,
+          title: "Payment Successful",
+          message: `Payment received for order ${orderCode}.`,
+          type: "payment",
+          link: trackingLink(orderCode),
+          meta: { orderId: existingOrder._id, orderCode, paymentStatus },
+        });
+      }
+
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res
-        .status(500)
-        .json({ message: err?.message || "Failed to update order" });
+      return res.status(500).json({ message: err?.message || "Failed to update order" });
     }
   },
 
@@ -140,9 +259,7 @@ export const orderController = {
 
       return res.status(200).json({ order });
     } catch (err: any) {
-      return res
-        .status(500)
-        .json({ message: err?.message || "Failed to fetch order details" });
+      return res.status(500).json({ message: err?.message || "Failed to fetch order details" });
     }
   },
 
@@ -172,9 +289,7 @@ export const orderController = {
 
       return res.status(200).json({ orders: result });
     } catch (err: any) {
-      return res
-        .status(500)
-        .json({ message: err?.message || "Failed to fetch order history" });
+      return res.status(500).json({ message: err?.message || "Failed to fetch order history" });
     }
   },
 
@@ -190,15 +305,12 @@ export const orderController = {
 
       return res.status(200).json({ order });
     } catch (err: any) {
-      return res
-        .status(500)
-        .json({ message: err?.message || "Failed to track order" });
+      return res.status(500).json({ message: err?.message || "Failed to track order" });
     }
   },
 
   // =====================================================
   // DOWNLOAD INVOICE PDF (Admin OR Customer)
-  // GET /api/orders/:id/invoice
   // =====================================================
   async downloadInvoice(req: AuthRequest, res: Response) {
     try {
@@ -215,22 +327,18 @@ export const orderController = {
 
       if (!order) return res.status(404).json({ message: "Order not found" });
 
-      // 🔒 Ownership check
       if (!isAdminRole(role)) {
         if (String(order.customer) !== String(userId)) {
           return res.status(403).json({ message: "Forbidden" });
         }
       }
 
-      // Customer info
       let customerEmail = order.address?.email || "";
       let customerPhone = order.address?.phone || "";
 
       let user: any = null;
       if (!customerEmail) {
-        user = await User.findById(order.customer)
-          .select("email name")
-          .lean();
+        user = await User.findById(order.customer).select("email name").lean();
         customerEmail = user?.email || "";
       }
 
@@ -238,9 +346,7 @@ export const orderController = {
 
       const invoiceNo =
         order.invoiceNo ||
-        `INV-${new Date(order.createdAt).getFullYear()}-${String(
-          order.orderCode
-        ).replace("#", "")}`;
+        `INV-${new Date(order.createdAt).getFullYear()}-${String(order.orderCode).replace("#", "")}`;
 
       const { filePath, fileName } = await generateInvoicePdf({
         invoiceNo,
@@ -273,10 +379,7 @@ export const orderController = {
       });
 
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${fileName}"`
-      );
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
 
       const stream = fs.createReadStream(filePath);
       stream.pipe(res);
@@ -287,9 +390,7 @@ export const orderController = {
         } catch {}
       });
     } catch (err: any) {
-      return res
-        .status(500)
-        .json({ message: err?.message || "Failed to download invoice" });
+      return res.status(500).json({ message: err?.message || "Failed to download invoice" });
     }
   },
 };
