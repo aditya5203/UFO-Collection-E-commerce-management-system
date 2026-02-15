@@ -672,32 +672,34 @@ export default function HomePage() {
               />
             </Link>
 
-            {/* ✅ Notifications button + image (only for logged-in users) */}
-            {loadingUser ? (
-              <div className="h-[26px] w-[26px] animate-pulse rounded-full bg-white/10" />
-            ) : user ? (
-              <button
-                type="button"
-                onClick={() => router.push("/notifications")}
-                aria-label="Notifications"
-                className="relative"
-                title="Notifications"
-              >
-                <Image
-                  src="/images/notification.png"
-                  width={26}
-                  height={26}
-                  alt="Notifications"
-                  className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
-                />
+           {/* ✅ Notifications button (show always) */}
+{loadingUser ? (
+  <div className="h-[26px] w-[26px] animate-pulse rounded-full bg-white/10" />
+) : (
+  <button
+    type="button"
+    onClick={() => router.push(user ? "/notifications" : "/signup")}
+    aria-label="Notifications"
+    className="relative"
+    title={user ? "Notifications" : "Login to view notifications"}
+  >
+    <Image
+      src="/images/notification.png"
+      width={26}
+      height={26}
+      alt="Notifications"
+      className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
+    />
 
-                {unreadCount > 0 ? (
-                  <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-[5px] text-[11px] font-bold text-white">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
-                ) : null}
-              </button>
-            ) : null}
+    {/* 🔴 badge only when logged in */}
+    {user && unreadCount > 0 ? (
+      <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-[5px] text-[11px] font-bold text-white">
+        {unreadCount > 99 ? "99+" : unreadCount}
+      </span>
+    ) : null}
+  </button>
+)}
+
 
             {loadingUser ? (
               <div className="h-[32px] w-[32px] animate-pulse rounded-full bg-white/10" />

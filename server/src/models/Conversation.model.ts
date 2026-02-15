@@ -1,3 +1,4 @@
+// server/src/models/Conversation.model.ts
 import { Schema, model, Types } from "mongoose";
 
 export type ConversationStatus = "OPEN" | "ENDED";
@@ -8,6 +9,9 @@ export interface IConversation {
 
   status: ConversationStatus;
   orderId?: string | null;
+
+  // ✅ NEW: if customer requests human agent, disable bot/AI replies
+  aiDisabled?: boolean;
 
   lastMessage?: string;
   lastMessageAt?: Date | null;
@@ -23,6 +27,9 @@ const ConversationSchema = new Schema<IConversation>(
 
     status: { type: String, enum: ["OPEN", "ENDED"], default: "OPEN" },
     orderId: { type: String, default: null },
+
+    // ✅ NEW
+    aiDisabled: { type: Boolean, default: false },
 
     lastMessage: { type: String, default: "" },
     lastMessageAt: { type: Date, default: null },

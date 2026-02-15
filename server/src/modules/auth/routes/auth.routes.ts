@@ -1,10 +1,24 @@
 // server/src/modules/auth/routes/auth.routes.ts
 import { Router } from "express";
 import { authController } from "../controllers/auth.controller";
-import { customerAuthMiddleware } from "../middleware/auth.middleware";
+import {
+  customerAuthMiddleware,
+  adminAuthMiddleware,
+} from "../middleware/auth.middleware";
 import passport from "../../../config/passport";
 
 const router = Router();
+
+/**
+ * @swagger
+ * tags:
+ *   - name: Auth
+ *     description: Authentication & profile APIs
+ */
+
+/* =========================================================
+ * Register
+ * =======================================================*/
 
 /**
  * @swagger
@@ -19,10 +33,7 @@ const router = Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - email
- *               - password
- *               - name
+ *             required: [email, password, name]
  *             properties:
  *               email:
  *                 type: string
@@ -80,6 +91,10 @@ const router = Router();
  */
 router.post("/register", authController.register);
 
+/* =========================================================
+ * Customer Login
+ * =======================================================*/
+
 /**
  * @swagger
  * /api/auth/login:
@@ -93,9 +108,7 @@ router.post("/register", authController.register);
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - email
- *               - password
+ *             required: [email, password]
  *             properties:
  *               email:
  *                 type: string
@@ -133,6 +146,10 @@ router.post("/register", authController.register);
  */
 router.post("/login", authController.login);
 
+/* =========================================================
+ * Forgot / Reset Password
+ * =======================================================*/
+
 /**
  * @swagger
  * /api/auth/forgot-password:
@@ -146,8 +163,7 @@ router.post("/login", authController.login);
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - email
+ *             required: [email]
  *             properties:
  *               email:
  *                 type: string
@@ -163,8 +179,10 @@ router.post("/login", authController.login);
  *               properties:
  *                 success:
  *                   type: boolean
+ *                   example: true
  *                 message:
  *                   type: string
+ *                   example: If that email exists, a reset link has been sent
  */
 router.post("/forgot-password", authController.forgotPassword);
 
@@ -181,23 +199,41 @@ router.post("/forgot-password", authController.forgotPassword);
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - token
- *               - password
+ *             required: [token, password]
  *             properties:
  *               token:
  *                 type: string
  *                 example: 9c4f5d...
  *               password:
  *                 type: string
+ *                 format: password
  *                 example: NewPassword123
  *     responses:
  *       200:
  *         description: Password reset successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Password reset successful
  *       400:
  *         description: Invalid or expired token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post("/reset-password", authController.resetPassword);
+
+/* =========================================================
+ * Google (App-side upsert) + OAuth flow
+ * =======================================================*/
 
 /**
  * @swagger
@@ -212,10 +248,7 @@ router.post("/reset-password", authController.resetPassword);
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - email
- *               - name
- *               - providerId
+ *             required: [email, name, providerId]
  *             properties:
  *               email:
  *                 type: string
@@ -247,6 +280,7 @@ router.post("/reset-password", authController.resetPassword);
  *                   example: Login with Google successful
  *                 token:
  *                   type: string
+ *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
  *                 user:
  *                   $ref: '#/components/schemas/User'
  *       400:
@@ -274,9 +308,7 @@ router.post("/google", authController.googleLogin);
  */
 router.get(
   "/google/oauth",
-  passport.authenticate("google", {
-    scope: ["profile", "email"],
-  })
+  passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
 /**
@@ -296,12 +328,16 @@ router.get(
   authController.googleCallback
 );
 
+/* =========================================================
+ * Customer Logout + Session
+ * =======================================================*/
+
 /**
  * @swagger
  * /api/auth/logout:
  *   post:
- *     summary: Logout user
- *     description: Logout the currently authenticated user
+ *     summary: Logout customer
+ *     description: Logout the currently authenticated customer (clears ONLY customer cookie/token)
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
@@ -332,8 +368,8 @@ router.post("/logout", customerAuthMiddleware, authController.logout);
  * @swagger
  * /api/auth/me:
  *   get:
- *     summary: Get current user
- *     description: Get the currently authenticated user's information (including size recommendations)
+ *     summary: Get current customer
+ *     description: Get the currently authenticated customer's information (including size recommendations)
  *     tags: [Auth]
  *     security:
  *       - bearerAuth: []
@@ -359,6 +395,10 @@ router.post("/logout", customerAuthMiddleware, authController.logout);
  */
 router.get("/me", customerAuthMiddleware, authController.getMe);
 
+/* =========================================================
+ * Superadmin init + Admin auth
+ * =======================================================*/
+
 /**
  * @swagger
  * /api/auth/init-superadmin:
@@ -372,10 +412,7 @@ router.get("/me", customerAuthMiddleware, authController.getMe);
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - email
- *               - password
- *               - name
+ *             required: [email, password, name]
  *             properties:
  *               email:
  *                 type: string
@@ -435,9 +472,7 @@ router.post("/init-superadmin", authController.initSuperAdmin);
  *         application/json:
  *           schema:
  *             type: object
- *             required:
- *               - email
- *               - password
+ *             required: [email, password]
  *             properties:
  *               email:
  *                 type: string
@@ -483,9 +518,51 @@ router.post("/admin/login", authController.adminLogin);
 
 /**
  * @swagger
+ * /api/auth/admin/logout:
+ *   post:
+ *     summary: Logout admin/superadmin
+ *     description: Logout the currently authenticated admin (clears ONLY admin cookie/token)
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Admin logout successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Logout successful
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - user is not admin/superadmin
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post("/admin/logout", adminAuthMiddleware, authController.adminLogout);
+
+/* =========================================================
+ * Profile (Customer)
+ * =======================================================*/
+
+/**
+ * @swagger
  * /api/auth/profile:
  *   patch:
- *     summary: Update current user profile
+ *     summary: Update current customer profile
  *     description: Update name, address, height and weight. This will also recompute recommended clothing sizes.
  *     tags: [Auth]
  *     security:

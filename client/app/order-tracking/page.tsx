@@ -73,16 +73,22 @@ function TimelineIcon({ step, active }: { step: StepKey; active: StepKey }) {
 
 // ✅ SAME AS HOMEPAGE (includes /api)
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "http://localhost:8080/api";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
+  "http://localhost:8080/api";
 
 /** Backend orderStatus -> step */
-function statusToStep(orderStatus: string): StepKey {
-  if (orderStatus === "Shipped") return "SHIPPED";
-  if (orderStatus === "Delivered") return "DELIVERED";
+function statusToStep(orderStatusRaw: string): StepKey {
+  const s = String(orderStatusRaw || "").trim().toLowerCase();
+
+  // You can extend these if your backend uses more statuses
+  if (s === "delivered") return "DELIVERED";
+  if (s === "in_transit" || s === "in transit" || s === "intransit") return "IN_TRANSIT";
+  if (s === "shipped") return "SHIPPED";
+
   return "PLACED";
 }
 
-function fmtDate(input?: string) {
+function fmtDate(input?: any) {
   if (!input) return "";
   const d = new Date(input);
   if (Number.isNaN(d.getTime())) return "";
@@ -91,6 +97,11 @@ function fmtDate(input?: string) {
     month: "long",
     day: "numeric",
   });
+}
+
+function safeStatusText(orderStatusRaw: any) {
+  const raw = String(orderStatusRaw || "").trim();
+  return raw || "Pending";
 }
 
 export default function OrderTrackingPage() {
@@ -117,6 +128,7 @@ export default function OrderTrackingPage() {
 
   const handleTrack = React.useCallback(async () => {
     const raw = (data.trackingNumber || "").trim();
+
     if (!raw) {
       setError("Please enter tracking number.");
       return;
@@ -128,44 +140,68 @@ export default function OrderTrackingPage() {
 
       const code = raw.startsWith("#") ? raw : `#${raw}`;
 
-      const res = await fetch(
-        `${API_BASE}/orders/track/${encodeURIComponent(code)}`,
-        {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        }
-      );
+      const res = await fetch(`${API_BASE}/orders/track/${encodeURIComponent(code)}`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
 
       const json = await res.json().catch(() => ({} as any));
       if (!res.ok) throw new Error(json?.message || "Order not found");
 
-      const o = json?.order || {};
-      const orderStatus = String(o.orderStatus || "Pending");
-      const activeStep = statusToStep(orderStatus);
+      const o: any = json?.order || {};
 
-      const placedDate = fmtDate(o.createdAt) || "—";
+      const currentStatus = safeStatusText(o.orderStatus);
+      const activeStep = statusToStep(currentStatus);
+
+      // ✅ Date helper with fallback
+      const d = (v: any) => fmtDate(v) || "—";
+
+      // ✅ Use real status dates if you have them
+      // If your backend DOES NOT have shippedAt/inTransitAt/deliveredAt,
+      // it will fallback to updatedAt when step is reached.
+      const placedDate = d(o.createdAt);
+
+      const shippedDate =
+        activeStep === "SHIPPED" || activeStep === "IN_TRANSIT" || activeStep === "DELIVERED"
+          ? d(o.shippedAt || o.updatedAt)
+          : "—";
+
+      const inTransitDate =
+        activeStep === "IN_TRANSIT" || activeStep === "DELIVERED"
+          ? d(o.inTransitAt || o.updatedAt)
+          : "—";
+
+      const deliveredDate =
+        activeStep === "DELIVERED" ? d(o.deliveredAt || o.updatedAt) : "—";
+
       const estDelivery = String(o.shipping?.estimatedDelivery || "").trim() || "—";
+
+      const locationUpdates =
+        activeStep === "DELIVERED"
+          ? "Your order has been delivered successfully."
+          : activeStep === "IN_TRANSIT"
+          ? "Your order is in transit and moving through the delivery network."
+          : activeStep === "SHIPPED"
+          ? "Good news! Your order has been shipped."
+          : "Your order has been placed and is being processed.";
+
+      const carrierInfo = String(o.shipping?.method || "Standard Shipping — UFO Collection");
 
       setData((p) => ({
         ...p,
         trackingNumber: String(o.orderCode || code), // keep "#xxxx"
-        currentStatus: orderStatus,
+        currentStatus,
         estimatedDelivery: estDelivery,
         activeStep,
         timeline: [
           { key: "PLACED", title: "Order Placed", date: placedDate },
-          { key: "SHIPPED", title: "Shipped", date: "—" },
-          { key: "IN_TRANSIT", title: "In Transit", date: "—" },
-          { key: "DELIVERED", title: "Delivered", date: "—" },
+          { key: "SHIPPED", title: "Shipped", date: shippedDate },
+          { key: "IN_TRANSIT", title: "In Transit", date: inTransitDate },
+          { key: "DELIVERED", title: "Delivered", date: deliveredDate },
         ],
-        locationUpdates:
-          orderStatus === "Delivered"
-            ? "Your order has been delivered successfully."
-            : orderStatus === "Shipped"
-            ? "Your order has been shipped and is moving through the delivery network."
-            : "Your order has been placed and is being processed.",
-        carrierInfo: String(o.shipping?.method || "Standard Shipping — UFO Collection"),
+        locationUpdates,
+        carrierInfo,
       }));
     } catch (e: any) {
       setError(e?.message || "Failed to track order");
@@ -179,24 +215,19 @@ export default function OrderTrackingPage() {
     const code = searchParams.get("code");
     if (!code) return;
 
-    const clean = code.replace("#", "");
+    const clean = String(code).replace("#", "");
     setData((p) => ({ ...p, trackingNumber: clean }));
 
-    // allow state update to apply
-    setTimeout(() => {
-      // call track using the now-filled value
-      // (we pass clean directly by setting temporarily)
-      setData((p) => ({ ...p, trackingNumber: clean }));
-    }, 0);
-
-    setTimeout(() => {
+    // Run track after the input is set
+    const t = setTimeout(() => {
       handleTrack();
-    }, 80);
+    }, 120);
+
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   const percent = progressPercent(data.activeStep);
-
   const trackingForUrl = encodeURIComponent(String(data.trackingNumber || "").replace("#", ""));
   const canReview = data.activeStep === "DELIVERED" || data.currentStatus === "Delivered";
 
@@ -239,10 +270,30 @@ export default function OrderTrackingPage() {
           </div>
 
           <nav className="hidden md:flex gap-10">
-            <Link href="/homepage" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">HOME</Link>
-            <Link href="/collection" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">COLLECTION</Link>
-            <Link href="/about" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">ABOUT</Link>
-            <Link href="/contact" className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">CONTACT</Link>
+            <Link
+              href="/homepage"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              HOME
+            </Link>
+            <Link
+              href="/collection"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              COLLECTION
+            </Link>
+            <Link
+              href="/about"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              ABOUT
+            </Link>
+            <Link
+              href="/contact"
+              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              CONTACT
+            </Link>
           </nav>
 
           <div className="w-[26px]" />

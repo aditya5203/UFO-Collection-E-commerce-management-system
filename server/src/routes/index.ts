@@ -11,7 +11,6 @@ import customerRoutes from "../modules/customers/routes/customer.routes";
 import addressRoutes from "../modules/addresses/routes/address.routes";
 import notificationRoutes from "../modules/notifications/routes/notification.routes";
 
-
 // ✅ Dashboard (Admin)
 import dashboardRoutes from "../modules/admin/routes/dashboard.routes";
 
@@ -37,6 +36,7 @@ import discountRoutes from "../modules/discounts/routes/discount.routes";
 import {
   adminAuthMiddleware,
   customerAuthMiddleware,
+  anyAuthMiddleware, // ✅ NEW (accepts adminToken OR token)
 } from "../modules/auth/middleware/auth.middleware";
 
 const router = Router();
@@ -69,8 +69,8 @@ router.use("/tickets", customerAuthMiddleware, customerTicketRoutes);
 // ✅ CUSTOMER DISCOUNTS (collect / my-collected / validate / collect-all)
 router.use("/discounts", customerAuthMiddleware, discountRoutes.customerRouter);
 
-// ✅ NOTIFICATIONS (CUSTOMER)
-router.use("/notifications", customerAuthMiddleware, notificationRoutes);
+// ✅ NOTIFICATIONS (Customer OR Admin) ✅ FIX
+router.use("/notifications", anyAuthMiddleware, notificationRoutes);
 
 /* -------------------- ADMIN (PROTECTED) -------------------- */
 router.use("/admin/products", adminAuthMiddleware, productRoutes.adminRouter);

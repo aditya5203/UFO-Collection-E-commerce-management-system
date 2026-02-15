@@ -26,15 +26,15 @@ function numberedMenu() {
 }
 
 export function noAiReply(input: string) {
-  const t = norm(input);
+  let t = norm(input);
 
-  // If user sends only numbers
-  if (t === "1") t.replace("1", "order tracking");
-  if (t === "2") t.replace("2", "delivery time");
-  if (t === "3") t.replace("3", "return policy");
-  if (t === "4") t.replace("4", "payment failed");
-  if (t === "5") t.replace("5", "size help");
-  if (t === "6") t.replace("6", "talk to agent");
+  // ✅ FIX: number mapping works now
+  if (t === "1") t = "order tracking";
+  if (t === "2") t = "delivery time";
+  if (t === "3") t = "return policy";
+  if (t === "4") t = "payment failed";
+  if (t === "5") t = "size help";
+  if (t === "6") t = "talk to agent";
 
   // greetings
   if (isAny(t, ["hello", "hi", "namaste", "hey"])) {
@@ -42,7 +42,17 @@ export function noAiReply(input: string) {
   }
 
   // 6) human
-  if (isAny(t, ["talk to agent", "talk to human", "live agent", "agent", "customer care", "manche sanga kura", "agent sanga kura"])) {
+  if (
+    isAny(t, [
+      "talk to agent",
+      "talk to human",
+      "live agent",
+      "agent",
+      "customer care",
+      "manche sanga kura",
+      "agent sanga kura",
+    ])
+  ) {
     return (
       `Agent: Okay — a human agent will reply here when available.\n` +
       `Tip: Please also share your Order ID (if this is about an order) so the agent can help faster.`
@@ -50,7 +60,17 @@ export function noAiReply(input: string) {
   }
 
   // 1) order tracking
-  if (isAny(t, ["order tracking", "track my order", "track order", "where is my order", "order status", "mero order kaha cha", "mero order track"])) {
+  if (
+    isAny(t, [
+      "order tracking",
+      "track my order",
+      "track order",
+      "where is my order",
+      "order status",
+      "mero order kaha cha",
+      "mero order track",
+    ])
+  ) {
     return (
       `Agent: Order Tracking steps:\n` +
       `1) Open Profile → Order Tracking\n` +
@@ -61,7 +81,16 @@ export function noAiReply(input: string) {
   }
 
   // 2) delivery
-  if (isAny(t, ["delivery time", "shipping time", "estimated delivery", "when will it arrive", "delivery kati din", "delivery kahile aaucha"])) {
+  if (
+    isAny(t, [
+      "delivery time",
+      "shipping time",
+      "estimated delivery",
+      "when will it arrive",
+      "delivery kati din",
+      "delivery kahile aaucha",
+    ])
+  ) {
     return (
       `Agent: Delivery time:\n` +
       `1) Inside valley: usually 2–5 days\n` +
@@ -71,7 +100,18 @@ export function noAiReply(input: string) {
   }
 
   // 3) returns
-  if (isAny(t, ["return", "return policy", "refund", "refund policy", "exchange", "return kasari", "refund kasari", "exchange kasari"])) {
+  if (
+    isAny(t, [
+      "return",
+      "return policy",
+      "refund",
+      "refund policy",
+      "exchange",
+      "return kasari",
+      "refund kasari",
+      "exchange kasari",
+    ])
+  ) {
     return (
       `Agent: Returns / Refunds:\n` +
       `1) Keep the item unused and in original packaging\n` +
@@ -81,7 +121,18 @@ export function noAiReply(input: string) {
   }
 
   // 4) payments
-  if (isAny(t, ["payment", "payment failed", "esewa", "khalti", "esewa problem", "khalti problem", "esewa chalena", "khalti chalena"])) {
+  if (
+    isAny(t, [
+      "payment",
+      "payment failed",
+      "esewa",
+      "khalti",
+      "esewa problem",
+      "khalti problem",
+      "esewa chalena",
+      "khalti chalena",
+    ])
+  ) {
     return (
       `Agent: Payment help (eSewa / Khalti):\n` +
       `1) Share your Order ID\n` +
@@ -91,7 +142,16 @@ export function noAiReply(input: string) {
   }
 
   // 5) size
-  if (isAny(t, ["size", "size help", "size guide", "which size", "kun size", "size kasari thaha paune"])) {
+  if (
+    isAny(t, [
+      "size",
+      "size help",
+      "size guide",
+      "which size",
+      "kun size",
+      "size kasari thaha paune",
+    ])
+  ) {
     return (
       `Agent: Size Guidance:\n` +
       `1) Go to Profile → Update height/weight\n` +

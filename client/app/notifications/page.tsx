@@ -46,9 +46,10 @@ function timeAgo(iso?: string) {
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const API_BASE =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-    "http://localhost:8080/api";
+
+  // ✅ FIXED: always use /api
+  const BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080").replace(/\/+$/, "");
+  const API_BASE = `${BASE}/api`;
 
   const [items, setItems] = React.useState<NotificationItem[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -59,7 +60,6 @@ export default function NotificationsPage() {
       setErr(null);
       setLoading(true);
 
-      // ✅ Adjust endpoint if your backend uses different route
       const res = await fetch(`${API_BASE}/notifications?limit=50`, {
         credentials: "include",
         cache: "no-store",
@@ -96,43 +96,31 @@ export default function NotificationsPage() {
   const markRead = async (id: string) => {
     if (!id) return;
 
-    // optimistic
-    setItems((prev) =>
-      prev.map((n) => (pickId(n) === id ? { ...n, isRead: true } : n))
-    );
+    setItems((prev) => prev.map((n) => (pickId(n) === id ? { ...n, isRead: true } : n)));
 
     try {
-      // ✅ Adjust endpoint if needed
       await fetch(`${API_BASE}/notifications/${encodeURIComponent(id)}/read`, {
         method: "PATCH",
         credentials: "include",
       });
-    } catch {
-      // ignore (UI already updated)
-    }
+    } catch {}
   };
 
   const markAllRead = async () => {
-    // optimistic
     setItems((prev) => prev.map((n) => ({ ...n, isRead: true })));
 
     try {
-      // ✅ Adjust endpoint if needed
       await fetch(`${API_BASE}/notifications/read-all`, {
         method: "PATCH",
         credentials: "include",
       });
-    } catch {
-      // ignore
-    }
+    } catch {}
   };
 
   return (
     <>
-      {/* HEADER */}
       <header className="sticky top-0 z-40 h-[80px] border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-full w-full max-w-[1160px] items-center justify-between px-4">
-          {/* Brand */}
           <div className="flex items-center gap-[10px]">
             <div className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white">
               <Image
@@ -148,35 +136,21 @@ export default function NotificationsPage() {
             </div>
           </div>
 
-          {/* Nav */}
           <nav className="flex gap-[42px] max-sm:flex-wrap max-sm:gap-5">
-            <Link
-              href="/homepage"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
+            <Link href="/homepage" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
               HOME
             </Link>
-            <Link
-              href="/collection"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
+            <Link href="/collection" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
               COLLECTION
             </Link>
-            <Link
-              href="/about"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
+            <Link href="/about" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
               ABOUT
             </Link>
-            <Link
-              href="/contact"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
+            <Link href="/contact" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">
               CONTACT
             </Link>
           </nav>
 
-          {/* Right Actions */}
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.push("/homepage")}
@@ -188,18 +162,13 @@ export default function NotificationsPage() {
         </div>
       </header>
 
-      {/* PAGE */}
       <main className="min-h-screen bg-[#050611] text-white">
         <div className="mx-auto w-full max-w-[900px] px-4 py-8">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <div className="text-[12px] uppercase tracking-[0.18em] text-[#8b90ad]">
-                Notifications
-              </div>
+              <div className="text-[12px] uppercase tracking-[0.18em] text-[#8b90ad]">Notifications</div>
               <h1 className="mt-2 text-[26px] font-semibold">Your Updates</h1>
-              <p className="mt-1 text-[13px] text-[#8b90ad]">
-                Order updates, ticket replies, payment alerts and offers.
-              </p>
+              <p className="mt-1 text-[13px] text-[#8b90ad]">Order updates, ticket replies, payment alerts and offers.</p>
             </div>
 
             <div className="flex gap-3">
@@ -240,46 +209,28 @@ export default function NotificationsPage() {
                         if (n.link) router.push(n.link);
                       }}
                       className={`w-full rounded-[14px] border p-4 text-left transition ${
-                        unread
-                          ? "border-[#3a3d5a] bg-white/5 hover:bg-white/10"
-                          : "border-[#22253a] bg-transparent hover:bg-white/5"
+                        unread ? "border-[#3a3d5a] bg-white/5 hover:bg-white/10" : "border-[#22253a] bg-transparent hover:bg-white/5"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="text-[14px] font-semibold text-white">
-                            {n.title || "Notification"}
-                          </div>
-                          {n.message ? (
-                            <div className="mt-1 text-[12px] leading-[1.7] text-[#9aa3cc]">
-                              {n.message}
-                            </div>
-                          ) : null}
+                          <div className="text-[14px] font-semibold text-white">{n.title || "Notification"}</div>
+                          {n.message ? <div className="mt-1 text-[12px] leading-[1.7] text-[#9aa3cc]">{n.message}</div> : null}
                           <div className="mt-2 text-[11px] text-[#8b90ad]">
                             {n.type ? `${n.type} • ` : ""}
                             {timeAgo(n.createdAt)}
                           </div>
                         </div>
 
-                        {unread ? (
-                          <span className="mt-1 h-[10px] w-[10px] rounded-full bg-red-500" />
-                        ) : null}
+                        {unread ? <span className="mt-1 h-[10px] w-[10px] rounded-full bg-red-500" /> : null}
                       </div>
 
-                      {n.link ? (
-                        <div className="mt-3 text-[12px] text-white/80 underline underline-offset-4">
-                          Open
-                        </div>
-                      ) : null}
+                      {n.link ? <div className="mt-3 text-[12px] text-white/80 underline underline-offset-4">Open</div> : null}
                     </button>
                   );
                 })}
               </div>
             )}
-          </div>
-
-          <div className="mt-6 text-center text-[12px] text-[#8b90ad]">
-            Tip: If this page shows error, your backend route might be different.
           </div>
         </div>
       </main>

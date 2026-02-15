@@ -38,7 +38,6 @@ function Bubble({ m }: { m: Msg }) {
   if (isSystem) {
     return (
       <div className="rounded-[10px] border border-[#2b2f45] bg-[#070a12] px-4 py-3 text-sm text-[#9aa3cc]">
-        {/* ✅ prevents overlap: stack on small screens, wrap text */}
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <span className="min-w-0 whitespace-pre-wrap break-words">
             {m.text}
@@ -77,7 +76,6 @@ export default function LiveAgentChatPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  // optional: open chat about a specific order
   const orderId = sp.get("orderId") || undefined;
 
   const [loading, setLoading] = React.useState(true);
@@ -91,11 +89,21 @@ export default function LiveAgentChatPage() {
   const [err, setErr] = React.useState("");
 
   const listRef = React.useRef<HTMLDivElement | null>(null);
+  const didInitialScrollRef = React.useRef(false);
 
+  const scrollToBottom = React.useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+
+  // ✅ only auto-scroll once after first load, and after send/end (manual calls)
   React.useEffect(() => {
-    if (!listRef.current) return;
-    listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [messages.length]);
+    if (!didInitialScrollRef.current && messages.length > 0) {
+      didInitialScrollRef.current = true;
+      scrollToBottom();
+    }
+  }, [messages.length, scrollToBottom]);
 
   // ✅ Helper: handle auth errors consistently
   const handleAuthStatus = React.useCallback(
@@ -181,21 +189,16 @@ export default function LiveAgentChatPage() {
     [handleAuthStatus]
   );
 
+  // ✅ Open chat on mount
   React.useEffect(() => {
     openConversation();
   }, [openConversation]);
 
+  // ✅ Load messages once when conversation is created
   React.useEffect(() => {
     if (!conv?._id) return;
+    didInitialScrollRef.current = false; // allow initial scroll for new conv
     loadMessages(conv._id);
-  }, [conv?._id, loadMessages]);
-
-  React.useEffect(() => {
-    if (!conv?._id) return;
-    const t = setInterval(() => {
-      loadMessages(conv._id);
-    }, 2500);
-    return () => clearInterval(t);
   }, [conv?._id, loadMessages]);
 
   const send = async () => {
@@ -227,6 +230,9 @@ export default function LiveAgentChatPage() {
 
       setText("");
       await loadMessages(conv._id);
+
+      // ✅ scroll after sending
+      scrollToBottom();
     } catch (e) {
       console.error(e);
       setErr("Failed to send message.");
@@ -259,6 +265,9 @@ export default function LiveAgentChatPage() {
 
       setConv((p) => (p ? { ...p, status: "ENDED" } : p));
       await loadMessages(conv._id);
+
+      // ✅ scroll after ending
+      scrollToBottom();
     } catch (e) {
       console.error(e);
       setErr("Failed to end chat.");
@@ -267,6 +276,7 @@ export default function LiveAgentChatPage() {
     }
   };
 
+  // ✅ if no polling, agent status will update only when you refresh/load again
   const agentStatus =
     conv?.status === "ENDED"
       ? "Ended"
@@ -276,7 +286,6 @@ export default function LiveAgentChatPage() {
 
   return (
     <>
-      {/* Header like Cart */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
           <div className="flex items-center gap-4">
@@ -370,6 +379,17 @@ export default function LiveAgentChatPage() {
                   Order: <span className="text-white">{orderId}</span>
                 </span>
               ) : null}
+
+              {/* ✅ Manual refresh button since polling removed */}
+              {conv?._id ? (
+                <button
+                  type="button"
+                  onClick={() => loadMessages(conv._id)}
+                  className="ml-auto rounded-full border border-[#2b2f45] px-4 py-2 text-xs font-semibold text-white hover:bg-white hover:text-[#050611]"
+                >
+                  Refresh
+                </button>
+              ) : null}
             </div>
 
             <p className="mt-3 text-[#9aa3cc] text-sm">
@@ -385,13 +405,11 @@ export default function LiveAgentChatPage() {
           ) : null}
 
           <div className="mt-10 grid grid-cols-1 gap-10 lg:grid-cols-[1fr_420px]">
-            {/* Chat */}
             <section className="rounded-[10px] border border-[#2b2f45] bg-[#0b0f1a]/60">
               <div className="border-b border-[#2b2f45] px-6 py-4 text-[#dfe3ff]">
                 Conversation
               </div>
 
-              {/* ✅ overflow wrap prevents any overlap */}
               <div
                 ref={listRef}
                 className="h-[520px] overflow-y-auto px-6 py-6 [overflow-wrap:anywhere]"
@@ -422,7 +440,9 @@ export default function LiveAgentChatPage() {
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   placeholder={
-                    conv?.status === "ENDED" ? "Chat ended." : "Type your message..."
+                    conv?.status === "ENDED"
+                      ? "Chat ended."
+                      : "Type your message..."
                   }
                   disabled={sending || conv?.status === "ENDED"}
                   className="mt-3 min-h-[120px] w-full rounded-[10px] border border-[#2b2f45] bg-[#070a12] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none disabled:opacity-60"
@@ -464,7 +484,6 @@ export default function LiveAgentChatPage() {
               </div>
             </section>
 
-            {/* Help box */}
             <aside>
               <h2 className="text-[22px] font-semibold">Quick Help</h2>
 

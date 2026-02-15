@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import * as React from "react";
 
 type NavItem = {
   label: string;
@@ -28,7 +29,6 @@ const NAV_ITEMS: NavItem[] = [
     icon: "/images/admin/ticket.png",
   },
 
-  // ✅ NEW: Live Chat Inbox
   {
     label: "Live Chat",
     href: "/admin/chat",
@@ -51,12 +51,50 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Settings", href: "/admin/settings", icon: "/images/admin/setting.png" },
 ];
 
+// ✅ FIXED API BASE (always points to /api)
+const BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080").replace(/\/+$/, "");
+const API_BASE = `${BASE}/api`;
+
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
 export default function AdminSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = React.useState(false);
 
   const isActive = (href: string) => {
     if (!pathname) return false;
     return pathname === href || pathname.startsWith(`${href}/`);
+  };
+
+  const onAdminLogout = async () => {
+    try {
+      setLoggingOut(true);
+
+      const res = await fetch(`${API_BASE}/auth/admin/logout`, {
+        method: "POST",
+        credentials: "include", // ✅ must include cookies
+      });
+
+      if (!res.ok) {
+        const j = await safeJson(res);
+        alert(j?.message || "Admin logout failed");
+        return;
+      }
+
+      router.push("/admin/adminlogin");
+    } catch (e) {
+      alert("Admin logout failed");
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -81,7 +119,26 @@ export default function AdminSidebar() {
         </ul>
       </nav>
 
-      <div className="sidebar-foot">© {new Date().getFullYear()} UFO Collection</div>
+      {/* ✅ Logout button (bottom) */}
+      <div className="sidebar-foot">
+        <button
+          type="button"
+          onClick={onAdminLogout}
+          disabled={loggingOut}
+          className="admin-nav-link"
+          style={{
+            width: "100%",
+            justifyContent: "center",
+            border: "1px solid #1f2937",
+            background: loggingOut ? "#111827" : "transparent",
+            cursor: loggingOut ? "not-allowed" : "pointer",
+          }}
+        >
+          {loggingOut ? "Logging out..." : "Logout"}
+        </button>
+
+        <div style={{ marginTop: 10 }}>© {new Date().getFullYear()} UFO Collection</div>
+      </div>
     </aside>
   );
 }

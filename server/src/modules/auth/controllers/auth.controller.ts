@@ -27,39 +27,33 @@ const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
 const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
 
 /**
- * ✅ Cookie settings that work:
+ * ✅ Cookie settings that work reliably:
  * - Localhost dev (http): secure=false, sameSite="lax"
  * - Production cross-domain (https): secure=true, sameSite="none"
+ *
+ * This avoids the common "No token provided" issue caused by secure cookies on http localhost.
  */
 function getCookieOptions() {
   const isProd = config.nodeEnv === "production";
 
-  const sameSiteEnv = (process.env.COOKIE_SAMESITE || "").toLowerCase();
-  const secureEnv = (process.env.COOKIE_SECURE || "").toLowerCase();
+  // ✅ DEV: always safe for http://localhost
+  if (!isProd) {
+    return {
+      httpOnly: true,
+      secure: false,
+      sameSite: "lax" as const,
+      path: "/", // ✅ important for /api/orders and /api/admin/*
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    };
+  }
 
-  const sameSite =
-    sameSiteEnv === "none" || sameSiteEnv === "lax" || sameSiteEnv === "strict"
-      ? (sameSiteEnv as "none" | "lax" | "strict")
-      : isProd
-      ? "none"
-      : "lax";
-
-  // sameSite="none" MUST have secure=true in modern browsers
-  const secure =
-    secureEnv === "true"
-      ? true
-      : secureEnv === "false"
-      ? false
-      : sameSite === "none"
-      ? true
-      : isProd;
-
+  // ✅ PROD: allow cross-site cookies (requires https)
   return {
     httpOnly: true,
-    secure,
-    sameSite,
-    path: "/", // ✅ important for /api/orders and /api/admin/*
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    secure: true,
+    sameSite: "none" as const,
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 }
 
@@ -68,6 +62,7 @@ function setCookie(res: Response, cookieName: string, token: string) {
 }
 
 function clearCookie(res: Response, cookieName: string) {
+  // Must match cookie options (secure/samesite/path) to clear properly
   res.clearCookie(cookieName, {
     ...getCookieOptions(),
     maxAge: undefined,
@@ -78,7 +73,7 @@ function sha256(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-/** ✅ Welcome email template (Option 4) */
+/** ✅ Welcome email template */
 function buildWelcomeEmailHtml(name: string) {
   return `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
@@ -134,7 +129,6 @@ export const authController = {
       setCookie(res, CUSTOMER_COOKIE, result.token);
 
       // ✅ Send Welcome Email (non-blocking)
-      // If email fails, registration still succeeds
       emailService
         .sendMail({
           to: result.user.email,
@@ -201,8 +195,6 @@ export const authController = {
       const rawToken = crypto.randomBytes(32).toString("hex");
       const tokenHash = sha256(rawToken);
 
-      // NOTE: your User model must have these fields:
-      // resetPasswordTokenHash, resetPasswordExpires
       (user as any).resetPasswordTokenHash = tokenHash;
       (user as any).resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
       await user.save();
@@ -256,9 +248,8 @@ export const authController = {
 
       if (!user) throw new AppError("Invalid or expired reset token", 400);
 
-      // ✅ set new password (hashed by pre-save hook)
       (user as any).password = password;
-      (user as any).provider = "credentials"; // allow google users to set password too
+      (user as any).provider = "credentials";
       (user as any).resetPasswordTokenHash = null;
       (user as any).resetPasswordExpires = null;
 
@@ -284,13 +275,12 @@ export const authController = {
 
       const result = await authService.loginUser(credentials);
 
-      // ✅ case-insensitive role check
       const role = String(result.user.role || "").toLowerCase();
       if (role !== "admin" && role !== "superadmin") {
         throw new AppError("Access denied. Admin only.", 403);
       }
 
-      // ✅ ADMIN cookie (separate from customer)
+      // ✅ ADMIN cookie
       setCookie(res, ADMIN_COOKIE, result.token);
 
       res.status(200).json({
@@ -304,7 +294,7 @@ export const authController = {
     }
   },
 
-  // ---------- Logout ----------
+  // ✅ NEW: CUSTOMER Logout (clears ONLY customer cookie)
   logout: async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const userId = (req.user as any)?.userId;
@@ -312,13 +302,32 @@ export const authController = {
 
       await authService.logoutUser(userId);
 
-      // ✅ clear BOTH cookies
+      // ✅ clear ONLY customer cookie
       clearCookie(res, CUSTOMER_COOKIE);
-      clearCookie(res, ADMIN_COOKIE);
 
       res.status(200).json({
         success: true,
         message: "Logout successful",
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // ✅ NEW: ADMIN Logout (clears ONLY admin cookie)
+  adminLogout: async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const userId = (req.user as any)?.userId;
+      if (!userId) throw new AppError("User not authenticated", 401);
+
+      await authService.logoutUser(userId);
+
+      // ✅ clear ONLY admin cookie
+      clearCookie(res, ADMIN_COOKIE);
+
+      res.status(200).json({
+        success: true,
+        message: "Admin logout successful",
       });
     } catch (error) {
       next(error);
