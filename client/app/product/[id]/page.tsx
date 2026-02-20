@@ -131,6 +131,24 @@ function normalizeColors(raw: any): string[] {
   return [];
 }
 
+/* ---------------------------
+   ✅ Cart helpers
+--------------------------- */
+function readCart(): CartItem[] {
+  try {
+    const raw = localStorage.getItem("ufo_cart");
+    const cart = raw ? JSON.parse(raw) : [];
+    return Array.isArray(cart) ? cart : [];
+  } catch {
+    return [];
+  }
+}
+
+function getCartCount(): number {
+  const cart = readCart();
+  return cart.reduce((sum, it) => sum + (Number(it?.qty) || 0), 0);
+}
+
 export default function ProductPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -145,6 +163,10 @@ export default function ProductPage() {
     "description"
   );
 
+  // ✅ Added message + cart badge count
+  const [addedMsg, setAddedMsg] = React.useState<string | null>(null);
+  const [cartCount, setCartCount] = React.useState<number>(0);
+
   // Reviews state
   const [reviews, setReviews] = React.useState<Review[]>([]);
   const [reviewsLoading, setReviewsLoading] = React.useState(false);
@@ -153,6 +175,26 @@ export default function ProductPage() {
     count: number;
     avgRating: number;
   }>({ count: 0, avgRating: 0 });
+
+  // ✅ init cart count + listen updates
+  React.useEffect(() => {
+    const update = () => setCartCount(getCartCount());
+    update();
+
+    // same tab updates
+    window.addEventListener("ufo_cart_updated", update);
+
+    // other tab updates
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "ufo_cart") update();
+    };
+    window.addEventListener("storage", onStorage);
+
+    return () => {
+      window.removeEventListener("ufo_cart_updated", update);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   // -------- Fetch product by id --------
   React.useEffect(() => {
@@ -252,14 +294,7 @@ export default function ProductPage() {
       image: product.image,
     };
 
-    let cart: CartItem[] = [];
-    try {
-      const raw = localStorage.getItem("ufo_cart");
-      cart = raw ? (JSON.parse(raw) as CartItem[]) : [];
-      if (!Array.isArray(cart)) cart = [];
-    } catch {
-      cart = [];
-    }
+    let cart: CartItem[] = readCart();
 
     const idx = cart.findIndex((it) => it.id === item.id && it.size === item.size);
     if (idx !== -1) {
@@ -269,7 +304,13 @@ export default function ProductPage() {
     }
 
     localStorage.setItem("ufo_cart", JSON.stringify(cart));
-    router.push("/cartpage");
+
+    // ✅ update badge instantly (same tab)
+    window.dispatchEvent(new Event("ufo_cart_updated"));
+
+    // ✅ keep user on product page
+    setAddedMsg("Added to cart!");
+    window.setTimeout(() => setAddedMsg(null), 1200);
   };
 
   // -------- UI states --------
@@ -284,7 +325,9 @@ export default function ProductPage() {
   if (error || !product) {
     return (
       <main className="min-h-screen bg-[#050816] text-white flex flex-col items-center justify-center gap-4 px-4">
-        <div className="text-red-300 text-center">{error || "Product not found."}</div>
+        <div className="text-red-300 text-center">
+          {error || "Product not found."}
+        </div>
         <button
           type="button"
           onClick={() => router.push("/collection")}
@@ -368,12 +411,13 @@ export default function ProductPage() {
             </Link>
           </nav>
 
+          {/* ✅ Cart icon with badge count (like your image) */}
           <button
             type="button"
             onClick={() => router.push("/cartpage")}
             aria-label="Go to cart"
             title="Go to cart"
-            className="cursor-pointer"
+            className="relative cursor-pointer"
           >
             <Image
               src="/images/wishlist.png"
@@ -382,6 +426,11 @@ export default function ProductPage() {
               alt="Cart icon"
               className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
             />
+            {cartCount > 0 ? (
+              <span className="absolute -bottom-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black text-[11px] font-bold text-white px-[5px]">
+                {cartCount}
+              </span>
+            ) : null}
           </button>
         </div>
 
@@ -428,7 +477,13 @@ export default function ProductPage() {
           <section className="grid grid-cols-1 gap-8 md:grid-cols-[1.05fr_1.4fr]">
             <div className="flex justify-center rounded-[14px] border border-[#111827] bg-[#050816] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
               <div className="relative w-full max-w-[360px] pb-[100%]">
-                <Image src={product.image} alt={product.name} fill className="object-contain" priority />
+                <Image
+                  src={product.image}
+                  alt={product.name}
+                  fill
+                  className="object-contain"
+                  priority
+                />
               </div>
             </div>
 
@@ -436,7 +491,9 @@ export default function ProductPage() {
               <h1 className="text-[26px] font-semibold">{product.name}</h1>
 
               <div className="mt-3 flex items-center gap-3">
-                <span className="text-[22px] font-semibold">{(product.rating ?? 0).toFixed(1)}</span>
+                <span className="text-[22px] font-semibold">
+                  {(product.rating ?? 0).toFixed(1)}
+                </span>
 
                 <div className="flex items-center gap-[2px]" aria-label="Rating stars">
                   {Array.from({ length: 5 }).map((_, i) => {
@@ -454,15 +511,23 @@ export default function ProductPage() {
                 </div>
               </div>
 
-              <div className="mt-1 text-[13px] text-[#9ca3af]">{product.reviews ?? 0} reviews</div>
+              <div className="mt-1 text-[13px] text-[#9ca3af]">
+                {product.reviews ?? 0} reviews
+              </div>
 
-              <div className="mt-3 text-[22px] font-semibold text-[#7dd3fc]">Rs. {product.price}</div>
+              <div className="mt-3 text-[22px] font-semibold text-[#7dd3fc]">
+                Rs. {product.price}
+              </div>
 
               {product.shortDesc ? (
-                <p className="mt-3 max-w-[460px] text-[14px] leading-[1.7] text-[#d1d5db]">{product.shortDesc}</p>
+                <p className="mt-3 max-w-[460px] text-[14px] leading-[1.7] text-[#d1d5db]">
+                  {product.shortDesc}
+                </p>
               ) : null}
 
-              <div className="mt-6 text-[13px] uppercase tracking-[0.1em] text-[#cbd5f5]">Size</div>
+              <div className="mt-6 text-[13px] uppercase tracking-[0.1em] text-[#cbd5f5]">
+                Size
+              </div>
 
               <div className="mt-2 flex flex-wrap gap-2">
                 {sizes.map((s) => {
@@ -473,7 +538,9 @@ export default function ProductPage() {
                       type="button"
                       onClick={() => setSelectedSize(s)}
                       className={`min-w-[40px] rounded-[6px] border px-3 py-[6px] text-[13px] ${
-                        active ? "border-[#1d9bf0] bg-[#1d9bf0] text-white" : "border-[#4b5563] bg-transparent text-[#e5e7eb]"
+                        active
+                          ? "border-[#1d9bf0] bg-[#1d9bf0] text-white"
+                          : "border-[#4b5563] bg-transparent text-[#e5e7eb]"
                       }`}
                     >
                       {s}
@@ -484,7 +551,9 @@ export default function ProductPage() {
 
               {colors.length > 0 ? (
                 <>
-                  <div className="mt-6 text-[13px] uppercase tracking-[0.1em] text-[#cbd5f5]">Color</div>
+                  <div className="mt-6 text-[13px] uppercase tracking-[0.1em] text-[#cbd5f5]">
+                    Color
+                  </div>
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     {colors.map((hex) => (
@@ -494,8 +563,13 @@ export default function ProductPage() {
                         title={hex}
                         aria-label={`Color ${hex}`}
                       >
-                        <span className="h-4 w-4 rounded-full border border-[#111827]" style={{ backgroundColor: hex }} />
-                        <span className="text-[13px] font-semibold text-white">{hex}</span>
+                        <span
+                          className="h-4 w-4 rounded-full border border-[#111827]"
+                          style={{ backgroundColor: hex }}
+                        />
+                        <span className="text-[13px] font-semibold text-white">
+                          {hex}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -509,6 +583,13 @@ export default function ProductPage() {
               >
                 ADD TO CART
               </button>
+
+              {/* ✅ small feedback message (stays on page) */}
+              {addedMsg ? (
+                <div className="mt-3 text-sm text-[#86efac] font-medium">
+                  {addedMsg}
+                </div>
+              ) : null}
 
               <ul className="mt-4 space-y-1 text-[13px] text-[#cbd5e1]">
                 <li>100% Original Products</li>
@@ -524,7 +605,11 @@ export default function ProductPage() {
               <button
                 type="button"
                 onClick={() => setActiveTab("description")}
-                className={`pb-3 ${activeTab === "description" ? "border-b-2 border-white text-white" : "text-[#9ca3af]"}`}
+                className={`pb-3 ${
+                  activeTab === "description"
+                    ? "border-b-2 border-white text-white"
+                    : "text-[#9ca3af]"
+                }`}
               >
                 Description
               </button>
@@ -532,9 +617,14 @@ export default function ProductPage() {
               <button
                 type="button"
                 onClick={() => setActiveTab("reviews")}
-                className={`pb-3 ${activeTab === "reviews" ? "border-b-2 border-white text-white" : "text-[#9ca3af]"}`}
+                className={`pb-3 ${
+                  activeTab === "reviews"
+                    ? "border-b-2 border-white text-white"
+                    : "text-[#9ca3af]"
+                }`}
               >
-                Reviews <span className="text-[13px]">({reviewSummary.count || 0})</span>
+                Reviews{" "}
+                <span className="text-[13px]">({reviewSummary.count || 0})</span>
               </button>
             </div>
 
@@ -544,8 +634,15 @@ export default function ProductPage() {
               ) : (
                 <div className="space-y-4">
                   <div className="text-[#9ca3af] text-sm">
-                    Avg: <span className="text-white font-semibold">{reviewSummary.avgRating || 0}</span> •{" "}
-                    <span className="text-white font-semibold">{reviewSummary.count || 0}</span> reviews
+                    Avg:{" "}
+                    <span className="text-white font-semibold">
+                      {reviewSummary.avgRating || 0}
+                    </span>{" "}
+                    •{" "}
+                    <span className="text-white font-semibold">
+                      {reviewSummary.count || 0}
+                    </span>{" "}
+                    reviews
                   </div>
 
                   {reviewsLoading ? (
@@ -553,19 +650,32 @@ export default function ProductPage() {
                       Loading reviews...
                     </div>
                   ) : reviewsError ? (
-                    <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">{reviewsError}</div>
+                    <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">
+                      {reviewsError}
+                    </div>
                   ) : reviews.length === 0 ? (
-                    <div className="rounded-xl border border-[#111827] bg-[#0b0f1a]/60 p-4 text-[#9aa3cc]">No reviews yet.</div>
+                    <div className="rounded-xl border border-[#111827] bg-[#0b0f1a]/60 p-4 text-[#9aa3cc]">
+                      No reviews yet.
+                    </div>
                   ) : (
                     reviews.map((r) => (
-                      <div key={r._id} className="rounded-xl border border-[#111827] bg-[#0b0f1a]/60 p-4">
+                      <div
+                        key={r._id}
+                        className="rounded-xl border border-[#111827] bg-[#0b0f1a]/60 p-4"
+                      >
                         <div className="flex items-center justify-between gap-4">
-                          <div className="text-white font-semibold">{r.title?.trim() ? r.title : "Review"}</div>
-                          <div className="text-[#7dd3fc] font-semibold">{Number(r.rating || 0).toFixed(1)} / 5</div>
+                          <div className="text-white font-semibold">
+                            {r.title?.trim() ? r.title : "Review"}
+                          </div>
+                          <div className="text-[#7dd3fc] font-semibold">
+                            {Number(r.rating || 0).toFixed(1)} / 5
+                          </div>
                         </div>
 
                         {r.comment?.trim() ? (
-                          <p className="mt-2 text-[#d1d5db] text-sm leading-relaxed">{r.comment}</p>
+                          <p className="mt-2 text-[#d1d5db] text-sm leading-relaxed">
+                            {r.comment}
+                          </p>
                         ) : null}
 
                         {/* ✅ customer should NOT see date/time -> removed */}

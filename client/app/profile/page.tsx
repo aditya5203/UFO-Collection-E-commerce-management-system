@@ -25,6 +25,13 @@ export default function ProfilePage() {
   const [saving, setSaving] = React.useState(false);
   const [loggingOut, setLoggingOut] = React.useState(false);
 
+  // ✅ delete account
+  const [deleting, setDeleting] = React.useState(false);
+
+  // ✅ delete modal
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [deleteText, setDeleteText] = React.useState("");
+
   // 3-dots dropdown
   const [menuOpen, setMenuOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement | null>(null);
@@ -38,8 +45,9 @@ export default function ProfilePage() {
     womenSize: "",
   });
 
-  const API =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+  // ✅ IMPORTANT: keep this exactly as your backend base
+  // You are using /api already in env fallback, so we keep it.
+  const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
   // -------------------------------
   // INPUT CHANGE
@@ -150,6 +158,44 @@ export default function ProfilePage() {
   };
 
   // -------------------------------
+  // ✅ DELETE ACCOUNT -> DELETE /auth/account
+  // -------------------------------
+  const doDeleteAccount = async () => {
+    if (deleting) return;
+
+    // must type DELETE (real websites)
+    if (deleteText.trim().toUpperCase() !== "DELETE") {
+      alert('Please type "DELETE" to confirm.');
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`${API}/auth/account`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => ({} as any));
+
+      if (!res.ok) {
+        alert(data?.message || "Failed to delete account");
+        return;
+      }
+
+      alert("Your account has been deleted.");
+      setDeleteOpen(false);
+      router.push("/signup"); // or "/login"
+    } catch (err) {
+      console.error(err);
+      alert("Something went wrong. Please try again.");
+    } finally {
+      setDeleting(false);
+      setDeleteText("");
+    }
+  };
+
+  // -------------------------------
   // CLOSE MENU ON OUTSIDE CLICK + ESC
   // -------------------------------
   React.useEffect(() => {
@@ -162,7 +208,10 @@ export default function ProfilePage() {
     };
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenuOpen(false);
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        setDeleteOpen(false);
+      }
     };
 
     document.addEventListener("mousedown", onDown);
@@ -323,7 +372,6 @@ export default function ProfilePage() {
                   Live Agent Chat
                 </Link>
 
-                {/* ✅ NEW: My Tickets (customer sees admin replies here) */}
                 <Link
                   href="/profile/tickets"
                   onClick={() => setMenuOpen(false)}
@@ -353,13 +401,29 @@ export default function ProfilePage() {
 
                 <div className="h-px bg-[#23253a]" />
 
+                {/* ✅ Delete account open modal */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setDeleteOpen(true);
+                    setDeleteText("");
+                  }}
+                  disabled={loggingOut || deleting}
+                  className="w-full px-4 py-3 text-left text-[13px] text-red-200 hover:bg-[#15182a] disabled:opacity-60"
+                >
+                  Delete Account
+                </button>
+
+                <div className="h-px bg-[#23253a]" />
+
                 <button
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
                     handleLogout();
                   }}
-                  disabled={loggingOut}
+                  disabled={loggingOut || deleting}
                   className="w-full px-4 py-3 text-left text-[13px] text-red-300 hover:bg-[#15182a] disabled:opacity-60"
                 >
                   {loggingOut ? "Logging out..." : "Logout"}
@@ -380,10 +444,7 @@ export default function ProfilePage() {
               Personal Information
             </p>
 
-            <label
-              htmlFor="name"
-              className="mt-4 block text-[12px] text-[#8b90ad]"
-            >
+            <label htmlFor="name" className="mt-4 block text-[12px] text-[#8b90ad]">
               Name
             </label>
             <input
@@ -395,10 +456,7 @@ export default function ProfilePage() {
               className="mt-1 w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none focus:ring-1 focus:ring-[#c9b9ff]"
             />
 
-            <label
-              htmlFor="email"
-              className="mt-4 block text-[12px] text-[#8b90ad]"
-            >
+            <label htmlFor="email" className="mt-4 block text-[12px] text-[#8b90ad]">
               Email
             </label>
             <input
@@ -412,10 +470,7 @@ export default function ProfilePage() {
               Fit Preferences
             </p>
 
-            <label
-              htmlFor="height"
-              className="mt-4 block text-[12px] text-[#8b90ad]"
-            >
+            <label htmlFor="height" className="mt-4 block text-[12px] text-[#8b90ad]">
               Height (ft)
             </label>
             <input
@@ -427,10 +482,7 @@ export default function ProfilePage() {
               className="mt-1 w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none focus:ring-1 focus:ring-[#c9b9ff]"
             />
 
-            <label
-              htmlFor="weight"
-              className="mt-4 block text-[12px] text-[#8b90ad]"
-            >
+            <label htmlFor="weight" className="mt-4 block text-[12px] text-[#8b90ad]">
               Weight (kg)
             </label>
             <input
@@ -446,10 +498,7 @@ export default function ProfilePage() {
               Size Recommendation
             </p>
 
-            <label
-              htmlFor="menSize"
-              className="mt-3 block text-[12px] text-[#8b90ad]"
-            >
+            <label htmlFor="menSize" className="mt-3 block text-[12px] text-[#8b90ad]">
               Men&apos;s Size
             </label>
             <input
@@ -459,10 +508,7 @@ export default function ProfilePage() {
               className="mt-1 w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 text-sm text-white opacity-70"
             />
 
-            <label
-              htmlFor="womenSize"
-              className="mt-4 block text-[12px] text-[#8b90ad]"
-            >
+            <label htmlFor="womenSize" className="mt-4 block text-[12px] text-[#8b90ad]">
               Women&apos;s Size
             </label>
             <input
@@ -484,7 +530,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={handleLogout}
-                disabled={loggingOut}
+                disabled={loggingOut || deleting}
                 className="rounded-full bg-red-500 px-6 py-3 text-sm hover:bg-red-600 disabled:opacity-60"
               >
                 {loggingOut ? "Logging out..." : "Logout"}
@@ -513,9 +559,87 @@ export default function ProfilePage() {
                 </div>
               </Link>
             </div>
+
+            {/* ✅ DELETE SECTION (inside profile page, like real websites) */}
+            <div className="mt-10 rounded-xl border border-[#3a1f24] bg-[#12070a] p-4">
+              <div className="text-sm font-semibold text-red-200">Danger Zone</div>
+              <div className="mt-1 text-[12px] text-[#c6a3aa]">
+                Deleting your account will remove your profile access. This cannot be undone.
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteOpen(true);
+                  setDeleteText("");
+                }}
+                disabled={deleting || loggingOut}
+                className="mt-4 rounded-full bg-red-500 px-6 py-3 text-sm hover:bg-red-600 disabled:opacity-60"
+              >
+                {deleting ? "Deleting..." : "Delete Account"}
+              </button>
+            </div>
           </form>
         </div>
       </main>
+
+      {/* ✅ DELETE MODAL */}
+      {deleteOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-[520px] rounded-2xl border border-[#2b2f45] bg-[#0b0d1b] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.7)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Delete your account?</h3>
+                <p className="mt-1 text-[12px] text-[#8b90ad]">
+                  This will permanently disable your account (soft delete). To confirm, type{" "}
+                  <span className="font-semibold text-white">DELETE</span>.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteOpen(false);
+                  setDeleteText("");
+                }}
+                className="rounded-full border border-[#23253a] px-3 py-1 text-[12px] text-[#cbd0ea] hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
+
+            <input
+              value={deleteText}
+              onChange={(e) => setDeleteText(e.target.value)}
+              placeholder='Type "DELETE"'
+              className="mt-4 w-full rounded-lg border border-[#23253a] bg-[#12142a] px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none focus:ring-1 focus:ring-red-400"
+            />
+
+            <div className="mt-4 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteOpen(false);
+                  setDeleteText("");
+                }}
+                disabled={deleting}
+                className="rounded-full border border-[#23253a] bg-transparent px-5 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={doDeleteAccount}
+                disabled={deleting}
+                className="rounded-full bg-red-500 px-6 py-2 text-sm hover:bg-red-600 disabled:opacity-60"
+              >
+                {deleting ? "Deleting..." : "Confirm Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

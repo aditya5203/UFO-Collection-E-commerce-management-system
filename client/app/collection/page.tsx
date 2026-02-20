@@ -17,6 +17,14 @@ type Product = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
+function norm(s: string) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export default function CollectionPage() {
   const [sortValue, setSortValue] = React.useState("low-high");
 
@@ -28,6 +36,12 @@ export default function CollectionPage() {
     CustomerType[]
   >([]);
   const [selectedTypes, setSelectedTypes] = React.useState<string[]>([]);
+
+  // ✅ Voice
+  const recognitionRef = React.useRef<any>(null);
+  const [listening, setListening] = React.useState(false);
+  const [voiceSupported, setVoiceSupported] = React.useState(true);
+  const [lastHeard, setLastHeard] = React.useState("");
 
   // ---------- Fetch products from backend ----------
   React.useEffect(() => {
@@ -63,6 +77,82 @@ export default function CollectionPage() {
 
     fetchProducts();
   }, []);
+
+  // ---------- Voice init (Simple commands only) ----------
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setVoiceSupported(false);
+      return;
+    }
+
+    const rec = new SpeechRecognition();
+    rec.lang = "en-US";
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    rec.onstart = () => setListening(true);
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+
+    rec.onresult = (e: any) => {
+      const spoken = String(e.results?.[0]?.[0]?.transcript || "");
+      const cmd = norm(spoken);
+      setLastHeard(spoken.trim());
+
+      // ✅ Simple voice commands:
+      // Types: t-shirt, shirt, windcheater, jeans, jacket
+      // Category optional: men, women, boys, girls
+      // Optional: clear
+
+      if (cmd === "clear" || cmd === "reset") {
+        setSelectedCustomers([]);
+        setSelectedTypes([]);
+        return;
+      }
+
+      // Reset current filters (so voice sets fresh selection)
+      setSelectedCustomers([]);
+      setSelectedTypes([]);
+
+      // ----- TYPE (order matters: "t-shirt" contains "shirt") -----
+      if (cmd.includes("t-shirt") || cmd.includes("t shirt") || cmd === "tshirt") {
+        setSelectedTypes(["T-Shirt"]);
+      } else if (cmd.includes("windcheater") || cmd.includes("wind cheater")) {
+        // If you have a specific type for windcheater later, replace "Jacket"
+        setSelectedTypes(["Jacket"]);
+      } else if (cmd.includes("jeans") || cmd.includes("jean")) {
+        setSelectedTypes(["Jean"]);
+      } else if (cmd.includes("jacket")) {
+        setSelectedTypes(["Jacket"]);
+      } else if (cmd.includes("shirt")) {
+        // You used "Formal Shirt" in your checkbox list
+        setSelectedTypes(["Formal Shirt"]);
+      }
+
+      // ----- CATEGORY -----
+      if (cmd.includes("men")) setSelectedCustomers(["Men"]);
+      else if (cmd.includes("women")) setSelectedCustomers(["Women"]);
+      else if (cmd.includes("boys")) setSelectedCustomers(["Boys"]);
+      else if (cmd.includes("girls")) setSelectedCustomers(["Girls"]);
+    };
+
+    recognitionRef.current = rec;
+  }, []);
+
+  const startListening = () => {
+    if (!voiceSupported) return;
+    try {
+      recognitionRef.current?.start?.();
+    } catch {
+      // ignore double-start errors
+    }
+  };
 
   // ---------- Filter helpers ----------
   const toggleCustomer = (value: CustomerType) => {
@@ -102,7 +192,7 @@ export default function CollectionPage() {
     list.sort((a, b) => {
       if (sortValue === "low-high") return a.price - b.price;
       if (sortValue === "high-low") return b.price - a.price;
-      return 0;
+      return 0; // newest not implemented without createdAt
     });
 
     return list;
@@ -205,13 +295,32 @@ export default function CollectionPage() {
       {/* PAGE */}
       <main className="min-h-[calc(100vh-80px)] bg-[#050611] pb-14 text-[#f5f5f7]">
         <section className="mx-auto w-full max-w-[1160px] px-4 py-8">
-          {/* Title + Sort */}
+          {/* Title + Sort + Voice */}
           <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
             <div className="text-[22px] uppercase tracking-[0.18em]">
               ALL COLLECTIONS
             </div>
 
             <div className="flex items-center gap-3">
+              {/* ✅ Voice button */}
+              <button
+                type="button"
+                onClick={startListening}
+                disabled={!voiceSupported}
+                className={`rounded-md border border-[#23253a] bg-[#090b18] px-3 py-2 text-[12px] text-[#f5f5f7] outline-none transition hover:border-[#c9b9ff] ${
+                  !voiceSupported ? "cursor-not-allowed opacity-50" : ""
+                }`}
+                title={
+                  voiceSupported
+                    ? `Say: "t-shirt men", "shirt women", "jeans", "jacket boys", "clear"`
+                    : "Voice not supported (use Chrome)"
+                }
+                aria-label="Voice command"
+              >
+                <span className={listening ? "animate-pulse" : ""}>🎤</span>{" "}
+                {listening ? "Listening..." : "Voice"}
+              </button>
+
               <span className="text-[12px] text-[#8b90ad]">Sort by</span>
               <select
                 className="min-w-[180px] rounded-md border border-[#23253a] bg-[#090b18] px-3 py-2 text-[12px] text-[#f5f5f7] outline-none"
@@ -224,6 +333,29 @@ export default function CollectionPage() {
                 <option value="newest">Newest First</option>
               </select>
             </div>
+          </div>
+
+          {/* ✅ small hint row */}
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-[#8b90ad]">
+            {voiceSupported ? (
+              <>
+                <span className="rounded-md border border-[#23253a] bg-[#090b18] px-3 py-1">
+                  Try: <span className="text-[#d4d7f3]">t-shirt men</span>,{" "}
+                  <span className="text-[#d4d7f3]">shirt women</span>,{" "}
+                  <span className="text-[#d4d7f3]">jacket</span>,{" "}
+                  <span className="text-[#d4d7f3]">clear</span>
+                </span>
+                {lastHeard ? (
+                  <span className="rounded-md border border-[#23253a] bg-[#090b18] px-3 py-1">
+                    Heard: <span className="text-[#d4d7f3]">{lastHeard}</span>
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              <span className="rounded-md border border-[#23253a] bg-[#090b18] px-3 py-1">
+                Voice not supported in this browser. Use Chrome.
+              </span>
+            )}
           </div>
 
           <div className="mt-4 h-px w-full bg-[#2a2c3f]" />

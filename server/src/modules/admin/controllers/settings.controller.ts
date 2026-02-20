@@ -1,0 +1,49 @@
+import { Response, NextFunction } from "express";
+import { AuthRequest } from "../../auth/middleware/auth.middleware";
+import { adminSettingsService } from "../services/settings.service";
+import { AppError } from "../../../middleware/error.middleware";
+
+export const adminSettingsController = {
+  // GET /api/admin/settings
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = String(req.user?.userId || "");
+      const data = await adminSettingsService.getSettings(userId);
+      return res.json(data);
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  // PUT /api/admin/settings
+  async updateGeneral(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const general = await adminSettingsService.updateGeneral(req.body || {});
+      return res.json({ success: true, general });
+    } catch (e: any) {
+      next(new AppError(e?.message || "Failed to update settings", 400));
+    }
+  },
+
+  // PUT /api/admin/profile
+  async updateProfile(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = String(req.user?.userId || "");
+      const profile = await adminSettingsService.updateProfile(userId, req.body || {});
+      return res.json({ success: true, profile });
+    } catch (e: any) {
+      next(new AppError(e?.message || "Failed to update profile", 400));
+    }
+  },
+
+  // PUT /api/admin/change-password
+  async changePassword(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = String(req.user?.userId || "");
+      await adminSettingsService.changePassword(userId, req.body || {});
+      return res.json({ success: true });
+    } catch (e: any) {
+      next(new AppError(e?.message || "Failed to change password", 400));
+    }
+  },
+};

@@ -396,6 +396,54 @@ router.post("/logout", customerAuthMiddleware, authController.logout);
 router.get("/me", customerAuthMiddleware, authController.getMe);
 
 /* =========================================================
+ * Delete Account (Customer) ✅ NEW
+ * =======================================================*/
+
+/**
+ * @swagger
+ * /api/auth/account:
+ *   delete:
+ *     summary: Delete customer account (soft delete)
+ *     description: Soft delete the currently authenticated customer account (marks isDeleted=true, anonymizes email, clears customer cookie)
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Account deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Account deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden (admin/superadmin cannot delete from customer portal)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       404:
+ *         description: User not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.delete("/account", customerAuthMiddleware, authController.deleteMyAccount);
+
+/* =========================================================
  * Superadmin init + Admin auth
  * =======================================================*/
 

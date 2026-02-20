@@ -57,7 +57,7 @@ const couponSchema = new Schema(
   {
     code: { type: String, trim: true, default: "" },
     title: { type: String, trim: true, default: "" },
-    type: { type: String, trim: true, default: "" },  // PERCENT | FLAT | FREESHIP
+    type: { type: String, trim: true, default: "" }, // PERCENT | FLAT | FREESHIP
     scope: { type: String, trim: true, default: "" }, // ALL | CATEGORY | PRODUCT
     value: { type: Number, default: 0 },
   },
@@ -110,7 +110,12 @@ const orderSchema = new Schema(
     shipping: { type: shippingSchema, required: false, default: null },
     address: { type: addressSchema, required: false, default: null },
 
-    // ✅ NEW: Invoice fields
+    // ✅ Tracking timestamps (NEW)
+    shippedAt: { type: Date, default: null },
+    inTransitAt: { type: Date, default: null }, // optional future
+    deliveredAt: { type: Date, default: null },
+
+    // ✅ Invoice fields
     invoiceNo: { type: String, default: null },
     invoiceSentAt: { type: Date, default: null },
   },

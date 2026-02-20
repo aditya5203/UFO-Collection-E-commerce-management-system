@@ -111,7 +111,7 @@ export const orderService = {
       }
     }
 
-    // ✅ Combine quantities per productId (important)
+    // ✅ Combine quantities per productId
     const qtyByProductId = new Map<string, number>();
     for (const it of body.items) {
       const id = String(it.productId);
@@ -121,7 +121,7 @@ export const orderService = {
 
     const productIds = Array.from(qtyByProductId.keys());
 
-    // ✅ Fetch products with stock + status + categoryId (needed for category coupons)
+    // ✅ Fetch products with stock + status + categoryId
     const products = await Product.find({ _id: { $in: productIds } })
       .select("_id name price stock status image images categoryId")
       .lean();
@@ -174,7 +174,7 @@ export const orderService = {
 
     const shippingPaisa = Math.max(0, Number(body.shippingPaisa || 0));
 
-    // ✅ APPLY COUPON BEFORE STOCK DECREASE (IMPORTANT)
+    // ✅ APPLY COUPON BEFORE STOCK DECREASE
     let discountPaisa = 0;
     let couponSnapshot: any = null;
     let userCouponId: string | null = null;
@@ -205,7 +205,7 @@ export const orderService = {
       }
     }
 
-    // ✅ Decrease stock atomically (safe from race conditions)
+    // ✅ Decrease stock atomically
     const bulkOps = Array.from(qtyByProductId.entries()).map(([pid, qty]) => ({
       updateOne: {
         filter: { _id: new mongoose.Types.ObjectId(pid), stock: { $gte: qty } },
@@ -215,7 +215,6 @@ export const orderService = {
 
     const bulkRes = await Product.bulkWrite(bulkOps);
 
-    // If any update didn't happen -> stock changed by another order
     if ((bulkRes.modifiedCount || 0) !== bulkOps.length) {
       throw new Error("Stock update failed. Please try again.");
     }
@@ -269,9 +268,6 @@ export const orderService = {
 
     const estimatedDelivery = computeEstimatedDeliveryRange();
 
-    // ✅ IMPORTANT: paymentStatus logic
-    // - COD: Pending (or can set Paid if you want later)
-    // - Khalti/eSewa: your frontend may already verify, but safe default is Pending
     const initialPaymentStatus: "Paid" | "Pending" | "Failed" =
       body.paymentMethod === "COD" ? "Pending" : "Pending";
 
@@ -299,7 +295,12 @@ export const orderService = {
         estimatedDelivery,
       },
 
-      // ✅ invoice fields default (if in schema)
+      // ✅ tracking timestamps default
+      shippedAt: null,
+      inTransitAt: null,
+      deliveredAt: null,
+
+      // ✅ invoice fields default
       invoiceNo: null,
       invoiceSentAt: null,
     };
@@ -312,8 +313,6 @@ export const orderService = {
     }
 
     // ✅ AUTO SEND INVOICE:
-    // COD -> send immediately
-    // Online -> send only when Paid (so here it will not send unless Paid)
     try {
       await maybeSendInvoiceForOrder(String(doc._id));
     } catch (e: any) {
@@ -411,16 +410,42 @@ export const orderService = {
   },
 
   // =======================================================
-  // UPDATE ORDER (Admin)
+  // UPDATE ORDER (Admin) ✅ supports MongoId OR orderCode
+  // + auto set shippedAt/deliveredAt when status changes
   // =======================================================
-  async updateOrder(id: string, input: UpdateInput) {
-    if (!mongoose.Types.ObjectId.isValid(id)) return null;
+  async updateOrder(idOrCode: string, input: UpdateInput) {
+    const raw = String(idOrCode || "").trim();
+    if (!raw) return null;
+
+    const isObjId = mongoose.Types.ObjectId.isValid(raw);
+
+    const found: any = isObjId
+      ? await Order.findById(raw).lean()
+      : await Order.findOne({ orderCode: raw }).lean();
+
+    if (!found) return null;
 
     const update: any = {};
     if (input.paymentStatus) update.paymentStatus = input.paymentStatus;
     if (input.orderStatus) update.orderStatus = input.orderStatus;
 
-    const updated = await Order.findByIdAndUpdate(id, update, { new: true })
+    const nextStatus = String(input.orderStatus || "").trim();
+
+    // ✅ Set tracking timestamps
+    if (nextStatus === "Shipped" && !found.shippedAt) {
+      update.shippedAt = new Date();
+    }
+
+    if (nextStatus === "Delivered" && !found.deliveredAt) {
+      update.deliveredAt = new Date();
+
+      // nice fallback: if delivered but never shipped
+      if (!found.shippedAt) update.shippedAt = new Date();
+    }
+
+    const updated: any = await Order.findByIdAndUpdate(found._id, update, {
+      new: true,
+    })
       .populate("customer", "name email")
       .lean();
 
@@ -429,7 +454,7 @@ export const orderService = {
     // ✅ If paymentStatus is updated to Paid, send invoice (only once)
     try {
       if (input.paymentStatus === "Paid") {
-        await maybeSendInvoiceForOrder(String(id));
+        await maybeSendInvoiceForOrder(String(found._id));
       }
     } catch (e: any) {
       console.log("Invoice send failed (ignored):", e?.message);
@@ -463,6 +488,11 @@ export const orderService = {
       address: o.address || null,
       shipping: o.shipping || null,
 
+      // ✅ tracking timestamps
+      shippedAt: o.shippedAt || null,
+      inTransitAt: o.inTransitAt || null,
+      deliveredAt: o.deliveredAt || null,
+
       // ✅ invoice fields
       invoiceNo: o.invoiceNo || null,
       invoiceSentAt: o.invoiceSentAt || null,
@@ -471,7 +501,6 @@ export const orderService = {
 
   // =======================================================
   // CUSTOMER ORDER DETAILS (Customer only)
-  // GET /api/orders/my/:id
   // =======================================================
   async getMyOrderDetails(userId: string, idOrCode: string) {
     if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
@@ -505,13 +534,9 @@ export const orderService = {
             `${addr.firstName || ""} ${addr.lastName || ""}`.trim()
           ).trim(),
           addr.phone || "",
-          `${addr.cityOrMunicipality || ""}${
-            addr.district ? ", " + addr.district : ""
-          }`,
+          `${addr.cityOrMunicipality || ""}${addr.district ? ", " + addr.district : ""}`,
           `${addr.addressLine || ""}${addr.street ? ", " + addr.street : ""}`,
-          `${addr.provinceId || ""}${
-            addr.postalCode ? " " + addr.postalCode : ""
-          }`,
+          `${addr.provinceId || ""}${addr.postalCode ? " " + addr.postalCode : ""}`,
           addr.country || "Nepal",
         ]
           .filter(Boolean)
@@ -538,8 +563,7 @@ export const orderService = {
 
     const shipMethod = o.shipping?.method || "Standard Shipping";
     const estDelivery =
-      (o.shipping?.estimatedDelivery &&
-        String(o.shipping.estimatedDelivery).trim()) ||
+      (o.shipping?.estimatedDelivery && String(o.shipping.estimatedDelivery).trim()) ||
       computeEstimatedDeliveryRange();
 
     return {
@@ -556,15 +580,14 @@ export const orderService = {
       summary: { subtotal, shipping, discount, taxes: 0, total },
       coupon: o.coupon || null,
 
-      // ✅ invoice info (optional for UI)
+      // ✅ invoice info
       invoiceNo: o.invoiceNo || null,
       invoiceSentAt: o.invoiceSentAt || null,
     };
   },
 
   // =======================================================
-  // TRACK ORDER (Public)
-  // GET /api/orders/track/:code
+  // TRACK ORDER (Public) ✅ returns dates needed by tracking page
   // =======================================================
   async trackOrder(code: string) {
     const raw = String(code || "").trim();
@@ -573,7 +596,9 @@ export const orderService = {
     const orderCode = raw.startsWith("#") ? raw : `#${raw}`;
 
     const o: any = await Order.findOne({ orderCode })
-      .select("orderCode orderStatus createdAt shipping")
+      .select(
+        "orderCode orderStatus createdAt updatedAt shippedAt inTransitAt deliveredAt shipping"
+      )
       .lean();
 
     if (!o) return null;
@@ -582,6 +607,10 @@ export const orderService = {
       orderCode: o.orderCode,
       orderStatus: o.orderStatus,
       createdAt: o.createdAt,
+      updatedAt: o.updatedAt,
+      shippedAt: o.shippedAt || null,
+      inTransitAt: o.inTransitAt || null,
+      deliveredAt: o.deliveredAt || null,
       shipping: {
         method: o.shipping?.method || "Standard Shipping",
         estimatedDelivery:

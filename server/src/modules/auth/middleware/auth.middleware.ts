@@ -5,6 +5,11 @@ import jwt from "jsonwebtoken";
 import { config } from "../../../config";
 import { JwtPayload } from "../types/auth.types";
 import { AppError } from "../../../middleware/error.middleware";
+import { User } from "../../../models"; // ✅ barrel export (User.model.ts)
+
+// ✅ cookie names
+const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
+const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
 
 export type AuthRequest = Request & {
   user?: {
@@ -15,14 +20,18 @@ export type AuthRequest = Request & {
   };
 };
 
-// ✅ cookie names
-const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
-const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
+// ✅ clear cookie helper (must match your cookie options enough to clear)
+function clearAuthCookie(res: Response, cookieName: string) {
+  // For clearing reliably, path should match. secure/samesite vary in dev/prod,
+  // but even minimal clear usually works. If you want perfect matching, reuse
+  // getCookieOptions() from controller, but middleware doesn't have it.
+  res.clearCookie(cookieName, { path: "/" });
+}
 
 // ✅ Base middleware factory: verifies token and sets req.user
 export const makeAuthMiddleware =
   (cookieName: string) =>
-  (req: AuthRequest, _res: Response, next: NextFunction) => {
+  async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       let token: string | undefined;
 
@@ -49,12 +58,25 @@ export const makeAuthMiddleware =
         role: decoded.role,
       };
 
-      next();
+      // ✅ EXTRA SECURITY: block soft-deleted users immediately
+      // NOTE: In User.model.ts you added pre(/^find/) filter that hides deleted users.
+      // So this findById will return null for deleted users -> treat as unauthorized.
+      const dbUser = await User.findById(decoded.userId).select("_id role");
+
+      if (!dbUser) {
+        // user missing OR soft-deleted (because pre-find filter hides isDeleted users)
+        clearAuthCookie(res, cookieName);
+        return next(new AppError("User not found or deleted", 401));
+      }
+
+      return next();
     } catch (error: any) {
       if (error?.name === "JsonWebTokenError") {
+        clearAuthCookie(res, cookieName);
         return next(new AppError("Invalid token", 401));
       }
       if (error?.name === "TokenExpiredError") {
+        clearAuthCookie(res, cookieName);
         return next(new AppError("Token expired", 401));
       }
       return next(error);
@@ -74,6 +96,7 @@ export const customerAuthMiddleware = (
 
     // block admin roles from customer endpoints
     if (role === "admin" || role === "superadmin") {
+      clearAuthCookie(res, CUSTOMER_COOKIE);
       return next(new AppError("Customer access only", 403));
     }
 
@@ -92,6 +115,7 @@ export const adminAuthMiddleware = (
 
     const role = String(req.user?.role || "").toLowerCase();
     if (role !== "admin" && role !== "superadmin") {
+      clearAuthCookie(res, ADMIN_COOKIE);
       return next(new AppError("Admin access only", 403));
     }
 
@@ -117,7 +141,7 @@ export const authorize =
     return next();
   };
 
-// ✅ NEW: allow BOTH admin OR customer (used for invoice download)
+// ✅ allow BOTH admin OR customer (used for invoice download)
 export const anyAuthMiddleware = (
   req: AuthRequest,
   res: Response,

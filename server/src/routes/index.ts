@@ -33,6 +33,10 @@ import adsRoutes from "../modules/ads/routes/ads.routes";
 // ✅ Discounts
 import discountRoutes from "../modules/discounts/routes/discount.routes";
 
+// ✅ NEW: Settings + Admins (for Settings page)
+import adminSettingsRoutes from "../modules/admin/routes/settings.routes";
+import adminsRoutes from "../modules/admin/routes/admins.routes";
+
 import {
   adminAuthMiddleware,
   customerAuthMiddleware,
@@ -88,5 +92,12 @@ router.use("/admin/discounts", adminAuthMiddleware, discountRoutes.adminRouter);
 
 // ✅ ADMIN DASHBOARD
 router.use("/admin/dashboard", adminAuthMiddleware, dashboardRoutes);
+
+/* -------------------- ✅ NEW: ADMIN SETTINGS + ADMINS -------------------- */
+// /api/admin/settings, /api/admin/profile, /api/admin/change-password
+router.use("/admin", adminAuthMiddleware, adminSettingsRoutes);
+
+// /api/admins (list + create admin)
+router.use("/admins", adminAuthMiddleware, adminsRoutes);
 
 export default router;

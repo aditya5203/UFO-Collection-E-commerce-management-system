@@ -73,6 +73,12 @@ function sha256(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
+// ✅ helper for soft-delete anonymized email
+function makeDeletedEmail(oldEmail: string, userId: string) {
+  const safe = (oldEmail || "user").replace(/[^a-zA-Z0-9]/g, "");
+  return `deleted_${safe}_${userId}@deleted.local`;
+}
+
 /** ✅ Welcome email template */
 function buildWelcomeEmailHtml(name: string) {
   return `
@@ -233,9 +239,13 @@ export const authController = {
   // ---------- Reset Password ----------
   resetPassword: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { token, password } = req.body as { token?: string; password?: string };
+      const { token, password } = req.body as {
+        token?: string;
+        password?: string;
+      };
 
-      if (!token || !password) throw new AppError("Token and password are required", 400);
+      if (!token || !password)
+        throw new AppError("Token and password are required", 400);
       if (password.length < 6)
         throw new AppError("Password must be at least 6 characters", 400);
 
@@ -335,7 +345,11 @@ export const authController = {
   },
 
   // ---------- Get current user (CUSTOMER SESSION) ----------
-  getMe: async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+  getMe: async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = (req.user as any)?.userId;
 
@@ -377,7 +391,11 @@ export const authController = {
         throw new AppError("Email, password, and name are required", 400);
       }
 
-      const result = await authService.initializeSuperAdmin({ email, password, name });
+      const result = await authService.initializeSuperAdmin({
+        email,
+        password,
+        name,
+      });
 
       // ✅ ADMIN cookie
       setCookie(res, ADMIN_COOKIE, result.token);
@@ -417,6 +435,57 @@ export const authController = {
     }
   },
 
+  // ✅ DELETE ACCOUNT (Soft delete) - FIXED ✅
+  deleteMyAccount: async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+      const userId = (req.user as any)?.userId;
+      if (!userId) throw new AppError("User not authenticated", 401);
+
+      const user = await User.findById(userId);
+      if (!user) {
+        clearCookie(res, CUSTOMER_COOKIE);
+        return res.status(404).json({ success: false, message: "User not found" });
+      }
+
+      // ✅ Optional safety: stop admin/superadmin deleting from customer portal
+      const role = String((user as any).role || "").toLowerCase();
+      if (role === "admin" || role === "superadmin") {
+        throw new AppError("Admins cannot delete account from customer portal.", 403);
+      }
+
+      const oldEmail = user.email;
+
+      // ✅ IMPORTANT FIX:
+      // - DO NOT set password = undefined
+      // - DO NOT call user.save()
+      await User.updateOne(
+        { _id: userId },
+        {
+          $set: {
+            isDeleted: true,
+            deletedAt: new Date(),
+            email: makeDeletedEmail(oldEmail, String(user._id)),
+            name: "Deleted User",
+            providerId: undefined,
+            avatar: undefined,
+            resetPasswordTokenHash: null,
+            resetPasswordExpires: null,
+          },
+        }
+      );
+
+      // ✅ clear ONLY customer cookie
+      clearCookie(res, CUSTOMER_COOKIE);
+
+      return res.status(200).json({
+        success: true,
+        message: "Account deleted successfully",
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   // ---------- Google OAuth redirect callback ----------
   googleCallback: async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -433,7 +502,12 @@ export const authController = {
         throw new AppError("Invalid Google profile data", 400);
       }
 
-      const result = await authService.loginWithGoogle({ email, name, providerId, avatar });
+      const result = await authService.loginWithGoogle({
+        email,
+        name,
+        providerId,
+        avatar,
+      });
 
       // ✅ CUSTOMER cookie
       setCookie(res, CUSTOMER_COOKIE, result.token);
@@ -454,7 +528,12 @@ export const authController = {
         throw new AppError("Invalid Google user data", 400);
       }
 
-      const result = await authService.loginWithGoogle({ email, name, providerId, avatar });
+      const result = await authService.loginWithGoogle({
+        email,
+        name,
+        providerId,
+        avatar,
+      });
 
       // ✅ CUSTOMER cookie
       setCookie(res, CUSTOMER_COOKIE, result.token);

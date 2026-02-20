@@ -103,6 +103,11 @@ export const authService = {
     const user = await User.findOne({ email }).select("+password");
     if (!user) throw new AppError("Invalid email or password", 401);
 
+    // ✅ block soft-deleted users
+    if ((user as any).isDeleted) {
+      throw new AppError("This account has been deleted.", 403);
+    }
+
     // ✅ block google accounts from password login
     if (user.provider === "google") {
       throw new AppError("Use Google login for this account", 401);
@@ -131,6 +136,14 @@ export const authService = {
     const name = String(payload.name || "").trim();
 
     let user = await User.findOne({ email });
+
+    // ✅ block soft-deleted users
+    if (user && (user as any).isDeleted) {
+      throw new AppError(
+        "This account has been deleted. Please register again.",
+        403
+      );
+    }
 
     if (user && user.provider !== "google") {
       throw new AppError(
@@ -251,6 +264,11 @@ export const authService = {
     }).select("+password");
 
     if (!user) throw new AppError("Invalid email or password", 401);
+
+    // ✅ block soft-deleted users
+    if ((user as any).isDeleted) {
+      throw new AppError("This account has been deleted.", 403);
+    }
 
     const ok = await user.comparePassword(String(credentials.password || ""));
     if (!ok) throw new AppError("Invalid email or password", 401);

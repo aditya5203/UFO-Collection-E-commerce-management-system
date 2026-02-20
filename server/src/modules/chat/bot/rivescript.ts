@@ -1,3 +1,4 @@
+// server/src/modules/chat/bot/rivescript.ts
 import path from "path";
 import RiveScript from "rivescript";
 

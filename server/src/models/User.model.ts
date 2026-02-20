@@ -23,6 +23,10 @@ export interface IUser extends Document {
   resetPasswordTokenHash?: string | null;
   resetPasswordExpires?: Date | null;
 
+  // ✅ Soft delete fields
+  isDeleted?: boolean;
+  deletedAt?: Date | null;
+
   createdAt: Date;
   updatedAt: Date;
 
@@ -89,6 +93,10 @@ const UserSchema = new Schema<IUser>(
     // ✅ Password reset
     resetPasswordTokenHash: { type: String, default: null },
     resetPasswordExpires: { type: Date, default: null },
+
+    // ✅ Soft delete
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
@@ -104,6 +112,12 @@ UserSchema.pre("save", async function () {
 
   const salt = await bcrypt.genSalt(10);
   user.password = await bcrypt.hash(user.password, salt);
+});
+
+// ✅ Automatically exclude soft-deleted users from all find queries
+UserSchema.pre(/^find/, function () {
+  // @ts-ignore
+  this.where({ isDeleted: { $ne: true } });
 });
 
 // Compare password method

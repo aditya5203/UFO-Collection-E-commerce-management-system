@@ -1,3 +1,4 @@
+// server/src/models/Message.model.ts
 import { Schema, model, Types } from "mongoose";
 
 export type SenderRole = "user" | "admin" | "bot" | "system";
