@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 
 // ✅ INITIALS LOGIC (Aditya Kumar => AK)
 function getInitials(name: string) {
@@ -20,6 +21,7 @@ function getInitials(name: string) {
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { t } = useI18n();
 
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -45,21 +47,15 @@ export default function ProfilePage() {
     womenSize: "",
   });
 
-  // ✅ IMPORTANT: keep this exactly as your backend base
-  // You are using /api already in env fallback, so we keep it.
   const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 
-  // -------------------------------
   // INPUT CHANGE
-  // -------------------------------
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setForm((p) => ({ ...p, [name]: value }));
   };
 
-  // -------------------------------
   // LOAD PROFILE -> GET /auth/me
-  // -------------------------------
   React.useEffect(() => {
     const loadProfile = async () => {
       try {
@@ -97,9 +93,7 @@ export default function ProfilePage() {
     loadProfile();
   }, [API, router]);
 
-  // -------------------------------
   // SAVE PROFILE -> PATCH /auth/profile
-  // -------------------------------
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setSaving(true);
@@ -119,7 +113,7 @@ export default function ProfilePage() {
       const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        alert(data?.message || "Update failed");
+        alert(data?.message || t("profile.updateFail"));
         return;
       }
 
@@ -129,18 +123,16 @@ export default function ProfilePage() {
         womenSize: data.user?.recommendedSizeWomen || "",
       }));
 
-      alert("Profile updated successfully!");
+      alert(t("profile.updatedOk"));
     } catch (err) {
       console.error(err);
-      alert("Something went wrong. Please try again.");
+      alert(t("profile.tryAgain"));
     } finally {
       setSaving(false);
     }
   };
 
-  // -------------------------------
   // LOGOUT -> POST /auth/logout
-  // -------------------------------
   const handleLogout = async () => {
     if (loggingOut) return;
     setLoggingOut(true);
@@ -157,15 +149,12 @@ export default function ProfilePage() {
     }
   };
 
-  // -------------------------------
   // ✅ DELETE ACCOUNT -> DELETE /auth/account
-  // -------------------------------
   const doDeleteAccount = async () => {
     if (deleting) return;
 
-    // must type DELETE (real websites)
     if (deleteText.trim().toUpperCase() !== "DELETE") {
-      alert('Please type "DELETE" to confirm.');
+      alert(t("profile.mustTypeDelete"));
       return;
     }
 
@@ -179,25 +168,23 @@ export default function ProfilePage() {
       const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        alert(data?.message || "Failed to delete account");
+        alert(data?.message || t("profile.deleteFail"));
         return;
       }
 
-      alert("Your account has been deleted.");
+      alert(t("profile.deletedOk"));
       setDeleteOpen(false);
-      router.push("/signup"); // or "/login"
+      router.push("/signup");
     } catch (err) {
       console.error(err);
-      alert("Something went wrong. Please try again.");
+      alert(t("profile.tryAgain"));
     } finally {
       setDeleting(false);
       setDeleteText("");
     }
   };
 
-  // -------------------------------
   // CLOSE MENU ON OUTSIDE CLICK + ESC
-  // -------------------------------
   React.useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (!menuOpen) return;
@@ -225,7 +212,7 @@ export default function ProfilePage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-[#050611] text-white flex items-center justify-center">
-        Loading profile…
+        {t("profile.loading")}
       </main>
     );
   }
@@ -235,14 +222,14 @@ export default function ProfilePage() {
       {/* ================= HEADER ================= */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
-          {/* LEFT: Back + Logo + Brand */}
+          {/* LEFT */}
           <div className="flex items-center gap-4">
             <button
               type="button"
               onClick={() => router.back()}
               className="group flex items-center gap-2 rounded-full border border-[#2b2f45] px-3 py-[7px] text-[11px] uppercase tracking-[0.16em] text-white hover:bg-white hover:text-[#050611]"
-              aria-label="Back"
-              title="Back"
+              aria-label={t("profile.back")}
+              title={t("profile.back")}
             >
               <Image
                 src="/images/backarrow.png"
@@ -251,7 +238,7 @@ export default function ProfilePage() {
                 alt="Back icon"
                 className="brightness-0 invert group-hover:invert-0"
               />
-              <span className="hidden sm:inline">Back</span>
+              <span className="hidden sm:inline">{t("profile.back")}</span>
             </button>
 
             <Link href="/homepage" className="flex items-center gap-2">
@@ -276,25 +263,25 @@ export default function ProfilePage() {
               href="/homepage"
               className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
             >
-              HOME
+              {t("nav.home")}
             </Link>
             <Link
               href="/collection"
               className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
             >
-              COLLECTION
+              {t("nav.collection")}
             </Link>
             <Link
               href="/about"
               className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
             >
-              ABOUT
+              {t("nav.about")}
             </Link>
             <Link
               href="/contact"
               className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
             >
-              CONTACT
+              {t("nav.contact")}
             </Link>
           </nav>
 
@@ -310,7 +297,7 @@ export default function ProfilePage() {
               />
             </Link>
 
-            {/* ✅ PROFILE INITIALS ICON */}
+            {/* Profile initials */}
             <button
               type="button"
               aria-label="Profile"
@@ -345,7 +332,7 @@ export default function ProfilePage() {
                   onClick={() => setMenuOpen(false)}
                   className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
                 >
-                  Order Tracking
+                  {t("nav.orderTracking")}
                 </Link>
 
                 <Link
@@ -353,7 +340,7 @@ export default function ProfilePage() {
                   onClick={() => setMenuOpen(false)}
                   className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
                 >
-                  Order History
+                  {t("nav.orderHistory")}
                 </Link>
 
                 <Link
@@ -361,7 +348,7 @@ export default function ProfilePage() {
                   onClick={() => setMenuOpen(false)}
                   className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
                 >
-                  Address
+                  {t("nav.address")}
                 </Link>
 
                 <Link
@@ -369,7 +356,7 @@ export default function ProfilePage() {
                   onClick={() => setMenuOpen(false)}
                   className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
                 >
-                  Live Agent Chat
+                  {t("nav.liveChat")}
                 </Link>
 
                 <Link
@@ -377,7 +364,7 @@ export default function ProfilePage() {
                   onClick={() => setMenuOpen(false)}
                   className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
                 >
-                  My Support Tickets
+                  {t("nav.myTickets")}
                 </Link>
 
                 <Link
@@ -385,7 +372,7 @@ export default function ProfilePage() {
                   onClick={() => setMenuOpen(false)}
                   className="block px-4 py-3 text-[13px] text-white hover:bg-[#15182a]"
                 >
-                  Raise Support Ticket
+                  {t("nav.raiseTicket")}
                 </Link>
 
                 <button
@@ -396,12 +383,11 @@ export default function ProfilePage() {
                   }}
                   className="w-full px-4 py-3 text-left text-[13px] text-white hover:bg-[#15182a]"
                 >
-                  Language
+                  {t("nav.language")}
                 </button>
 
                 <div className="h-px bg-[#23253a]" />
 
-                {/* ✅ Delete account open modal */}
                 <button
                   type="button"
                   onClick={() => {
@@ -412,7 +398,7 @@ export default function ProfilePage() {
                   disabled={loggingOut || deleting}
                   className="w-full px-4 py-3 text-left text-[13px] text-red-200 hover:bg-[#15182a] disabled:opacity-60"
                 >
-                  Delete Account
+                  {t("nav.deleteAccount")}
                 </button>
 
                 <div className="h-px bg-[#23253a]" />
@@ -426,7 +412,7 @@ export default function ProfilePage() {
                   disabled={loggingOut || deleting}
                   className="w-full px-4 py-3 text-left text-[13px] text-red-300 hover:bg-[#15182a] disabled:opacity-60"
                 >
-                  {loggingOut ? "Logging out..." : "Logout"}
+                  {loggingOut ? t("profile.loggingOut") : t("nav.logout")}
                 </button>
               </div>
             ) : null}
@@ -437,27 +423,27 @@ export default function ProfilePage() {
       {/* ================= MAIN ================= */}
       <main className="mx-auto max-w-[1160px] px-4 py-10 flex justify-center">
         <div className="w-full max-w-[650px] rounded-xl border border-[#22253a] bg-[#101223] p-6">
-          <h1 className="text-xl font-semibold">My Profile</h1>
+          <h1 className="text-xl font-semibold">{t("profile.title")}</h1>
 
           <form onSubmit={handleSave} className="mt-6">
             <p className="text-[13px] font-semibold text-[#8b90ad]">
-              Personal Information
+              {t("profile.personalInfo")}
             </p>
 
             <label htmlFor="name" className="mt-4 block text-[12px] text-[#8b90ad]">
-              Name
+              {t("profile.name")}
             </label>
             <input
               id="name"
               name="name"
               value={form.name}
               onChange={handleChange}
-              placeholder="Enter your name"
+              placeholder={t("profile.name")}
               className="mt-1 w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none focus:ring-1 focus:ring-[#c9b9ff]"
             />
 
             <label htmlFor="email" className="mt-4 block text-[12px] text-[#8b90ad]">
-              Email
+              {t("profile.email")}
             </label>
             <input
               id="email"
@@ -467,11 +453,11 @@ export default function ProfilePage() {
             />
 
             <p className="mt-6 text-[13px] font-semibold text-[#8b90ad]">
-              Fit Preferences
+              {t("profile.fitPreferences")}
             </p>
 
             <label htmlFor="height" className="mt-4 block text-[12px] text-[#8b90ad]">
-              Height (ft)
+              {t("profile.height")}
             </label>
             <input
               id="height"
@@ -483,7 +469,7 @@ export default function ProfilePage() {
             />
 
             <label htmlFor="weight" className="mt-4 block text-[12px] text-[#8b90ad]">
-              Weight (kg)
+              {t("profile.weight")}
             </label>
             <input
               id="weight"
@@ -495,11 +481,11 @@ export default function ProfilePage() {
             />
 
             <p className="mt-6 text-[13px] font-semibold text-[#8b90ad]">
-              Size Recommendation
+              {t("profile.sizeRec")}
             </p>
 
             <label htmlFor="menSize" className="mt-3 block text-[12px] text-[#8b90ad]">
-              Men&apos;s Size
+              {t("profile.menSize")}
             </label>
             <input
               id="menSize"
@@ -509,7 +495,7 @@ export default function ProfilePage() {
             />
 
             <label htmlFor="womenSize" className="mt-4 block text-[12px] text-[#8b90ad]">
-              Women&apos;s Size
+              {t("profile.womenSize")}
             </label>
             <input
               id="womenSize"
@@ -524,7 +510,7 @@ export default function ProfilePage() {
                 disabled={saving}
                 className="rounded-full bg-[#2f7efc] px-6 py-3 text-sm hover:brightness-105 disabled:opacity-60"
               >
-                {saving ? "Saving..." : "Save Changes"}
+                {saving ? t("profile.saving") : t("profile.save")}
               </button>
 
               <button
@@ -533,39 +519,33 @@ export default function ProfilePage() {
                 disabled={loggingOut || deleting}
                 className="rounded-full bg-red-500 px-6 py-3 text-sm hover:bg-red-600 disabled:opacity-60"
               >
-                {loggingOut ? "Logging out..." : "Logout"}
+                {loggingOut ? t("profile.loggingOut") : t("profile.logout")}
               </button>
             </div>
 
-            {/* ✅ quick links */}
+            {/* quick links */}
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
               <Link
                 href="/profile/tickets"
                 className="rounded-xl border border-[#23253a] bg-[#0c0e1c] px-4 py-4 text-sm hover:bg-[#12142a]"
               >
-                <div className="font-semibold text-white">My Support Tickets</div>
-                <div className="mt-1 text-[#8b90ad] text-[12px]">
-                  See admin replies & chat
-                </div>
+                <div className="font-semibold text-white">{t("profile.ticketsTitle")}</div>
+                <div className="mt-1 text-[#8b90ad] text-[12px]">{t("profile.ticketsDesc")}</div>
               </Link>
 
               <Link
                 href="/support-ticket"
                 className="rounded-xl border border-[#23253a] bg-[#0c0e1c] px-4 py-4 text-sm hover:bg-[#12142a]"
               >
-                <div className="font-semibold text-white">Raise Ticket</div>
-                <div className="mt-1 text-[#8b90ad] text-[12px]">
-                  Create a new issue
-                </div>
+                <div className="font-semibold text-white">{t("profile.raiseTitle")}</div>
+                <div className="mt-1 text-[#8b90ad] text-[12px]">{t("profile.raiseDesc")}</div>
               </Link>
             </div>
 
-            {/* ✅ DELETE SECTION (inside profile page, like real websites) */}
+            {/* DELETE SECTION */}
             <div className="mt-10 rounded-xl border border-[#3a1f24] bg-[#12070a] p-4">
-              <div className="text-sm font-semibold text-red-200">Danger Zone</div>
-              <div className="mt-1 text-[12px] text-[#c6a3aa]">
-                Deleting your account will remove your profile access. This cannot be undone.
-              </div>
+              <div className="text-sm font-semibold text-red-200">{t("profile.dangerZone")}</div>
+              <div className="mt-1 text-[12px] text-[#c6a3aa]">{t("profile.dangerDesc")}</div>
 
               <button
                 type="button"
@@ -576,23 +556,24 @@ export default function ProfilePage() {
                 disabled={deleting || loggingOut}
                 className="mt-4 rounded-full bg-red-500 px-6 py-3 text-sm hover:bg-red-600 disabled:opacity-60"
               >
-                {deleting ? "Deleting..." : "Delete Account"}
+                {deleting ? t("profile.confirmDelete") : t("profile.deleteBtn")}
               </button>
             </div>
           </form>
         </div>
       </main>
 
-      {/* ✅ DELETE MODAL */}
+      {/* DELETE MODAL */}
       {deleteOpen ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-[520px] rounded-2xl border border-[#2b2f45] bg-[#0b0d1b] p-5 shadow-[0_30px_80px_rgba(0,0,0,0.7)]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-lg font-semibold text-white">Delete your account?</h3>
+                <h3 className="text-lg font-semibold text-white">
+                  {t("profile.deleteModalTitle")}
+                </h3>
                 <p className="mt-1 text-[12px] text-[#8b90ad]">
-                  This will permanently disable your account (soft delete). To confirm, type{" "}
-                  <span className="font-semibold text-white">DELETE</span>.
+                  {t("profile.deleteModalHint")}
                 </p>
               </div>
 
@@ -604,14 +585,14 @@ export default function ProfilePage() {
                 }}
                 className="rounded-full border border-[#23253a] px-3 py-1 text-[12px] text-[#cbd0ea] hover:bg-white/10"
               >
-                Close
+                {t("profile.close")}
               </button>
             </div>
 
             <input
               value={deleteText}
               onChange={(e) => setDeleteText(e.target.value)}
-              placeholder='Type "DELETE"'
+              placeholder={t("profile.typeDelete")}
               className="mt-4 w-full rounded-lg border border-[#23253a] bg-[#12142a] px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none focus:ring-1 focus:ring-red-400"
             />
 
@@ -625,7 +606,7 @@ export default function ProfilePage() {
                 disabled={deleting}
                 className="rounded-full border border-[#23253a] bg-transparent px-5 py-2 text-sm text-white hover:bg-white/10 disabled:opacity-60"
               >
-                Cancel
+                {t("profile.cancel")}
               </button>
 
               <button
@@ -634,7 +615,7 @@ export default function ProfilePage() {
                 disabled={deleting}
                 className="rounded-full bg-red-500 px-6 py-2 text-sm hover:bg-red-600 disabled:opacity-60"
               >
-                {deleting ? "Deleting..." : "Confirm Delete"}
+                {deleting ? t("profile.confirmDelete") : t("profile.confirmDelete")}
               </button>
             </div>
           </div>

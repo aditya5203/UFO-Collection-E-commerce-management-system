@@ -13,6 +13,7 @@ type Product = {
   image: string;
   customer?: CustomerType;
   subCategory?: string;
+  createdAt?: string; // ✅ for "Newest" sort (optional)
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
@@ -25,23 +26,45 @@ function norm(s: string) {
     .trim();
 }
 
+function resolveMediaSrc(src: unknown) {
+  const s = typeof src === "string" ? src.trim() : "";
+  if (!s) return "/images/placeholder.png";
+  if (s.startsWith("/")) return s;
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  return "/images/placeholder.png";
+}
+
+function parseDateSafe(d?: string) {
+  if (!d) return 0;
+  const t = Date.parse(d);
+  return Number.isFinite(t) ? t : 0;
+}
+
 export default function CollectionPage() {
-  const [sortValue, setSortValue] = React.useState("low-high");
+  const [sortValue, setSortValue] = React.useState<"low-high" | "high-low" | "newest">(
+    "low-high"
+  );
 
   const [products, setProducts] = React.useState<Product[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  const [selectedCustomers, setSelectedCustomers] = React.useState<
-    CustomerType[]
-  >([]);
+  const [selectedCustomers, setSelectedCustomers] = React.useState<CustomerType[]>([]);
   const [selectedTypes, setSelectedTypes] = React.useState<string[]>([]);
+
+  // ✅ Search
+  const [search, setSearch] = React.useState("");
+  const searchRef = React.useRef<HTMLInputElement | null>(null);
 
   // ✅ Voice
   const recognitionRef = React.useRef<any>(null);
   const [listening, setListening] = React.useState(false);
   const [voiceSupported, setVoiceSupported] = React.useState(true);
   const [lastHeard, setLastHeard] = React.useState("");
+
+  // ✅ Mobile UI states
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
 
   // ---------- Fetch products from backend ----------
   React.useEffect(() => {
@@ -51,19 +74,25 @@ export default function CollectionPage() {
         setError(null);
 
         const res = await fetch(`${API_BASE}/products`, { cache: "no-store" });
-        if (!res.ok)
-          throw new Error(`Failed to load products (status ${res.status})`);
+        if (!res.ok) throw new Error(`Failed to load products (status ${res.status})`);
 
         const raw = await res.json();
+        const arr =
+          (Array.isArray(raw) && raw) ||
+          raw?.data ||
+          raw?.items ||
+          raw?.products ||
+          [];
 
-        const mapped: Product[] = (raw || []).map((p: any) => ({
+        const mapped: Product[] = (arr || []).map((p: any) => ({
           id: String(p.id || p._id),
-          name: p.name,
+          name: String(p.name || "Product"),
           price:
-            typeof p.price === "string" ? Number(p.price) || 0 : p.price ?? 0,
-          image: p.image || "/images/collection/1.jpg",
+            typeof p.price === "string" ? Number(p.price) || 0 : Number(p.price ?? 0),
+          image: resolveMediaSrc(p.image || "/images/collection/1.jpg"),
           customer: p.customer as CustomerType | undefined,
           subCategory: p.subCategory || p.category,
+          createdAt: p.createdAt || p.created_at || p.updatedAt || p.updated_at, // ✅ optional
         }));
 
         setProducts(mapped);
@@ -78,7 +107,7 @@ export default function CollectionPage() {
     fetchProducts();
   }, []);
 
-  // ---------- Voice init (Simple commands only) ----------
+  // ---------- Voice init ----------
   React.useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -105,18 +134,13 @@ export default function CollectionPage() {
       const cmd = norm(spoken);
       setLastHeard(spoken.trim());
 
-      // ✅ Simple voice commands:
-      // Types: t-shirt, shirt, windcheater, jeans, jacket
-      // Category optional: men, women, boys, girls
-      // Optional: clear
-
       if (cmd === "clear" || cmd === "reset") {
         setSelectedCustomers([]);
         setSelectedTypes([]);
+        setSearch("");
         return;
       }
 
-      // Reset current filters (so voice sets fresh selection)
       setSelectedCustomers([]);
       setSelectedTypes([]);
 
@@ -124,14 +148,12 @@ export default function CollectionPage() {
       if (cmd.includes("t-shirt") || cmd.includes("t shirt") || cmd === "tshirt") {
         setSelectedTypes(["T-Shirt"]);
       } else if (cmd.includes("windcheater") || cmd.includes("wind cheater")) {
-        // If you have a specific type for windcheater later, replace "Jacket"
         setSelectedTypes(["Jacket"]);
       } else if (cmd.includes("jeans") || cmd.includes("jean")) {
         setSelectedTypes(["Jean"]);
       } else if (cmd.includes("jacket")) {
         setSelectedTypes(["Jacket"]);
       } else if (cmd.includes("shirt")) {
-        // You used "Formal Shirt" in your checkbox list
         setSelectedTypes(["Formal Shirt"]);
       }
 
@@ -140,6 +162,9 @@ export default function CollectionPage() {
       else if (cmd.includes("women")) setSelectedCustomers(["Women"]);
       else if (cmd.includes("boys")) setSelectedCustomers(["Boys"]);
       else if (cmd.includes("girls")) setSelectedCustomers(["Girls"]);
+
+      // open filters on mobile so user sees changes
+      setMobileFiltersOpen(true);
     };
 
     recognitionRef.current = rec;
@@ -152,6 +177,15 @@ export default function CollectionPage() {
     } catch {
       // ignore double-start errors
     }
+  };
+
+  const focusSearch = () => {
+    setMobileMenuOpen(false);
+    setMobileFiltersOpen(true); // ✅ open drawer on mobile too
+    setTimeout(() => {
+      searchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      searchRef.current?.focus();
+    }, 50);
   };
 
   // ---------- Filter helpers ----------
@@ -167,23 +201,32 @@ export default function CollectionPage() {
     );
   };
 
+  const clearFilters = () => {
+    setSelectedCustomers([]);
+    setSelectedTypes([]);
+    setSearch("");
+  };
+
   // ---------- Apply filters + sort ----------
   const filteredAndSortedProducts = React.useMemo(() => {
     let list = [...products];
 
+    // ✅ Search by name
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((p) => (p.name || "").toLowerCase().includes(q));
+    }
+
     // Filter by customer
     if (selectedCustomers.length > 0) {
-      list = list.filter((p) =>
-        p.customer ? selectedCustomers.includes(p.customer) : true
-      );
+      list = list.filter((p) => (p.customer ? selectedCustomers.includes(p.customer) : true));
     }
 
     // Filter by type / subCategory
     if (selectedTypes.length > 0) {
       const lowerTypes = selectedTypes.map((t) => t.toLowerCase());
       list = list.filter((p) => {
-        const typeSource =
-          ((p.subCategory || "").toLowerCase() || (p.name || "").toLowerCase());
+        const typeSource = ((p.subCategory || "").toLowerCase() || (p.name || "").toLowerCase());
         return lowerTypes.some((t) => typeSource.includes(t));
       });
     }
@@ -192,11 +235,18 @@ export default function CollectionPage() {
     list.sort((a, b) => {
       if (sortValue === "low-high") return a.price - b.price;
       if (sortValue === "high-low") return b.price - a.price;
-      return 0; // newest not implemented without createdAt
+
+      // ✅ Newest First
+      const ta = parseDateSafe(a.createdAt);
+      const tb = parseDateSafe(b.createdAt);
+      return tb - ta;
     });
 
     return list;
-  }, [products, selectedCustomers, selectedTypes, sortValue]);
+  }, [products, selectedCustomers, selectedTypes, sortValue, search]);
+
+  const activeFiltersCount =
+    selectedCustomers.length + selectedTypes.length + (search.trim() ? 1 : 0);
 
   return (
     <>
@@ -205,17 +255,17 @@ export default function CollectionPage() {
         @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
         html,
         body {
-          font-family: Poppins, system-ui, -apple-system, BlinkMacSystemFont,
-            "Segoe UI", sans-serif;
+          font-family: Poppins, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+            sans-serif;
         }
       `}</style>
 
-      {/* HEADER (same design as homepage) */}
-      <header className="sticky top-0 z-40 h-[80px] border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
-        <div className="mx-auto flex h-full w-full max-w-[1160px] items-center justify-between px-4">
+      {/* HEADER */}
+      <header className="sticky top-0 z-50 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
+        <div className="mx-auto flex h-[72px] w-full max-w-[1160px] items-center justify-between px-4 sm:h-[80px]">
           {/* Brand */}
           <div className="flex items-center gap-[10px]">
-            <div className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white">
+            <div className="h-[42px] w-[42px] overflow-hidden rounded-full border-2 border-white sm:h-[44px] sm:w-[44px]">
               <Image
                 src="/images/logo.png"
                 alt="UFO Collection logo"
@@ -224,13 +274,13 @@ export default function CollectionPage() {
                 className="h-full w-full object-cover"
               />
             </div>
-            <div className="text-[28px] font-bold uppercase tracking-[0.18em] text-white max-sm:text-[22px]">
-              UFO Collection
+            <div className="max-w-[180px] truncate text-[18px] font-bold uppercase tracking-[0.18em] text-white sm:max-w-none sm:text-[28px]">
+              UFO COLLECTION
             </div>
           </div>
 
-          {/* Nav */}
-          <nav className="flex gap-[42px] max-sm:flex-wrap max-sm:gap-5">
+          {/* Desktop nav */}
+          <nav className="hidden gap-[42px] sm:flex">
             <Link
               href="/homepage"
               className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
@@ -257,9 +307,15 @@ export default function CollectionPage() {
             </Link>
           </nav>
 
-          {/* Icons */}
-          <div className="flex items-center gap-5 max-sm:mt-1">
-            <Link href="/collection" aria-label="Search">
+          {/* Right icons */}
+          <div className="flex items-center gap-3 sm:gap-5">
+            {/* Search focuses input */}
+            <button
+              type="button"
+              onClick={focusSearch}
+              aria-label="Search"
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-white hover:bg-white/10 sm:border-none sm:bg-transparent sm:px-0 sm:py-0"
+            >
               <Image
                 src="/images/search.png"
                 width={26}
@@ -267,9 +323,9 @@ export default function CollectionPage() {
                 alt="Search"
                 className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
               />
-            </Link>
+            </button>
 
-            <Link href="/profile" aria-label="Profile">
+            <Link href="/profile" aria-label="Profile" className="hidden sm:block">
               <Image
                 src="/images/profile.png"
                 width={26}
@@ -279,7 +335,7 @@ export default function CollectionPage() {
               />
             </Link>
 
-            <Link href="/wishlist" aria-label="Wishlist">
+            <Link href="/wishlist" aria-label="Wishlist" className="hidden sm:block">
               <Image
                 src="/images/wishlist.png"
                 width={26}
@@ -288,26 +344,114 @@ export default function CollectionPage() {
                 className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
               />
             </Link>
+
+            {/* Mobile hamburger */}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((p) => !p)}
+              className="sm:hidden rounded-full border border-white/10 bg-white/5 px-4 py-2 text-white"
+              aria-label="Open menu"
+            >
+              ☰
+            </button>
           </div>
         </div>
+
+        {/* Mobile menu panel */}
+        {mobileMenuOpen ? (
+          <div className="sm:hidden border-t border-[#191b2d] bg-[rgba(5,6,17,0.98)]">
+            <div className="mx-auto w-full max-w-[1160px] px-4 py-4">
+              <div className="grid gap-3 text-[14px] uppercase tracking-[0.16em] text-[#c9b9ff]">
+                <Link
+                  onClick={() => setMobileMenuOpen(false)}
+                  href="/homepage"
+                  className="text-[#8b90ad] hover:text-[#c9b9ff]"
+                >
+                  HOME
+                </Link>
+                <Link
+                  onClick={() => setMobileMenuOpen(false)}
+                  href="/collection"
+                  className="text-[#c9b9ff]"
+                >
+                  COLLECTION
+                </Link>
+                <Link
+                  onClick={() => setMobileMenuOpen(false)}
+                  href="/about"
+                  className="text-[#8b90ad] hover:text-[#c9b9ff]"
+                >
+                  ABOUT
+                </Link>
+                <Link
+                  onClick={() => setMobileMenuOpen(false)}
+                  href="/contact"
+                  className="text-[#8b90ad] hover:text-[#c9b9ff]"
+                >
+                  CONTACT
+                </Link>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={focusSearch}
+                  className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-[12px] uppercase tracking-[0.16em] text-white"
+                >
+                  Search
+                </button>
+
+                <Link
+                  onClick={() => setMobileMenuOpen(false)}
+                  href="/profile"
+                  className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-[12px] uppercase tracking-[0.16em] text-white"
+                >
+                  Profile
+                </Link>
+
+                <Link
+                  onClick={() => setMobileMenuOpen(false)}
+                  href="/wishlist"
+                  className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-[12px] uppercase tracking-[0.16em] text-white"
+                >
+                  Wishlist
+                </Link>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </header>
 
       {/* PAGE */}
-      <main className="min-h-[calc(100vh-80px)] bg-[#050611] pb-14 text-[#f5f5f7]">
-        <section className="mx-auto w-full max-w-[1160px] px-4 py-8">
-          {/* Title + Sort + Voice */}
-          <div className="flex items-center justify-between gap-4 max-sm:flex-col max-sm:items-start">
-            <div className="text-[22px] uppercase tracking-[0.18em]">
-              ALL COLLECTIONS
+      <main className="min-h-[calc(100vh-72px)] bg-[#050611] pb-14 text-[#f5f5f7] sm:min-h-[calc(100vh-80px)]">
+        <section className="mx-auto w-full max-w-[1160px] px-4 py-6 sm:py-8">
+          {/* Title + controls */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-[18px] uppercase tracking-[0.18em] sm:text-[22px]">
+                ALL COLLECTIONS
+              </div>
+              <div className="mt-2 text-[12px] text-[#8b90ad]">
+                Search, filter by category/type, and use voice commands.
+              </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              {/* ✅ Voice button */}
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              {/* Mobile Filters button */}
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(true)}
+                className="lg:hidden rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[12px] uppercase tracking-[0.16em] text-white hover:bg-white/10"
+              >
+                Filters {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ""}
+              </button>
+
+              {/* Voice */}
               <button
                 type="button"
                 onClick={startListening}
                 disabled={!voiceSupported}
-                className={`rounded-md border border-[#23253a] bg-[#090b18] px-3 py-2 text-[12px] text-[#f5f5f7] outline-none transition hover:border-[#c9b9ff] ${
+                className={`rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[12px] uppercase tracking-[0.16em] text-white hover:bg-white/10 ${
                   !voiceSupported ? "cursor-not-allowed opacity-50" : ""
                 }`}
                 title={
@@ -315,27 +459,71 @@ export default function CollectionPage() {
                     ? `Say: "t-shirt men", "shirt women", "jeans", "jacket boys", "clear"`
                     : "Voice not supported (use Chrome)"
                 }
-                aria-label="Voice command"
               >
                 <span className={listening ? "animate-pulse" : ""}>🎤</span>{" "}
                 {listening ? "Listening..." : "Voice"}
               </button>
 
-              <span className="text-[12px] text-[#8b90ad]">Sort by</span>
-              <select
-                className="min-w-[180px] rounded-md border border-[#23253a] bg-[#090b18] px-3 py-2 text-[12px] text-[#f5f5f7] outline-none"
-                value={sortValue}
-                onChange={(e) => setSortValue(e.target.value)}
-                aria-label="Sort collections"
-              >
-                <option value="low-high">Price: Low to High</option>
-                <option value="high-low">Price: High to Low</option>
-                <option value="newest">Newest First</option>
-              </select>
+              {/* ✅ Sort (accessibility fixed) */}
+              <div className="flex items-center">
+                <label htmlFor="sort" className="sr-only">
+                  Sort products
+                </label>
+                <select
+                  id="sort"
+                  aria-label="Sort products"
+                  className="min-w-[190px] rounded-full border border-white/15 bg-[#090b18] px-4 py-2 text-[12px] text-[#f5f5f7] outline-none"
+                  value={sortValue}
+                  onChange={(e) => setSortValue(e.target.value as any)}
+                >
+                  <option value="low-high">Price: Low to High</option>
+                  <option value="high-low">Price: High to Low</option>
+                  <option value="newest">Newest First</option>
+                </select>
+              </div>
+
+              {/* Clear */}
+              {activeFiltersCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="rounded-full border border-red-400/30 bg-red-500/10 px-4 py-2 text-[12px] uppercase tracking-[0.16em] text-red-200 hover:bg-red-500/15"
+                >
+                  Clear
+                </button>
+              ) : null}
             </div>
           </div>
 
-          {/* ✅ small hint row */}
+          {/* Search bar */}
+          <div className="mt-4">
+            <div className="rounded-[16px] border border-[#23253a] bg-[#0b0d1a] p-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                <div className="flex-1">
+                  <label htmlFor="search" className="sr-only">
+                    Search products
+                  </label>
+                  <input
+                    id="search"
+                    ref={searchRef}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search products (e.g. tshirt, jacket, winter)..."
+                    className="w-full rounded-full border border-white/15 bg-[#090b18] px-4 py-3 text-[13px] text-white placeholder:text-white/40 outline-none focus:border-[#c9b9ff]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="rounded-full border border-white/15 bg-white/5 px-5 py-3 text-[12px] uppercase tracking-[0.16em] text-white hover:bg-white/10"
+                >
+                  Clear Search
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Voice hint */}
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] text-[#8b90ad]">
             {voiceSupported ? (
               <>
@@ -353,109 +541,100 @@ export default function CollectionPage() {
               </>
             ) : (
               <span className="rounded-md border border-[#23253a] bg-[#090b18] px-3 py-1">
-                Voice not supported in this browser. Use Chrome.
+                Voice not supported. Use Chrome.
               </span>
             )}
           </div>
 
-          <div className="mt-4 h-px w-full bg-[#2a2c3f]" />
+          <div className="mt-5 h-px w-full bg-[#2a2c3f]" />
 
-          {/* Layout */}
-          <div className="mt-6 grid grid-cols-[240px_minmax(0,1fr)] gap-8 max-[900px]:grid-cols-1">
-            {/* Filters */}
-            <aside className="h-fit rounded-[10px] border border-[#23253a] bg-[#0d0f1e] p-4">
-              <div className="text-[12px] uppercase tracking-[0.18em]">
-                FILTERS
+          {/* Desktop layout: sidebar + grid */}
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-8">
+            {/* Desktop filters */}
+            <aside className="hidden h-fit rounded-[14px] border border-[#23253a] bg-[#0d0f1e] p-5 lg:block">
+              <div className="flex items-center justify-between">
+                <div className="text-[12px] uppercase tracking-[0.18em]">FILTERS</div>
+                {activeFiltersCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="text-[12px] text-[#c9b9ff] hover:underline"
+                  >
+                    Clear
+                  </button>
+                ) : null}
               </div>
 
-              {/* Categories */}
-              <div className="mt-4">
+              <div className="mt-5">
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b90ad]">
                   CATEGORIES
                 </div>
-
                 <div className="grid gap-2 text-[12px] text-[#d4d7f3]">
-                  {(["Men", "Women", "Boys", "Girls"] as CustomerType[]).map(
-                    (c) => (
-                      <label key={c} className="flex items-center gap-2">
+                  {(["Men", "Women", "Boys", "Girls"] as CustomerType[]).map((c) => (
+                    <label key={c} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="accent-white"
+                        checked={selectedCustomers.includes(c)}
+                        onChange={() => toggleCustomer(c)}
+                      />
+                      <span>{c}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b90ad]">
+                  TYPES
+                </div>
+                <div className="grid gap-2 text-[12px] text-[#d4d7f3]">
+                  {["T-Shirt", "Jean", "Jacket", "Formal Shirt", "Frock", "Wide-leg", "Shorts"].map(
+                    (t) => (
+                      <label key={t} className="flex items-center gap-2">
                         <input
                           type="checkbox"
                           className="accent-white"
-                          checked={selectedCustomers.includes(c)}
-                          onChange={() => toggleCustomer(c)}
+                          checked={selectedTypes.includes(t)}
+                          onChange={() => toggleType(t)}
                         />
-                        <span>{c}</span>
+                        <span>{t}</span>
                       </label>
                     )
                   )}
                 </div>
               </div>
-
-              {/* Types */}
-              <div className="mt-5">
-                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b90ad]">
-                  TYPES
-                </div>
-
-                <div className="grid gap-2 text-[12px] text-[#d4d7f3]">
-                  {[
-                    "T-Shirt",
-                    "Jean",
-                    "Jacket",
-                    "Formal Shirt",
-                    "Frock",
-                    "Wide-leg",
-                    "Shorts",
-                  ].map((t) => (
-                    <label key={t} className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="accent-white"
-                        checked={selectedTypes.includes(t)}
-                        onChange={() => toggleType(t)}
-                      />
-                      <span>{t}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
             </aside>
 
-            {/* Products */}
-            <section className="grid grid-cols-4 gap-6 max-[1024px]:grid-cols-3 max-sm:grid-cols-2">
+            {/* Products grid */}
+            <section className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-6 lg:grid-cols-4">
               {loading ? (
-                <div className="col-span-full text-[#8b90ad]">
-                  Loading products…
-                </div>
+                <div className="col-span-full text-[#8b90ad]">Loading products…</div>
               ) : error ? (
                 <div className="col-span-full text-[#fca5a5]">{`Error: ${error}`}</div>
               ) : filteredAndSortedProducts.length === 0 ? (
                 <div className="col-span-full text-[#8b90ad]">
-                  No products match your filters.
+                  No products match your filters/search.
                 </div>
               ) : (
                 filteredAndSortedProducts.map((p) => (
-                  <Link
-                    key={p.id}
-                    href={`/product/${p.id}`}
-                    className="group block"
-                  >
-                    <div className="flex flex-col gap-[6px] rounded-[14px] border border-[#252842] bg-[#151726] p-3 text-[12px] transition-all duration-300 ease-out hover:-translate-y-[6px] hover:border-[#c9b9ff] hover:shadow-[0_25px_60px_rgba(201,185,255,0.18)]">
-                      <div className="relative w-full overflow-hidden rounded-[10px] border border-[#252842] bg-[#151726] pb-[130%]">
+                  <Link key={p.id} href={`/product/${p.id}`} className="group block">
+                    <div className="flex flex-col gap-[8px] rounded-[16px] border border-[#252842] bg-[#151726] p-3 text-[12px] transition-all duration-300 ease-out hover:-translate-y-[6px] hover:border-[#c9b9ff] hover:shadow-[0_25px_60px_rgba(201,185,255,0.18)]">
+                      <div className="relative w-full overflow-hidden rounded-[12px] border border-[#252842] bg-[#151726] pb-[130%]">
                         <Image
-                          src={p.image}
+                          src={resolveMediaSrc(p.image)}
                           alt={p.name}
                           fill
                           className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.08]"
                         />
                       </div>
 
-                      <div className="mt-1 text-[#f1f2ff] transition-colors group-hover:text-white">
+                      <div className="mt-1 line-clamp-2 text-[#f1f2ff] transition-colors group-hover:text-white">
                         {p.name}
                       </div>
 
                       <div className="text-[#8b90ad] transition-colors group-hover:text-[#c9b9ff]">
-                        Rs. {p.price.toFixed(2)}
+                        Rs. {Number(p.price || 0).toFixed(2)}
                       </div>
                     </div>
                   </Link>
@@ -464,11 +643,93 @@ export default function CollectionPage() {
             </section>
           </div>
         </section>
+
+        {/* Mobile Filters Drawer */}
+        {mobileFiltersOpen ? (
+          <div
+            className="fixed inset-0 z-[60] bg-black/60 lg:hidden"
+            onClick={() => setMobileFiltersOpen(false)}
+          >
+            <div
+              className="absolute right-0 top-0 h-full w-[88%] max-w-[360px] overflow-y-auto border-l border-[#23253a] bg-[#0d0f1e] p-5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between">
+                <div className="text-[12px] uppercase tracking-[0.18em]">Filters</div>
+                <button
+                  type="button"
+                  onClick={() => setMobileFiltersOpen(false)}
+                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[12px] text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {activeFiltersCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="mt-4 w-full rounded-[12px] border border-red-400/30 bg-red-500/10 px-4 py-2 text-[12px] font-semibold text-red-200"
+                >
+                  Clear All
+                </button>
+              ) : null}
+
+              <div className="mt-5">
+                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b90ad]">
+                  CATEGORIES
+                </div>
+                <div className="grid gap-2 text-[12px] text-[#d4d7f3]">
+                  {(["Men", "Women", "Boys", "Girls"] as CustomerType[]).map((c) => (
+                    <label key={c} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="accent-white"
+                        checked={selectedCustomers.includes(c)}
+                        onChange={() => toggleCustomer(c)}
+                      />
+                      <span>{c}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8b90ad]">
+                  TYPES
+                </div>
+                <div className="grid gap-2 text-[12px] text-[#d4d7f3]">
+                  {["T-Shirt", "Jean", "Jacket", "Formal Shirt", "Frock", "Wide-leg", "Shorts"].map(
+                    (t) => (
+                      <label key={t} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="accent-white"
+                          checked={selectedTypes.includes(t)}
+                          onChange={() => toggleType(t)}
+                        />
+                        <span>{t}</span>
+                      </label>
+                    )
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="mt-6 w-full rounded-[12px] bg-white px-4 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#050611]"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        ) : null}
       </main>
 
-      {/* FOOTER (same as homepage) */}
+      {/* FOOTER */}
       <footer className="bg-[#050611] py-10 pb-[18px]">
-        <div className="mx-auto grid max-w-[1160px] grid-cols-[1.4fr_0.8fr_0.8fr] gap-10 border-b border-[#191b2e] px-4 pb-6 max-[900px]:grid-cols-2 max-sm:grid-cols-1">
+        <div className="mx-auto grid max-w-[1160px] grid-cols-1 gap-8 border-b border-[#191b2e] px-4 pb-6 sm:grid-cols-2 lg:grid-cols-[1.4fr_0.8fr_0.8fr] lg:gap-10">
           <div>
             <div className="mb-2 text-[16px] font-semibold tracking-[0.11em]">
               UFO Collection

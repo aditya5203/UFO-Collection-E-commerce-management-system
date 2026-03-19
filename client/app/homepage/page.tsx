@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 
 type User = {
   id: string;
@@ -48,7 +49,12 @@ type HomeAd = {
   mediaUrls?: string[];
   clickUrl?: string;
   priority?: number;
-  position?: "Home Top" | "Home Mid" | "Home Bottom" | "Category Top" | "Product Page";
+  position?:
+    | "Home Top"
+    | "Home Mid"
+    | "Home Bottom"
+    | "Category Top"
+    | "Product Page";
 };
 
 function isSafeSrc(src: unknown): src is string {
@@ -89,7 +95,11 @@ function SmartImage({
         src={src}
         alt={alt}
         className={className}
-        style={fill ? { position: "absolute", inset: 0, width: "100%", height: "100%" } : undefined}
+        style={
+          fill
+            ? { position: "absolute", inset: 0, width: "100%", height: "100%" }
+            : undefined
+        }
       />
     );
   }
@@ -113,7 +123,8 @@ function getInitials(name: string) {
 
   const parts = clean.split(/\s+/).filter(Boolean);
   const first = parts[0]?.[0] ?? "";
-  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : parts[0]?.[1] ?? "";
+  const last =
+    parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : parts[0]?.[1] ?? "";
   return (first + last).toUpperCase();
 }
 
@@ -126,24 +137,34 @@ async function safeJson(res: Response) {
   }
 }
 
-async function fetchAds(API_BASE: string, position: string) {
-  const res = await fetch(`${API_BASE}/ads?position=${encodeURIComponent(position)}&status=Active`, {
-    cache: "no-store",
-  });
+async function fetchAds(API_BASE: string, position: string): Promise<HomeAd[]> {
+  const res = await fetch(
+    `${API_BASE}/ads?position=${encodeURIComponent(position)}&status=Active`,
+    {
+      cache: "no-store",
+    }
+  );
   if (!res.ok) throw new Error(`Failed to fetch ads for ${position}`);
   const json = await safeJson(res);
 
   const items: HomeAd[] =
     (Array.isArray(json) && json) ||
-    (Array.isArray(json?.items) && json.items) ||
-    (Array.isArray(json?.data) && json.data) ||
-    (Array.isArray(json?.data?.items) && json.data.items) ||
+    (Array.isArray((json as any)?.items) && (json as any).items) ||
+    (Array.isArray((json as any)?.data) && (json as any).data) ||
+    (Array.isArray((json as any)?.data?.items) && (json as any).data.items) ||
     [];
 
   const normalized = items
-    .filter((x) => isSafeSrc(x?.mediaUrl) || (Array.isArray(x?.mediaUrls) && x.mediaUrls.length > 0))
+    .filter(
+      (x) =>
+        isSafeSrc((x as any)?.mediaUrl) ||
+        (Array.isArray((x as any)?.mediaUrls) &&
+          (x as any).mediaUrls.length > 0)
+    )
     .map((x) => {
-      const urls = Array.isArray(x.mediaUrls) ? x.mediaUrls.map(resolveMediaSrc).filter(Boolean) : [];
+      const urls = Array.isArray(x.mediaUrls)
+        ? x.mediaUrls.map(resolveMediaSrc).filter(Boolean)
+        : [];
       const single = resolveMediaSrc(x.mediaUrl);
 
       return {
@@ -154,7 +175,7 @@ async function fetchAds(API_BASE: string, position: string) {
         mediaUrl: single,
         mediaUrls: urls,
         priority: x.priority ?? 999,
-      };
+      } as HomeAd;
     })
     .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
 
@@ -169,7 +190,7 @@ function AdminTopHero({ API_BASE }: { API_BASE: string }) {
     const run = async () => {
       try {
         const ads = await fetchAds(API_BASE, "Home Top");
-        setAd(ads[0] || null);
+        setAd(ads?.[0] ?? null);
       } catch {
         setAd(null);
       }
@@ -180,7 +201,7 @@ function AdminTopHero({ API_BASE }: { API_BASE: string }) {
   if (!ad) {
     return (
       <div className="overflow-hidden rounded-[18px] border border-[#1f2136] bg-[#0b0d1a]">
-        <div className="flex h-[520px] items-center justify-center text-white/50 max-[900px]:h-[360px]">
+        <div className="flex h-[520px] items-center justify-center px-6 text-center text-white/50 max-[900px]:h-[360px] max-sm:h-[420px]">
           No Top Advertisement
         </div>
       </div>
@@ -189,25 +210,38 @@ function AdminTopHero({ API_BASE }: { API_BASE: string }) {
 
   return (
     <div className="overflow-hidden rounded-[18px] border border-[#1f2136] bg-[#0b0d1a]">
-      <div className="relative h-[520px] max-[900px]:h-[360px]">
+      <div className="relative h-[520px] max-[900px]:h-[360px] max-sm:h-[420px]">
         {ad.mediaKind === "video" ? (
-          <video className="h-full w-full object-cover" src={ad.mediaUrl} autoPlay muted loop playsInline />
+          <video
+            className="h-full w-full object-cover"
+            src={ad.mediaUrl}
+            autoPlay
+            muted
+            loop
+            playsInline
+          />
         ) : (
           <SmartImage src={ad.mediaUrl} alt={ad.title} fill className="object-cover" />
         )}
 
         <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/25 to-transparent" />
 
-        <div className="absolute left-7 top-7 max-w-[560px] max-sm:left-4 max-sm:top-4">
-          <div className="text-[12px] uppercase tracking-[0.18em] text-white/70">ADVERTISEMENT</div>
-          <div className="mt-2 text-[38px] font-semibold text-white max-sm:text-[26px]">{ad.title}</div>
-          <div className="mt-2 text-[13px] text-white/70">Powered by Admin Ads (Cloudinary).</div>
+        <div className="absolute left-7 top-7 max-w-[560px] max-sm:left-4 max-sm:top-4 max-sm:max-w-[92%]">
+          <div className="text-[12px] uppercase tracking-[0.18em] text-white/70">
+            ADVERTISEMENT
+          </div>
+          <div className="mt-2 text-[38px] font-semibold text-white max-sm:text-[22px] max-sm:leading-tight">
+            {ad.title}
+          </div>
+          <div className="mt-2 text-[13px] text-white/70">
+            Powered by Admin Ads (Cloudinary).
+          </div>
 
           <div className="mt-4 flex flex-wrap gap-3">
             {ad.clickUrl ? (
               <button
                 onClick={() => router.push(ad.clickUrl!)}
-                className="rounded-full bg-white px-6 py-[12px] text-[13px] font-medium uppercase tracking-[0.16em] text-[#050611] hover:bg-white/90"
+                className="rounded-full bg-white px-6 py-[12px] text-[13px] font-medium uppercase tracking-[0.16em] text-[#050611] hover:bg-white/90 max-sm:px-5 max-sm:py-[10px]"
               >
                 Shop Now
               </button>
@@ -218,7 +252,7 @@ function AdminTopHero({ API_BASE }: { API_BASE: string }) {
                 const el = document.getElementById("latest-collections");
                 el?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
-              className="rounded-full border border-white/15 bg-white/5 px-6 py-[12px] text-[13px] font-medium uppercase tracking-[0.16em] text-white hover:bg-white/10"
+              className="rounded-full border border-white/15 bg-white/5 px-6 py-[12px] text-[13px] font-medium uppercase tracking-[0.16em] text-white hover:bg-white/10 max-sm:px-5 max-sm:py-[10px]"
             >
               Explore
             </button>
@@ -236,7 +270,7 @@ function HeroRightMedia({ API_BASE }: { API_BASE: string }) {
     const run = async () => {
       try {
         const ads = await fetchAds(API_BASE, "Home Mid");
-        setAd(ads[0] || null);
+        setAd(ads?.[0] ?? null);
       } catch {
         setAd(null);
       }
@@ -250,9 +284,16 @@ function HeroRightMedia({ API_BASE }: { API_BASE: string }) {
   const title = ad?.title || "Hero Banner";
 
   return (
-    <div className="relative h-full min-h-[460px] bg-[#0f1120] max-[900px]:min-h-[360px]">
+    <div className="relative h-full min-h-[460px] bg-[#0f1120] max-[900px]:min-h-[360px] max-sm:min-h-[260px]">
       {mediaKind === "video" ? (
-        <video className="h-full w-full object-cover" src={mediaUrl} autoPlay muted loop playsInline />
+        <video
+          className="h-full w-full object-cover"
+          src={mediaUrl}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
       ) : mediaUrl.startsWith("http") ? (
         <SmartImage src={mediaUrl} alt={title} fill className="object-cover" />
       ) : (
@@ -278,7 +319,8 @@ function HeroAdSlider({ API_BASE }: { API_BASE: string }) {
   const getSlides = React.useCallback((ad?: HomeAd) => {
     if (!ad) return [];
     const urls = Array.isArray(ad.mediaUrls) ? ad.mediaUrls.filter(Boolean) : [];
-    if (ad.type === "Carousel" && ad.mediaKind === "image" && urls.length > 1) return urls;
+    if (ad.type === "Carousel" && ad.mediaKind === "image" && urls.length > 1)
+      return urls;
     return [ad.mediaUrl].filter(Boolean);
   }, []);
 
@@ -341,28 +383,44 @@ function HeroAdSlider({ API_BASE }: { API_BASE: string }) {
 
   const mediaKind: "image" | "video" = currentAd.mediaKind;
   const mediaUrl =
-    currentAd.type === "Carousel" && currentAd.mediaKind === "image" && totalSlides > 0
+    currentAd.type === "Carousel" &&
+    currentAd.mediaKind === "image" &&
+    totalSlides > 0
       ? slides[slideIdx]
       : currentAd.mediaUrl;
 
-  const isCarouselDots = currentAd.type === "Carousel" && currentAd.mediaKind === "image" && totalSlides > 1;
+  const isCarouselDots =
+    currentAd.type === "Carousel" &&
+    currentAd.mediaKind === "image" &&
+    totalSlides > 1;
   const dotsCount = isCarouselDots ? totalSlides : ads.length;
   const activeDot = isCarouselDots ? slideIdx : adIdx;
 
   return (
     <div className="relative overflow-hidden rounded-[18px] border border-[#1f2136] bg-[#0b0d1a]">
-      <div className="relative h-[380px] max-[900px]:h-[280px]">
+      <div className="relative h-[380px] max-[900px]:h-[280px] max-sm:h-[240px]">
         {mediaKind === "video" ? (
-          <video className="h-full w-full object-cover" src={mediaUrl} autoPlay muted loop playsInline />
+          <video
+            className="h-full w-full object-cover"
+            src={mediaUrl}
+            autoPlay
+            muted
+            loop
+            playsInline
+          />
         ) : (
           <SmartImage src={mediaUrl} alt={currentAd.title} fill className="object-cover" />
         )}
 
         <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/25 to-transparent" />
 
-        <div className="absolute left-6 top-6 max-w-[560px] max-sm:left-4 max-sm:top-4">
-          <div className="text-[12px] uppercase tracking-[0.18em] text-white/70">Advertisement</div>
-          <div className="mt-2 text-[28px] font-semibold text-white max-sm:text-[22px]">{currentAd.title}</div>
+        <div className="absolute left-6 top-6 max-w-[560px] max-sm:left-4 max-sm:top-4 max-sm:max-w-[90%]">
+          <div className="text-[12px] uppercase tracking-[0.18em] text-white/70">
+            Advertisement
+          </div>
+          <div className="mt-2 text-[28px] font-semibold text-white max-sm:text-[20px] max-sm:leading-tight">
+            {currentAd.title}
+          </div>
 
           {currentAd.clickUrl && (
             <button
@@ -432,11 +490,16 @@ function formatDateShort(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export default function HomePage() {
   const router = useRouter();
+  const { t } = useI18n(); // ✅ added
 
   const [user, setUser] = React.useState<User | null>(null);
   const [loadingUser, setLoadingUser] = React.useState(true);
@@ -445,17 +508,35 @@ export default function HomePage() {
   const [bestSellerProducts, setBestSellerProducts] = React.useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = React.useState(true);
 
-  // ✅ coupons
   const [coupons, setCoupons] = React.useState<Coupon[]>([]);
   const [loadingCoupons, setLoadingCoupons] = React.useState(true);
   const [collectingCode, setCollectingCode] = React.useState<string | null>(null);
 
-  // ✅ notifications badge count
   const [unreadCount, setUnreadCount] = React.useState(0);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") || "http://localhost:8080/api";
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
+    "http://localhost:8080/api";
 
-  // ---------- Fetch /auth/me ----------
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth >= 768) setMobileMenuOpen(false);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  React.useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileMenuOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileMenuOpen]);
+
   React.useEffect(() => {
     const fetchMe = async () => {
       try {
@@ -478,7 +559,6 @@ export default function HomePage() {
     fetchMe();
   }, [API_BASE]);
 
-  // ✅ Fetch unread notifications count (polling)
   React.useEffect(() => {
     if (!user) {
       setUnreadCount(0);
@@ -487,7 +567,6 @@ export default function HomePage() {
 
     const run = async () => {
       try {
-        // ✅ Change this endpoint if your backend is different
         const res = await fetch(`${API_BASE}/notifications/unread-count`, {
           credentials: "include",
           cache: "no-store",
@@ -500,9 +579,9 @@ export default function HomePage() {
 
         const json = await safeJson(res);
         const count =
-          Number(json?.count) ||
-          Number(json?.data?.count) ||
-          Number(json?.data) ||
+          Number((json as any)?.count) ||
+          Number((json as any)?.data?.count) ||
+          Number((json as any)?.data) ||
           0;
 
         setUnreadCount(count);
@@ -512,11 +591,10 @@ export default function HomePage() {
     };
 
     run();
-    const t = setInterval(run, 25000);
-    return () => clearInterval(t);
+    const tmr = setInterval(run, 25000);
+    return () => clearInterval(tmr);
   }, [API_BASE, user]);
 
-  // ---------- Fetch products ----------
   React.useEffect(() => {
     const fetchProducts = async () => {
       try {
@@ -528,8 +606,9 @@ export default function HomePage() {
         const json = await res.json();
         const all: Product[] =
           (Array.isArray(json) && json) ||
-          (Array.isArray(json?.data) && json.data) ||
-          (Array.isArray(json?.data?.products) && json.data.products) ||
+          (Array.isArray((json as any)?.data) && (json as any).data) ||
+          (Array.isArray((json as any)?.data?.products) &&
+            (json as any).data.products) ||
           [];
 
         const limited = all.slice(0, 50);
@@ -547,22 +626,23 @@ export default function HomePage() {
     fetchProducts();
   }, [API_BASE]);
 
-  // ✅ Fetch available coupons for homepage
   React.useEffect(() => {
     const run = async () => {
       try {
         setLoadingCoupons(true);
-        const res = await fetch(`${API_BASE}/discounts/available`, { cache: "no-store" });
+        const res = await fetch(`${API_BASE}/discounts/available`, {
+          cache: "no-store",
+        });
         const json = await safeJson(res);
 
         const items: Coupon[] =
-          (Array.isArray(json) && json) ||
-          (Array.isArray(json?.data) && json.data) ||
-          (Array.isArray(json?.items) && json.items) ||
+          (Array.isArray(json) && (json as any)) ||
+          (Array.isArray((json as any)?.data) && (json as any).data) ||
+          (Array.isArray((json as any)?.items) && (json as any).items) ||
           [];
 
         setCoupons(items.slice(0, 6));
-      } catch (e) {
+      } catch {
         setCoupons([]);
       } finally {
         setLoadingCoupons(false);
@@ -575,7 +655,6 @@ export default function HomePage() {
     const c = String(code || "").trim();
     if (!c) return;
 
-    // if not logged in -> go signup
     if (!user && !loadingUser) {
       router.push("/signup");
       return;
@@ -584,19 +663,22 @@ export default function HomePage() {
     try {
       setCollectingCode(c);
 
-      const res = await fetch(`${API_BASE}/discounts/collect/${encodeURIComponent(c)}`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const res = await fetch(
+        `${API_BASE}/discounts/collect/${encodeURIComponent(c)}`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
 
       if (!res.ok) {
         const j = await safeJson(res);
-        alert(j?.message || "Failed to collect coupon");
+        alert((j as any)?.message || "Failed to collect coupon");
         return;
       }
 
       router.push("/discounts");
-    } catch (e) {
+    } catch {
       alert("Failed to collect coupon");
     } finally {
       setCollectingCode(null);
@@ -609,16 +691,17 @@ export default function HomePage() {
         @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
         html,
         body {
-          font-family: Poppins, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          font-family: Poppins, system-ui, -apple-system, BlinkMacSystemFont,
+            "Segoe UI", sans-serif;
         }
       `}</style>
 
       {/* HEADER */}
-      <header className="sticky top-0 z-40 h-[80px] border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
-        <div className="mx-auto flex h-full w-full max-w-[1160px] items-center justify-between px-4">
+      <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
+        <div className="mx-auto flex h-[68px] w-full max-w-[1160px] items-center justify-between gap-2 px-3 sm:px-4 md:h-[80px]">
           {/* Brand */}
-          <div className="flex items-center gap-[10px]">
-            <div className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white">
+          <div className="flex min-w-0 items-center gap-[10px]">
+            <div className="h-[40px] w-[40px] overflow-hidden rounded-full border-2 border-white md:h-[44px] md:w-[44px]">
               <Image
                 src="/images/logo.png"
                 alt="UFO Collection logo"
@@ -627,42 +710,55 @@ export default function HomePage() {
                 className="h-full w-full object-cover"
               />
             </div>
-            <div className="text-[28px] font-bold uppercase tracking-[0.18em] text-white max-sm:text-[22px]">
-              UFO Collection
+
+            <div className="min-w-0">
+              <div className="truncate text-[18px] font-bold uppercase tracking-[0.14em] text-white sm:text-[22px] md:text-[28px]">
+                UFO Collection
+              </div>
             </div>
           </div>
 
-          {/* Nav */}
-          <nav className="flex gap-[42px] max-sm:flex-wrap max-sm:gap-5">
+          {/* Desktop Nav */}
+          <nav className="hidden items-center gap-[42px] md:flex">
             <Link
               href="/homepage"
               className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
             >
-              HOME
+              {t("nav.home")}
             </Link>
             <Link
               href="/collection"
               className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
             >
-              COLLECTION
+              {t("nav.collection")}
             </Link>
             <Link
               href="/about"
               className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
             >
-              ABOUT
+              {t("nav.about")}
             </Link>
             <Link
               href="/contact"
               className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
             >
-              CONTACT
+              {t("nav.contact")}
             </Link>
           </nav>
 
           {/* Icons */}
-          <div className="flex items-center gap-5 max-sm:mt-1">
-            <Link href="/collection" aria-label="Search">
+          <div className="flex items-center gap-3 sm:gap-4">
+            {/* Mobile menu button */}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((p) => !p)}
+              className="md:hidden rounded-full border border-white/10 bg-white/5 px-3 py-[7px] text-white hover:bg-white/10"
+              aria-label={t("nav.openMenu")}
+            >
+              ☰
+            </button>
+
+            <Link href="/collection" aria-label="Search" className="hidden sm:block">
               <Image
                 src="/images/search.png"
                 width={26}
@@ -672,49 +768,47 @@ export default function HomePage() {
               />
             </Link>
 
-           {/* ✅ Notifications button (show always) */}
-{loadingUser ? (
-  <div className="h-[26px] w-[26px] animate-pulse rounded-full bg-white/10" />
-) : (
-  <button
-    type="button"
-    onClick={() => router.push(user ? "/notifications" : "/signup")}
-    aria-label="Notifications"
-    className="relative"
-    title={user ? "Notifications" : "Login to view notifications"}
-  >
-    <Image
-      src="/images/notification.png"
-      width={26}
-      height={26}
-      alt="Notifications"
-      className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
-    />
+            {/* Notifications */}
+            {loadingUser ? (
+              <div className="h-[26px] w-[26px] animate-pulse rounded-full bg-white/10" />
+            ) : (
+              <button
+                type="button"
+                onClick={() => router.push(user ? "/notifications" : "/signup")}
+                aria-label="Notifications"
+                className="relative"
+                title={user ? t("nav.notifications") : "Login to view notifications"}
+              >
+                <Image
+                  src="/images/notification.png"
+                  width={26}
+                  height={26}
+                  alt="Notifications"
+                  className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
+                />
+                {user && unreadCount > 0 ? (
+                  <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-[5px] text-[11px] font-bold text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                ) : null}
+              </button>
+            )}
 
-    {/* 🔴 badge only when logged in */}
-    {user && unreadCount > 0 ? (
-      <span className="absolute -right-2 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-[5px] text-[11px] font-bold text-white">
-        {unreadCount > 99 ? "99+" : unreadCount}
-      </span>
-    ) : null}
-  </button>
-)}
-
-
+            {/* Profile */}
             {loadingUser ? (
               <div className="h-[32px] w-[32px] animate-pulse rounded-full bg-white/10" />
             ) : user ? (
               <button
                 type="button"
                 aria-label="Open user profile"
-                title={user.name || "Profile"}
+                title={user.name || t("nav.profile")}
                 onClick={() => router.push("/profile")}
                 className="flex h-[32px] w-[32px] items-center justify-center rounded-full border border-white bg-white text-[12px] font-semibold text-[#050611]"
               >
                 {getInitials(user.name || user.email)}
               </button>
             ) : (
-              <Link href="/signup" aria-label="Signup">
+              <Link href="/signup" aria-label="Signup" className="hidden sm:block">
                 <Image
                   src="/images/profile.png"
                   width={26}
@@ -725,7 +819,7 @@ export default function HomePage() {
               </Link>
             )}
 
-            <Link href="/wishlist" aria-label="Wishlist">
+            <Link href="/wishlist" aria-label="Wishlist" className="hidden sm:block">
               <Image
                 src="/images/wishlist.png"
                 width={26}
@@ -738,34 +832,111 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => router.push("/admin/adminlogin")}
-              className="rounded-full border border-white bg-transparent px-[18px] py-[6px] text-[11px] uppercase tracking-[0.16em] text-white hover:bg-white hover:text-[#050611]"
+              className="hidden rounded-full border border-white bg-transparent px-[18px] py-[6px] text-[11px] uppercase tracking-[0.16em] text-white hover:bg-white hover:text-[#050611] sm:block"
             >
-              ADMIN
+              {t("nav.admin")}
             </button>
           </div>
         </div>
+
+        {/* Mobile menu */}
+        {mobileMenuOpen ? (
+          <div className="md:hidden border-t border-[#191b2d] bg-[rgba(5,6,17,0.98)]">
+            <div className="mx-auto grid max-w-[1160px] gap-3 px-3 py-4 sm:px-4">
+              <Link
+                onClick={() => setMobileMenuOpen(false)}
+                href="/homepage"
+                className="text-[13px] uppercase tracking-[0.16em] text-[#c9b9ff]"
+              >
+                {t("nav.home")}
+              </Link>
+              <Link
+                onClick={() => setMobileMenuOpen(false)}
+                href="/collection"
+                className="text-[13px] uppercase tracking-[0.16em] text-[#c9b9ff]"
+              >
+                {t("nav.collection")}
+              </Link>
+              <Link
+                onClick={() => setMobileMenuOpen(false)}
+                href="/about"
+                className="text-[13px] uppercase tracking-[0.16em] text-[#c9b9ff]"
+              >
+                {t("nav.about")}
+              </Link>
+              <Link
+                onClick={() => setMobileMenuOpen(false)}
+                href="/contact"
+                className="text-[13px] uppercase tracking-[0.16em] text-[#c9b9ff]"
+              >
+                {t("nav.contact")}
+              </Link>
+
+              <div className="pt-2 flex flex-wrap gap-3">
+                <Link
+                  onClick={() => setMobileMenuOpen(false)}
+                  href="/collection"
+                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[12px] uppercase tracking-[0.16em] text-white hover:bg-white/10"
+                >
+                  {t("nav.search")}
+                </Link>
+
+                <Link
+                  onClick={() => setMobileMenuOpen(false)}
+                  href={user ? "/profile" : "/signup"}
+                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[12px] uppercase tracking-[0.16em] text-white hover:bg-white/10"
+                >
+                  {user ? t("nav.profile") : t("nav.signup")}
+                </Link>
+
+                <Link
+                  onClick={() => setMobileMenuOpen(false)}
+                  href="/wishlist"
+                  className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[12px] uppercase tracking-[0.16em] text-white hover:bg-white/10"
+                >
+                  {t("nav.wishlist")}
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    router.push("/admin/adminlogin");
+                  }}
+                  className="rounded-full bg-white px-4 py-2 text-[12px] uppercase tracking-[0.16em] text-[#050611] hover:bg-white/90"
+                >
+                  {t("nav.admin")}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </header>
 
       {/* PAGE */}
       <main className="bg-[#050611] text-[#f5f5f7]">
         {/* TOP HERO */}
-        <section className="py-8">
-          <div className="mx-auto max-w-[1160px] px-4">
+        <section className="py-6 sm:py-8">
+          <div className="mx-auto max-w-[1160px] px-3 sm:px-4">
             <AdminTopHero API_BASE={API_BASE} />
           </div>
         </section>
 
         {/* HERO SECTION */}
         <section className="pb-6">
-          <div className="mx-auto max-w-[1160px] px-4">
-            <div className="min-h-[460px] overflow-hidden rounded-[18px] border border-[#1f2136] bg-[#0b0d1a] max-[900px]:min-h-[360px]">
-              <div className="grid h-full grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] max-[900px]:grid-cols-1">
-                <div className="flex flex-col justify-center gap-[18px] p-[48px_44px] max-sm:p-[32px_22px]">
-                  <div className="text-[12px] uppercase tracking-[0.18em] text-[#8b90ad]">OUR BESTSELLERS</div>
-                  <h1 className="text-[40px] font-semibold leading-tight max-sm:text-[30px]">Latest Arrivals</h1>
-                  <p className="max-w-[360px] text-[14px] leading-[1.8] text-[#8b90ad]">
-                    Discover new-season pieces designed for everyday comfort and statement looks. Curated drops from UFO
-                    Collection, just landed.
+          <div className="mx-auto max-w-[1160px] px-3 sm:px-4">
+            <div className="min-h-[460px] overflow-hidden rounded-[18px] border border-[#1f2136] bg-[#0b0d1a] max-[900px]:min-h-[360px] max-sm:min-h-[300px]">
+              <div className="grid h-full grid-cols-1 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+                <div className="flex flex-col justify-center gap-[14px] p-6 sm:p-8 md:p-[48px_44px]">
+                  <div className="text-[12px] uppercase tracking-[0.18em] text-[#8b90ad]">
+                    OUR BESTSELLERS
+                  </div>
+                  <h1 className="text-[28px] font-semibold leading-tight sm:text-[34px] md:text-[40px]">
+                    Latest Arrivals
+                  </h1>
+                  <p className="max-w-[420px] text-[13px] leading-[1.8] text-[#8b90ad] sm:text-[14px]">
+                    Discover new-season pieces designed for everyday comfort and
+                    statement looks. Curated drops from UFO Collection, just landed.
                   </p>
                   <button
                     onClick={() => router.push("/collection")}
@@ -783,22 +954,28 @@ export default function HomePage() {
 
         {/* Slider */}
         <section className="pb-2">
-          <div className="mx-auto max-w-[1160px] px-4">
+          <div className="mx-auto max-w-[1160px] px-3 sm:px-4">
             <HeroAdSlider API_BASE={API_BASE} />
           </div>
         </section>
 
-        {/* ✅ DISCOUNTS SHOW ON HOMEPAGE (REAL FROM BACKEND) */}
+        {/* DISCOUNTS */}
         <section className="py-6">
-          <div className="mx-auto max-w-[1160px] px-4">
-            <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="mx-auto max-w-[1160px] px-3 sm:px-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <div className="text-[12px] uppercase tracking-[0.18em] text-[#8b90ad]">DISCOUNTS</div>
-                <div className="mt-2 text-[22px] font-semibold text-white">Available Coupons</div>
-                <div className="mt-1 text-[13px] text-[#8b90ad]">Collect coupons and they will auto-apply in your cart.</div>
+                <div className="text-[12px] uppercase tracking-[0.18em] text-[#8b90ad]">
+                  DISCOUNTS
+                </div>
+                <div className="mt-2 text-[20px] font-semibold text-white sm:text-[22px]">
+                  Available Coupons
+                </div>
+                <div className="mt-1 text-[13px] text-[#8b90ad]">
+                  Collect coupons and they will auto-apply in your cart.
+                </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <Link
                   href="/discounts"
                   className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-[12px] uppercase tracking-[0.16em] text-white hover:bg-white/10"
@@ -814,20 +991,26 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-[18px] border border-[#1f2136] bg-[#0b0d1a] p-6">
+            <div className="mt-5 rounded-[18px] border border-[#1f2136] bg-[#0b0d1a] p-4 sm:p-6">
               {loadingCoupons ? (
                 <div className="text-white/60">Loading coupons…</div>
               ) : coupons.length === 0 ? (
                 <div className="text-[#8b90ad]">No active coupons right now.</div>
               ) : (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {coupons.map((c) => (
-                    <div key={c.id} className="rounded-[16px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-5">
+                    <div
+                      key={c.id}
+                      className="rounded-[16px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-4 sm:p-5"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="text-[16px] font-semibold text-white">{c.title || "Coupon"}</div>
+                          <div className="text-[16px] font-semibold text-white">
+                            {c.title || "Coupon"}
+                          </div>
                           <div className="mt-1 text-[13px] text-[#9aa3cc]">
-                            Code: <span className="font-semibold text-white">{c.code}</span>
+                            Code:{" "}
+                            <span className="font-semibold text-white">{c.code}</span>
                           </div>
                         </div>
 
@@ -848,30 +1031,34 @@ export default function HomePage() {
                       </div>
 
                       {c.description ? (
-                        <div className="mt-3 text-[12px] leading-[1.7] text-[#9aa3cc]">{c.description}</div>
+                        <div className="mt-3 text-[12px] leading-[1.7] text-[#9aa3cc]">
+                          {c.description}
+                        </div>
                       ) : null}
 
                       <div className="mt-3 grid gap-1 text-[12px] text-[#8b90ad]">
                         {c.minOrder != null ? <div>Min order: Rs. {c.minOrder}</div> : null}
-                        {c.type === "PERCENT" && c.maxDiscountCap != null ? <div>Max cap: Rs. {c.maxDiscountCap}</div> : null}
+                        {c.type === "PERCENT" && c.maxDiscountCap != null ? (
+                          <div>Max cap: Rs. {c.maxDiscountCap}</div>
+                        ) : null}
                         {c.endAt ? <div>Valid till: {formatDateShort(c.endAt)}</div> : null}
                       </div>
 
-                      <div className="mt-4 flex gap-3">
+                      <div className="mt-4 flex flex-wrap gap-3">
                         <button
                           onClick={() => collectCoupon(c.code)}
                           disabled={collectingCode === c.code}
                           className={`rounded-[12px] px-4 py-2 text-[12px] font-semibold ${
-                            collectingCode === c.code ? "bg-white/10 text-white/60" : "bg-white text-[#050611] hover:bg-white/90"
+                            collectingCode === c.code
+                              ? "bg-white/10 text-white/60"
+                              : "bg-white text-[#050611] hover:bg-white/90"
                           }`}
                         >
                           {collectingCode === c.code ? "Collecting..." : "Collect"}
                         </button>
 
                         <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(c.code);
-                          }}
+                          onClick={() => navigator.clipboard.writeText(c.code)}
                           className="rounded-[12px] border border-white/15 bg-white/5 px-4 py-2 text-[12px] hover:bg-white/10"
                         >
                           Copy
@@ -887,12 +1074,15 @@ export default function HomePage() {
 
         {/* LATEST COLLECTIONS */}
         <section id="latest-collections" className="py-6">
-          <div className="mx-auto max-w-[1160px] px-4">
+          <div className="mx-auto max-w-[1160px] px-3 sm:px-4">
             <div className="mb-[22px] text-center">
-              <div className="text-[18px] uppercase tracking-[0.24em]">LATEST COLLECTIONS</div>
+              <div className="text-[16px] uppercase tracking-[0.24em] sm:text-[18px]">
+                LATEST COLLECTIONS
+              </div>
               <div className="mx-auto mt-2 h-px w-20 bg-[#3c3f59]" />
               <p className="mx-auto mt-[10px] max-w-[520px] text-[13px] text-[#8b90ad]">
-                Handpicked styles fresh from our latest drops. Explore minimalist silhouettes, soft fabrics and everyday essentials for every wardrobe.
+                Handpicked styles fresh from our latest drops. Explore minimalist
+                silhouettes, soft fabrics and everyday essentials for every wardrobe.
               </p>
             </div>
 
@@ -901,7 +1091,7 @@ export default function HomePage() {
             ) : latestProducts.length === 0 ? (
               <div className="text-white/60">No products available.</div>
             ) : (
-              <div className="grid grid-cols-4 gap-5 max-[1024px]:grid-cols-3 max-sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-5">
                 {latestProducts.map((p) => (
                   <button
                     key={p.id}
@@ -914,7 +1104,7 @@ export default function HomePage() {
                     <div className="relative w-full overflow-hidden rounded-[10px] border border-[#252842] bg-[#151726] pb-[130%]">
                       <Image src={resolveMediaSrc(p.image)} alt={p.name} fill className="object-cover" />
                     </div>
-                    <div className="mt-1 text-[#f1f2ff]">{p.name}</div>
+                    <div className="mt-1 text-[#f1f2ff] line-clamp-1">{p.name}</div>
                     <div className="text-[#8b90ad]">Rs. {Number(p.price || 0).toFixed(2)}</div>
                   </button>
                 ))}
@@ -925,9 +1115,9 @@ export default function HomePage() {
 
         {/* BEST SELLER */}
         <section className="py-6">
-          <div className="mx-auto max-w-[1160px] px-4">
+          <div className="mx-auto max-w-[1160px] px-3 sm:px-4">
             <div className="mb-[22px] text-center">
-              <div className="text-[18px] uppercase tracking-[0.24em]">
+              <div className="text-[16px] uppercase tracking-[0.24em] sm:text-[18px]">
                 BEST <span className="font-normal">SELLER</span>
               </div>
               <div className="mx-auto mt-2 h-px w-20 bg-[#3c3f59]" />
@@ -941,7 +1131,7 @@ export default function HomePage() {
             ) : bestSellerProducts.length === 0 ? (
               <div className="text-white/60">No products available.</div>
             ) : (
-              <div className="grid grid-cols-4 gap-5 max-[1024px]:grid-cols-3 max-sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-5">
                 {bestSellerProducts.map((p) => (
                   <button
                     key={p.id}
@@ -954,7 +1144,7 @@ export default function HomePage() {
                     <div className="relative w-full overflow-hidden rounded-[10px] border border-[#252842] bg-[#151726] pb-[130%]">
                       <Image src={resolveMediaSrc(p.image)} alt={p.name} fill className="object-cover" />
                     </div>
-                    <div className="mt-1 text-[#f1f2ff]">{p.name}</div>
+                    <div className="mt-1 text-[#f1f2ff] line-clamp-1">{p.name}</div>
                     <div className="text-[#8b90ad]">Rs. {Number(p.price || 0).toFixed(2)}</div>
                   </button>
                 ))}
@@ -965,19 +1155,31 @@ export default function HomePage() {
 
         {/* POLICIES */}
         <section className="py-3 pb-10">
-          <div className="mx-auto max-w-[1160px] px-4">
-            <div className="grid grid-cols-3 gap-8 text-center max-[900px]:grid-cols-2 max-sm:grid-cols-1">
+          <div className="mx-auto max-w-[1160px] px-3 sm:px-4">
+            <div className="grid grid-cols-1 gap-6 text-center sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
               {[
-                { icon: "🔁", title: "Easy Exchange Policy", text: "Hassle-free exchanges on eligible items for a smooth experience." },
-                { icon: "📅", title: "7 Days Return Policy", text: "Not the right fit? Enjoy a simple 7-day return window." },
-                { icon: "🎧", title: "Best Customer Support", text: "Our team is here to help you with sizing, orders and more." },
+                {
+                  icon: "🔁",
+                  title: "Easy Exchange Policy",
+                  text: "Hassle-free exchanges on eligible items for a smooth experience.",
+                },
+                {
+                  icon: "📅",
+                  title: "7 Days Return Policy",
+                  text: "Not the right fit? Enjoy a simple 7-day return window.",
+                },
+                {
+                  icon: "🎧",
+                  title: "Best Customer Support",
+                  text: "Our team is here to help you with sizing, orders and more.",
+                },
               ].map((p) => (
                 <div key={p.title} className="flex flex-col items-center gap-[10px]">
                   <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#3a3d5a] text-[20px]">
                     {p.icon}
                   </div>
                   <div className="text-[13px] font-semibold">{p.title}</div>
-                  <div className="max-w-[220px] text-[12px] text-[#8b90ad]">{p.text}</div>
+                  <div className="max-w-[260px] text-[12px] text-[#8b90ad]">{p.text}</div>
                 </div>
               ))}
             </div>
@@ -985,15 +1187,17 @@ export default function HomePage() {
         </section>
 
         {/* SUBSCRIBE */}
-        <section className="border-y border-[#171a32] bg-[#0a1020] py-[46px] text-center">
-          <div className="mx-auto max-w-[1160px] px-4">
-            <h3 className="m-0 text-[20px] font-semibold">Subscribe now &amp; get 20% off</h3>
+        <section className="border-y border-[#171a32] bg-[#0a1020] py-[40px] text-center sm:py-[46px]">
+          <div className="mx-auto max-w-[1160px] px-3 sm:px-4">
+            <h3 className="m-0 text-[18px] font-semibold sm:text-[20px]">
+              Subscribe now &amp; get 20% off
+            </h3>
             <p className="mt-[6px] text-[13px] text-[#8b90ad]">
               Join our mailing list for early access to drops, exclusive deals, and styling tips.
             </p>
 
             <form
-              className="mt-[18px] flex flex-wrap justify-center gap-[10px]"
+              className="mt-[18px] flex flex-col items-center justify-center gap-[10px] sm:flex-row"
               onSubmit={(e) => {
                 e.preventDefault();
                 const inp = e.currentTarget.querySelector("input") as HTMLInputElement | null;
@@ -1005,9 +1209,12 @@ export default function HomePage() {
                 type="email"
                 required
                 placeholder="Enter your email id"
-                className="w-[420px] min-w-[260px] max-w-[80vw] rounded-full border border-[#23253a] bg-[#090c1a] px-[14px] py-[10px] text-[13px] text-[#f5f5f7] placeholder:text-[#787e99]"
+                className="w-full max-w-[520px] rounded-full border border-[#23253a] bg-[#090c1a] px-[14px] py-[10px] text-[13px] text-[#f5f5f7] placeholder:text-[#787e99] sm:w-[420px]"
               />
-              <button type="submit" className="rounded-full bg-white px-5 py-[10px] text-[13px] font-medium text-[#050616]">
+              <button
+                type="submit"
+                className="w-full max-w-[220px] rounded-full bg-white px-5 py-[10px] text-[13px] font-medium text-[#050616] sm:w-auto"
+              >
                 SUBSCRIBE
               </button>
             </form>
@@ -1017,16 +1224,20 @@ export default function HomePage() {
 
       {/* FOOTER */}
       <footer className="bg-[#050611] py-10 pb-[18px]">
-        <div className="mx-auto grid max-w-[1160px] grid-cols-[1.4fr_0.8fr_0.8fr] gap-10 border-b border-[#191b2e] px-4 pb-6 max-[900px]:grid-cols-2 max-sm:grid-cols-1">
+        <div className="mx-auto grid max-w-[1160px] grid-cols-1 gap-10 border-b border-[#191b2e] px-3 pb-6 sm:px-4 sm:grid-cols-2 lg:grid-cols-[1.4fr_0.8fr_0.8fr]">
           <div>
-            <div className="mb-2 text-[16px] font-semibold tracking-[0.11em]">UFO Collection</div>
+            <div className="mb-2 text-[16px] font-semibold tracking-[0.11em]">
+              UFO Collection
+            </div>
             <p className="max-w-[420px] text-[12px] leading-[1.9] text-[#8b90ad]">
               UFO Collection brings minimal, premium streetwear to your wardrobe.
             </p>
           </div>
 
           <div>
-            <div className="mb-[10px] text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">COMPANY</div>
+            <div className="mb-[10px] text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
+              COMPANY
+            </div>
             <ul className="grid list-none gap-2 p-0 text-[12px] text-[#d4d6ea]">
               <li>
                 <Link href="/homepage">Home</Link>
@@ -1044,7 +1255,9 @@ export default function HomePage() {
           </div>
 
           <div>
-            <div className="mb-[10px] text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">GET IN TOUCH</div>
+            <div className="mb-[10px] text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
+              GET IN TOUCH
+            </div>
             <ul className="grid list-none gap-2 p-0 text-[12px] text-[#d4d6ea]">
               <li>+977 9804880758</li>
               <li>ufocollection@gmail.com</li>

@@ -5,6 +5,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 
+// ✅ A) Import the modal at top
+import AITryOnModal from "./AITryOnModal";
+
 type Size = "S" | "M" | "L" | "XL" | "XXL";
 
 type Product = {
@@ -166,6 +169,9 @@ export default function ProductPage() {
   // ✅ Added message + cart badge count
   const [addedMsg, setAddedMsg] = React.useState<string | null>(null);
   const [cartCount, setCartCount] = React.useState<number>(0);
+
+  // ✅ B) Add a state to open/close modal
+  const [aiOpen, setAiOpen] = React.useState(false);
 
   // Reviews state
   const [reviews, setReviews] = React.useState<Review[]>([]);
@@ -411,7 +417,7 @@ export default function ProductPage() {
             </Link>
           </nav>
 
-          {/* ✅ Cart icon with badge count (like your image) */}
+          {/* ✅ Cart icon with badge count */}
           <button
             type="button"
             onClick={() => router.push("/cartpage")}
@@ -584,7 +590,15 @@ export default function ProductPage() {
                 ADD TO CART
               </button>
 
-              {/* ✅ small feedback message (stays on page) */}
+              {/* ✅ TRY ON */}
+              <button
+                type="button"
+                onClick={() => setAiOpen(true)}
+                className="mt-3 rounded-[4px] border border-[#2b2f45] bg-transparent px-6 py-[10px] text-[14px] font-semibold text-white hover:bg-white hover:text-[#050611]"
+              >
+                TRY ON WITH AI
+              </button>
+
               {addedMsg ? (
                 <div className="mt-3 text-sm text-[#86efac] font-medium">
                   {addedMsg}
@@ -677,8 +691,6 @@ export default function ProductPage() {
                             {r.comment}
                           </p>
                         ) : null}
-
-                        {/* ✅ customer should NOT see date/time -> removed */}
                       </div>
                     ))
                   )}
@@ -688,6 +700,14 @@ export default function ProductPage() {
           </section>
         </div>
       </main>
+
+      {/* ✅ Modal render (updated: removed productImageUrl) */}
+      <AITryOnModal
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        productId={product.id}
+        productName={product.name}
+      />
     </>
   );
 }
