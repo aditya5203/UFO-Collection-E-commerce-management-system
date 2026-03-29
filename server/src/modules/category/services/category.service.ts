@@ -1,4 +1,4 @@
-//modules/auth/category/services/category.service.ts
+// server/src/modules/category/services/category.service.ts
 import { Category, ICategory } from "../../../models/Category.model";
 import {
   CreateCategoryDTO,
@@ -11,15 +11,10 @@ class CategoryService {
   async createCategory(payload: CreateCategoryDTO): Promise<ICategory> {
     const slug = payload.slug ?? generateCategorySlug(payload.name);
 
-    // ✅ prevent duplicate per slug
-    const exists = await Category.findOne({
-      slug,
-    }).lean();
+    const exists = await Category.findOne({ slug }).lean();
 
     if (exists) {
-      const err: any = new Error(
-        `Category '${payload.name}' already exists`
-      );
+      const err: any = new Error(`Category '${payload.name}' already exists`);
       err.statusCode = 400;
       throw err;
     }
@@ -38,7 +33,6 @@ class CategoryService {
   async getCategories(query: CategoryQueryDTO): Promise<ICategory[]> {
     const filter: any = {};
 
-    // 🔍 search
     if (query.search) {
       filter.name = { $regex: query.search, $options: "i" };
     }
@@ -54,7 +48,10 @@ class CategoryService {
     return Category.findById(id);
   }
 
-  async updateCategory(id: string, payload: UpdateCategoryDTO): Promise<ICategory | null> {
+  async updateCategory(
+    id: string,
+    payload: UpdateCategoryDTO
+  ): Promise<ICategory | null> {
     const updateData: any = {};
 
     if (payload.name) {
@@ -73,8 +70,8 @@ class CategoryService {
     });
   }
 
-  async deleteCategory(id: string): Promise<void> {
-    await Category.findByIdAndDelete(id);
+  async deleteCategory(id: string): Promise<ICategory | null> {
+    return Category.findByIdAndDelete(id);
   }
 }
 

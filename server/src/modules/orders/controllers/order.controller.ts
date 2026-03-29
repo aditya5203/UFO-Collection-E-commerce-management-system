@@ -1,3 +1,4 @@
+// server/src/modules/orders/controllers/order.controller.ts
 import mongoose from "mongoose";
 import fs from "fs";
 import { Response } from "express";
@@ -6,13 +7,8 @@ import { AuthRequest } from "../../auth/middleware/auth.middleware";
 import { Order } from "../../../models/Order.model";
 import { User } from "../../../models/User.model";
 import { generateInvoicePdf } from "../../../services/invoice.service";
-
-// ✅ Notifications
 import { notificationService } from "../../notifications/services/notification.service";
 
-/* -------------------------------------------------------
- * Helpers
- * -----------------------------------------------------*/
 function isAdminRole(role?: string) {
   const r = String(role || "").toLowerCase();
   return r === "admin" || r === "superadmin";
@@ -57,23 +53,17 @@ function statusLabel(statusLower: string) {
   if (statusLower === "pending") return "Order Pending";
   if (statusLower === "shipped") return "Order Shipped";
   if (statusLower === "delivered") return "Order Delivered";
-  if (statusLower === "cancelled" || statusLower === "canceled") return "Order Cancelled";
+  if (statusLower === "cancelled" || statusLower === "canceled") {
+    return "Order Cancelled";
+  }
   return "Order Updated";
 }
 
-// ✅ always use the tracking page with query param
 function trackingLink(orderCode: string) {
-  // orderCode is like "#597320"
   return `/order-tracking?code=${encodeURIComponent(orderCode)}`;
 }
 
-/* -------------------------------------------------------
- * Controller
- * -----------------------------------------------------*/
 export const orderController = {
-  // =====================================================
-  // CREATE ORDER (Customer)
-  // =====================================================
   async create(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.userId;
@@ -81,7 +71,6 @@ export const orderController = {
 
       const data: any = await orderService.createOrder(userId, req.body);
 
-      // 🔔 Notification: Order Confirmed
       try {
         const oc = String(data?.orderCode || "");
         await notificationService.create({
@@ -100,9 +89,6 @@ export const orderController = {
     }
   },
 
-  // =====================================================
-  // LIST ORDERS (Admin)
-  // =====================================================
   async list(req: AuthRequest, res: Response) {
     try {
       const { search = "", customerId, paymentStatus, orderStatus } = req.query;
@@ -120,9 +106,6 @@ export const orderController = {
     }
   },
 
-  // =====================================================
-  // GET ONE ORDER (Admin)
-  // =====================================================
   async getOne(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
@@ -136,12 +119,6 @@ export const orderController = {
     }
   },
 
-  // =====================================================
-  // UPDATE ORDER (Admin) ✅ supports _id OR orderCode
-  // Notifications:
-  // - status changed to shipped/delivered/cancelled/pending/other
-  // - payment changed to paid-like
-  // =====================================================
   async update(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
@@ -176,7 +153,6 @@ export const orderController = {
         } catch {}
       };
 
-      // 🔔 order status notification (only if changed)
       if (orderStatus && nextOrderStatus && nextOrderStatus !== prevOrderStatus) {
         if (nextOrderStatus === "shipped") {
           await safeNotify({
@@ -196,7 +172,10 @@ export const orderController = {
             link: trackingLink(orderCode),
             meta: { orderId: existingOrder._id, orderCode },
           });
-        } else if (nextOrderStatus === "cancelled" || nextOrderStatus === "canceled") {
+        } else if (
+          nextOrderStatus === "cancelled" ||
+          nextOrderStatus === "canceled"
+        ) {
           await safeNotify({
             userId: customerId,
             title: "Order Cancelled",
@@ -226,8 +205,12 @@ export const orderController = {
         }
       }
 
-      // 🔔 payment success (only if becomes paid-like)
-      if (paymentStatus && nextPaymentStatus && isPaidLike(nextPaymentStatus) && !isPaidLike(prevPaymentStatus)) {
+      if (
+        paymentStatus &&
+        nextPaymentStatus &&
+        isPaidLike(nextPaymentStatus) &&
+        !isPaidLike(prevPaymentStatus)
+      ) {
         await safeNotify({
           userId: customerId,
           title: "Payment Successful",
@@ -244,9 +227,6 @@ export const orderController = {
     }
   },
 
-  // =====================================================
-  // GET MY ORDER DETAILS (Customer)
-  // =====================================================
   async getMyOrderDetails(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.userId;
@@ -263,9 +243,6 @@ export const orderController = {
     }
   },
 
-  // =====================================================
-  // GET MY ORDERS (Customer)
-  // =====================================================
   async getMyOrders(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.userId;
@@ -293,9 +270,6 @@ export const orderController = {
     }
   },
 
-  // =====================================================
-  // TRACK ORDER (Public)
-  // =====================================================
   async track(req: AuthRequest, res: Response) {
     try {
       const { code } = req.params;
@@ -309,9 +283,6 @@ export const orderController = {
     }
   },
 
-  // =====================================================
-  // DOWNLOAD INVOICE PDF (Admin OR Customer)
-  // =====================================================
   async downloadInvoice(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.userId;
@@ -346,33 +317,30 @@ export const orderController = {
 
       const invoiceNo =
         order.invoiceNo ||
-        `INV-${new Date(order.createdAt).getFullYear()}-${String(order.orderCode).replace("#", "")}`;
+        `INV-${new Date(order.createdAt).getFullYear()}-${String(
+          order.orderCode
+        ).replace("#", "")}`;
 
       const { filePath, fileName } = await generateInvoicePdf({
         invoiceNo,
         orderCode: order.orderCode,
         createdAt: order.createdAt,
-
         customer: {
           name: customerName,
           email: customerEmail || "N/A",
           phone: customerPhone || "N/A",
         },
-
         addressText: buildAddressText(order.address),
-
         items: (order.items || []).map((it: any) => ({
           name: it.name,
           size: it.size || "",
           qty: Number(it.qty || 0),
           pricePaisa: Number(it.pricePaisa || 0),
         })),
-
         subtotalPaisa: Number(order.subtotalPaisa || 0),
         discountPaisa: Number(order.discountPaisa || 0),
         shippingPaisa: Number(order.shippingPaisa || 0),
         totalPaisa: Number(order.totalPaisa || 0),
-
         paymentMethod: order.paymentMethod,
         paymentStatus: order.paymentStatus,
         paymentRef: order.paymentRef || null,

@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import AdminPageGuard from "../_components/AdminPageGuard";
 
 type Conversation = {
   _id: string;
@@ -42,7 +43,7 @@ function fmtTime(s?: string | null) {
   return d.toLocaleString();
 }
 
-export default function AdminChatInboxPage() {
+function ChatInboxInner() {
   const router = useRouter();
 
   const [loading, setLoading] = React.useState(true);
@@ -53,9 +54,11 @@ export default function AdminChatInboxPage() {
   const load = React.useCallback(async () => {
     setErr("");
     setLoading(true);
+
     try {
       const res = await fetch(`${API}/admin/chat/conversations`, {
         credentials: "include",
+        cache: "no-store",
       });
 
       if (res.status === 401 || res.status === 403) {
@@ -87,6 +90,7 @@ export default function AdminChatInboxPage() {
       const orderId = String(c.orderId || "").toLowerCase();
       const last = String(c.lastMessage || "").toLowerCase();
       const status = String(c.status || "").toLowerCase();
+
       return (
         id.includes(term) ||
         orderId.includes(term) ||
@@ -222,5 +226,13 @@ export default function AdminChatInboxPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AdminChatInboxPage() {
+  return (
+    <AdminPageGuard permission="liveChatView">
+      <ChatInboxInner />
+    </AdminPageGuard>
   );
 }

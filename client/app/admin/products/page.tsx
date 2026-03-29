@@ -1,8 +1,15 @@
+// client/app/admin/products/page.tsx
 "use client";
 
 import * as React from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import AdminPageGuard from "../_components/AdminPageGuard";
+import {
+  AdminPermissions,
+  AdminSettingsResponse,
+  hasPermission,
+  normalizeAdminPermissions,
+} from "../_components/adminPermissions";
 
 type ProductStatus = "Active" | "Inactive";
 type Gender = "Male" | "Female";
@@ -27,11 +34,6 @@ type Product = {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
-/**
- * ✅ Safe image resolver for Next/Image
- * - Only allow your trusted hosts (Cloudinary + dev uploads + Google + ftcdn)
- * - Everything else -> placeholder (prevents Next.js runtime crash)
- */
 const PLACEHOLDER = "/images/products/placeholder.png";
 
 const getImageSrc = (image: string | undefined | null): string => {
@@ -40,20 +42,17 @@ const getImageSrc = (image: string | undefined | null): string => {
   const src = image.trim();
   if (!src) return PLACEHOLDER;
 
-  // allow local public assets
   if (src.startsWith("/")) return src;
 
-  // allow only trusted remote urls
   if (src.startsWith("http://") || src.startsWith("https://")) {
     try {
       const u = new URL(src);
 
-      // ✅ only these hosts are allowed in UI
       const allowed = new Set([
-        "res.cloudinary.com", // cloudinary
-        "localhost", // dev uploads (http://localhost:8080/uploads/..)
-        "lh3.googleusercontent.com", // google avatars
-        "t3.ftcdn.net", // stock images if you use them
+        "res.cloudinary.com",
+        "localhost",
+        "lh3.googleusercontent.com",
+        "t3.ftcdn.net",
       ]);
 
       if (!allowed.has(u.hostname)) return PLACEHOLDER;
@@ -68,24 +67,44 @@ const getImageSrc = (image: string | undefined | null): string => {
 
 const formatPriceNPR = (value: number) => `Rs. ${value.toFixed(2)}`;
 
-export default function AdminProductsPage() {
-  const router = useRouter();
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { raw: text };
+  }
+}
 
+function emptyForm() {
+  return {
+    name: "",
+    description: "",
+    price: "" as number | "",
+    stock: "" as number | "",
+    status: "Active" as ProductStatus,
+    gender: "Male" as Gender,
+    colors: "",
+    sizes: [] as Size[],
+    categoryId: "",
+    image: "",
+    images: "",
+  };
+}
+
+export default function AdminProductsPage() {
   const [products, setProducts] = React.useState<Product[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
   const [search, setSearch] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState<
-    ProductStatus | "All"
-  >("All");
+  const [statusFilter, setStatusFilter] = React.useState<ProductStatus | "All">("All");
 
-  const [categories, setCategories] = React.useState<
-    { id: string; name: string }[]
-  >([]);
+  const [categories, setCategories] = React.useState<{ id: string; name: string }[]>([]);
 
-  // modal state
   const [showModal, setShowModal] = React.useState(false);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [price, setPrice] = React.useState<number | "">("");
@@ -98,6 +117,9 @@ export default function AdminProductsPage() {
   const [image, setImage] = React.useState("");
   const [images, setImages] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
+
   const [toast, setToast] = React.useState<{
     type: "success" | "error";
     message: string;
@@ -108,15 +130,53 @@ export default function AdminProductsPage() {
   const [mainPreview, setMainPreview] = React.useState<string | null>(null);
   const [galleryPreview, setGalleryPreview] = React.useState<string[]>([]);
 
+  const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
+  const [permissions, setPermissions] = React.useState<AdminPermissions | null>(null);
+
+  const canCreate = hasPermission(role, permissions, "productCreate");
+  const canEdit = hasPermission(role, permissions, "productEdit");
+  const canDelete = hasPermission(role, permissions, "productDelete");
+
   React.useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 2500);
     return () => clearTimeout(t);
   }, [toast]);
 
-  // -----------------------------
-  // LOAD PRODUCTS (auto refresh)
-  // -----------------------------
+  React.useEffect(() => {
+    let mounted = true;
+
+    const loadAdminProfile = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/settings`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!res.ok) return;
+
+        const body = (await safeJson(res)) as AdminSettingsResponse;
+        const nextRole = (body?.profile?.role || "admin") as "admin" | "superadmin";
+        const nextPermissions = normalizeAdminPermissions(
+          nextRole,
+          body?.profile?.permissions
+        );
+
+        if (!mounted) return;
+        setRole(nextRole);
+        setPermissions(nextPermissions);
+      } catch {
+        // ignore
+      }
+    };
+
+    loadAdminProfile();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const fetchProducts = React.useCallback(async () => {
     try {
       setLoading(true);
@@ -126,17 +186,15 @@ export default function AdminProductsPage() {
         method: "GET",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        cache: "no-store", // ✅ avoid cached response
+        cache: "no-store",
       });
 
-      if (res.status === 401 || res.status === 403) {
-        router.replace("/admin/login");
-        return;
+      const body = await safeJson(res);
+
+      if (!res.ok) {
+        throw new Error(body?.message || `Failed to load products (status ${res.status})`);
       }
 
-      if (!res.ok) throw new Error(`Failed to load products (status ${res.status})`);
-
-      const body = await res.json();
       const data: any[] = body.data ?? body;
 
       const normalized: Product[] = data.map((p) => ({
@@ -161,17 +219,15 @@ export default function AdminProductsPage() {
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, []);
 
   React.useEffect(() => {
     fetchProducts();
 
-    // ✅ Auto refresh every 10 seconds
     const interval = setInterval(() => {
       fetchProducts();
     }, 10000);
 
-    // ✅ Refresh when admin comes back to tab
     const onFocus = () => fetchProducts();
     window.addEventListener("focus", onFocus);
 
@@ -181,9 +237,6 @@ export default function AdminProductsPage() {
     };
   }, [fetchProducts]);
 
-  // -----------------------------
-  // LOAD CATEGORIES
-  // -----------------------------
   React.useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -192,13 +245,9 @@ export default function AdminProductsPage() {
           cache: "no-store",
         });
 
-        if (res.status === 401 || res.status === 403) {
-          router.replace("/admin/login");
-          return;
-        }
+        const body = await safeJson(res);
 
-        const body = await res.json();
-        if (!res.ok) throw new Error(body.message || "Failed to load categories");
+        if (!res.ok) throw new Error(body?.message || "Failed to load categories");
 
         const data: any[] = body.data ?? body;
         setCategories(
@@ -214,8 +263,9 @@ export default function AdminProductsPage() {
         });
       }
     };
+
     fetchCategories();
-  }, [router]);
+  }, []);
 
   const statuses: (ProductStatus | "All")[] = ["All", "Active", "Inactive"];
 
@@ -233,9 +283,68 @@ export default function AdminProductsPage() {
     );
   };
 
-  // -----------------------------
-  // IMAGE UPLOAD HELPERS
-  // -----------------------------
+  const resetForm = () => {
+    const form = emptyForm();
+    setName(form.name);
+    setDescription(form.description);
+    setPrice(form.price);
+    setStock(form.stock);
+    setStatus(form.status);
+    setGender(form.gender);
+    setColors(form.colors);
+    setSizes(form.sizes);
+    setCategoryId(form.categoryId);
+    setImage(form.image);
+    setImages(form.images);
+    setEditingId(null);
+    setMainPreview(null);
+    setGalleryPreview([]);
+    setError(null);
+  };
+
+  const openCreateModal = () => {
+    if (!canCreate) {
+      setToast({ type: "error", message: "You do not have permission to create product" });
+      return;
+    }
+
+    resetForm();
+    setShowModal(true);
+  };
+
+  const openEditModal = (product: Product) => {
+    if (!canEdit) {
+      setToast({ type: "error", message: "You do not have permission to edit product" });
+      return;
+    }
+
+    setEditingId(product.id);
+    setName(product.name || "");
+    setDescription(product.description || "");
+    setPrice(product.price);
+    setStock(product.stock);
+    setStatus(product.status);
+    setGender(product.gender);
+    setColors(product.colors?.join(", ") || "");
+    setSizes(product.sizes || []);
+    setCategoryId(product.categoryId || "");
+    setImage(product.image || "");
+    setImages(product.images?.join(", ") || "");
+    setMainPreview(product.image || null);
+    setGalleryPreview(product.images || []);
+    setError(null);
+    setShowModal(true);
+  };
+
+  const requestDelete = (id: string) => {
+    if (!canDelete) {
+      setToast({ type: "error", message: "You do not have permission to delete product" });
+      return;
+    }
+
+    setConfirmDeleteId(id);
+  };
+
   const uploadSingleToCloudinary = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
@@ -247,11 +356,11 @@ export default function AdminProductsPage() {
     });
 
     if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || "Failed to upload image");
+      const body = await safeJson(res);
+      throw new Error(body?.message || "Failed to upload image");
     }
 
-    const body = await res.json();
+    const body = await safeJson(res);
 
     const candidate =
       (typeof body === "string" && body) ||
@@ -281,11 +390,11 @@ export default function AdminProductsPage() {
     });
 
     if (!res.ok) {
-      const text = await res.text();
-      throw new Error(text || "Failed to upload gallery images");
+      const body = await safeJson(res);
+      throw new Error(body?.message || "Failed to upload gallery images");
     }
 
-    const body = await res.json();
+    const body = await safeJson(res);
 
     const urls: string[] =
       (Array.isArray(body?.imageUrls) && body.imageUrls) ||
@@ -295,8 +404,9 @@ export default function AdminProductsPage() {
       (Array.isArray(body?.data) && body.data) ||
       [];
 
-    if (!Array.isArray(urls) || urls.length === 0)
+    if (!Array.isArray(urls) || urls.length === 0) {
       throw new Error("Upload response missing URLs");
+    }
 
     return urls;
   };
@@ -312,7 +422,6 @@ export default function AdminProductsPage() {
       setMainPreview(url);
       setToast({ type: "success", message: "Main image uploaded" });
     } catch (err: any) {
-      console.error("Main image upload failed", err);
       setToast({ type: "error", message: err.message || "Failed to upload image" });
     } finally {
       setSubmitting(false);
@@ -327,7 +436,7 @@ export default function AdminProductsPage() {
     try {
       setSubmitting(true);
       const urls = await uploadMultipleToCloudinary(files);
-      setGalleryPreview(urls);
+      setGalleryPreview((prev) => [...prev, ...urls]);
 
       setImages((prev) => {
         const prevList = prev
@@ -340,7 +449,6 @@ export default function AdminProductsPage() {
 
       setToast({ type: "success", message: "Gallery images uploaded" });
     } catch (err: any) {
-      console.error("Gallery upload failed", err);
       setToast({ type: "error", message: err.message || "Failed to upload gallery" });
     } finally {
       setSubmitting(false);
@@ -348,13 +456,22 @@ export default function AdminProductsPage() {
     }
   };
 
-  // -----------------------------
-  // CREATE PRODUCT
-  // -----------------------------
-  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setToast(null);
+
+    const isEditing = Boolean(editingId);
+
+    if (isEditing && !canEdit) {
+      setToast({ type: "error", message: "You do not have permission to edit product" });
+      return;
+    }
+
+    if (!isEditing && !canCreate) {
+      setToast({ type: "error", message: "You do not have permission to create product" });
+      return;
+    }
 
     const cleanName = name.trim();
     const cleanDesc = description.trim();
@@ -375,10 +492,12 @@ export default function AdminProductsPage() {
       setToast({ type: "error", message: "Name, price, and stock are required" });
       return;
     }
+
     if (!categoryId) {
       setToast({ type: "error", message: "Select a category" });
       return;
     }
+
     if (!image.trim()) {
       setToast({ type: "error", message: "Main image is required" });
       return;
@@ -388,6 +507,7 @@ export default function AdminProductsPage() {
       setToast({ type: "error", message: "Add at least one color (hex, e.g. #000000)" });
       return;
     }
+
     const invalidColors = colorArr.filter((c) => !/^#([0-9a-f]{6})$/.test(c));
     if (invalidColors.length) {
       setToast({
@@ -396,6 +516,7 @@ export default function AdminProductsPage() {
       });
       return;
     }
+
     if (sizes.length === 0) {
       setToast({ type: "error", message: "Select at least one size" });
       return;
@@ -418,461 +539,572 @@ export default function AdminProductsPage() {
         categoryId,
       };
 
-      const res = await fetch(`${API_BASE_URL}/api/admin/products`, {
-        method: "POST",
+      const endpoint = isEditing
+        ? `${API_BASE_URL}/api/admin/products/${editingId}`
+        : `${API_BASE_URL}/api/admin/products`;
+
+      const res = await fetch(endpoint, {
+        method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(payload),
       });
 
-      if (res.status === 401 || res.status === 403) {
-        router.replace("/admin/login");
-        return;
-      }
+      const body = await safeJson(res);
 
       if (!res.ok) {
-        const text = await res.text();
-        let message = text;
-        try {
-          const body = JSON.parse(text);
-          message = body.message || JSON.stringify(body);
-        } catch {}
-        throw new Error(message || `Failed to create product (status ${res.status})`);
+        throw new Error(body?.message || `Failed to save product (status ${res.status})`);
       }
 
-      const body = await res.json();
       const created = body.data ?? body;
 
-      setProducts((prev) => [
-        {
-          id: created._id || created.id,
-          name: created.name,
-          slug: created.slug,
-          description: created.description,
-          price: Number(created.price) || 0,
-          stock: Number(created.stock) || 0,
-          status: created.status,
-          image: created.image,
-          images: created.images ?? [],
-          gender: created.gender,
-          colors: created.colors ?? [],
-          sizes: created.sizes ?? [],
-          categoryId: created.categoryId,
-        },
-        ...prev,
-      ]);
+      if (isEditing && editingId) {
+        setProducts((prev) =>
+          prev.map((item) =>
+            item.id === editingId
+              ? {
+                  id: created._id || created.id,
+                  name: created.name,
+                  slug: created.slug,
+                  description: created.description,
+                  price: Number(created.price) || 0,
+                  stock: Number(created.stock) || 0,
+                  status: created.status,
+                  image: created.image,
+                  images: created.images ?? [],
+                  gender: created.gender,
+                  colors: created.colors ?? [],
+                  sizes: created.sizes ?? [],
+                  categoryId: created.categoryId,
+                }
+              : item
+          )
+        );
+      } else {
+        setProducts((prev) => [
+          {
+            id: created._id || created.id,
+            name: created.name,
+            slug: created.slug,
+            description: created.description,
+            price: Number(created.price) || 0,
+            stock: Number(created.stock) || 0,
+            status: created.status,
+            image: created.image,
+            images: created.images ?? [],
+            gender: created.gender,
+            colors: created.colors ?? [],
+            sizes: created.sizes ?? [],
+            categoryId: created.categoryId,
+          },
+          ...prev,
+        ]);
+      }
 
-      setToast({ type: "success", message: "Product created" });
+      setToast({
+        type: "success",
+        message: isEditing ? "Product updated" : "Product created",
+      });
 
       setShowModal(false);
-      setName("");
-      setDescription("");
-      setPrice("");
-      setStock("");
-      setStatus("Active");
-      setGender("Male");
-      setColors("");
-      setSizes([]);
-      setCategoryId("");
-      setImage("");
-      setImages("");
-      setMainPreview(null);
-      setGalleryPreview([]);
+      resetForm();
     } catch (err: any) {
-      setError(err.message || "Failed to create product");
-      setToast({ type: "error", message: err.message || "Failed to create product" });
+      setError(err.message || "Failed to save product");
+      setToast({ type: "error", message: err.message || "Failed to save product" });
     } finally {
       setSubmitting(false);
     }
   }
 
+  async function handleDeleteConfirmed(id: string | null) {
+    if (!id) {
+      setConfirmDeleteId(null);
+      return;
+    }
+
+    if (!canDelete) {
+      setToast({ type: "error", message: "You do not have permission to delete product" });
+      setConfirmDeleteId(null);
+      return;
+    }
+
+    try {
+      setDeletingId(id);
+
+      const res = await fetch(`${API_BASE_URL}/api/admin/products/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      const body = await safeJson(res);
+
+      if (!res.ok) {
+        throw new Error(body?.message || "Failed to delete product");
+      }
+
+      setProducts((prev) => prev.filter((item) => item.id !== id));
+      setToast({ type: "success", message: "Product deleted" });
+    } catch (err: any) {
+      setToast({ type: "error", message: err.message || "Failed to delete product" });
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  }
+
   return (
-    <div>
-      {/* Header */}
-      <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-[22px] font-semibold">Products</h1>
+    <AdminPageGuard permission="productView">
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h1 className="text-[22px] font-semibold">Products</h1>
 
-        <button
-          type="button"
-          onClick={() => setShowModal(true)}
-          className="cursor-pointer rounded-lg bg-[#2563eb] px-[14px] py-2 text-[13px] text-[#f9fafb] hover:bg-[#1d4ed8]"
-        >
-          + Add Product
-        </button>
-      </div>
-
-      {/* Search + Filter */}
-      <div className="mb-[10px] flex items-center gap-[10px]">
-        <div className="flex flex-1 items-center rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-2">
-          <input
-            className="flex-1 border-none bg-transparent text-[13px] text-[#e5e7eb] outline-none placeholder:text-[#6b7280]"
-            type="text"
-            placeholder="Search by name or slug"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          {canCreate ? (
+            <button
+              type="button"
+              onClick={openCreateModal}
+              className="cursor-pointer rounded-lg bg-[#2563eb] px-[14px] py-2 text-[13px] text-[#f9fafb] hover:bg-[#1d4ed8]"
+            >
+              + Add Product
+            </button>
+          ) : null}
         </div>
 
-        <button
-          type="button"
-          className="inline-flex cursor-pointer items-center gap-[6px] whitespace-nowrap rounded-lg border border-[#1f2937] bg-[#020617] px-3 py-2 text-[13px] text-[#e5e7eb]"
-          onClick={() =>
-            setStatusFilter((prev) => {
-              const idx = statuses.indexOf(prev);
-              return statuses[(idx + 1) % statuses.length];
-            })
-          }
-        >
-          {statusFilter === "All" ? "Status: All" : `Status: ${statusFilter}`}
-        </button>
-      </div>
+        <div className="mb-[10px] flex items-center gap-[10px]">
+          <div className="flex flex-1 items-center rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-2">
+            <input
+              className="flex-1 border-none bg-transparent text-[13px] text-[#e5e7eb] outline-none placeholder:text-[#6b7280]"
+              type="text"
+              placeholder="Search by name or slug"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
 
-      {/* Table wrapper */}
-      <div className="overflow-hidden rounded-[14px] border border-[#111827] bg-[#020617]">
-        {error && <div className="px-4 py-[10px] text-[13px] text-[#fca5a5]">{error}</div>}
+          <button
+            type="button"
+            className="inline-flex cursor-pointer items-center gap-[6px] whitespace-nowrap rounded-lg border border-[#1f2937] bg-[#020617] px-3 py-2 text-[13px] text-[#e5e7eb]"
+            onClick={() =>
+              setStatusFilter((prev) => {
+                const idx = statuses.indexOf(prev);
+                return statuses[(idx + 1) % statuses.length];
+              })
+            }
+          >
+            {statusFilter === "All" ? "Status: All" : `Status: ${statusFilter}`}
+          </button>
+        </div>
 
-        {loading ? (
-          <div className="p-[18px] text-[13px] text-[#9ca3af]">Loading products…</div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="p-[18px] text-[13px] text-[#9ca3af]">No products found.</div>
-        ) : (
-          <table className="w-full border-collapse text-[13px]">
-            <thead>
-              <tr>
-                <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
-                  Name
-                </th>
-                <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
-                  Gender
-                </th>
-                <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
-                  Sizes
-                </th>
-                <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
-                  Colors
-                </th>
-                <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
-                  Price (Rs)
-                </th>
-                <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
-                  Stock
-                </th>
-                <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
-                  Status
-                </th>
-              </tr>
-            </thead>
+        <div className="overflow-hidden rounded-[14px] border border-[#111827] bg-[#020617]">
+          {error && <div className="px-4 py-[10px] text-[13px] text-[#fca5a5]">{error}</div>}
 
-            <tbody>
-              {filteredProducts.map((product) => (
-                <tr key={product.id} className="border-t border-[#111827] hover:bg-[#02081b]">
-                  <td className="px-4 py-[10px]">
-                    <div className="flex items-center gap-[10px]">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#0f172a]">
-                        <Image
-                          src={getImageSrc(product.image)}
-                          alt={product.name}
-                          width={40}
-                          height={40}
-                          className="h-10 w-10 object-cover"
-                        />
-                      </div>
-                      <span className="text-[13px] text-[#e5e7eb]">{product.name}</span>
-                    </div>
-                  </td>
-
-                  <td className="px-4 py-[10px] text-[#cbd5e1]">{product.gender}</td>
-                  <td className="px-4 py-[10px] text-[#cbd5e1]">{product.sizes?.join(", ") || "-"}</td>
-                  <td className="px-4 py-[10px] text-[#cbd5e1]">{product.colors?.join(", ") || "-"}</td>
-                  <td className="px-4 py-[10px] text-[#cbd5e1]">{formatPriceNPR(product.price)}</td>
-                  <td className="px-4 py-[10px] text-[#cbd5e1]">{product.stock}</td>
-
-                  <td className="px-4 py-[10px]">
-                    <span
-                      className={[
-                        "rounded-full px-3 py-1 text-[11px] font-semibold",
-                        product.status === "Active"
-                          ? "bg-[rgba(34,197,94,0.12)] text-[#4ade80]"
-                          : "bg-[rgba(148,163,184,0.12)] text-[#cbd5e1]",
-                      ].join(" ")}
-                    >
-                      {product.status}
-                    </span>
-                  </td>
+          {loading ? (
+            <div className="p-[18px] text-[13px] text-[#9ca3af]">Loading products…</div>
+          ) : filteredProducts.length === 0 ? (
+            <div className="p-[18px] text-[13px] text-[#9ca3af]">No products found.</div>
+          ) : (
+            <table className="w-full border-collapse text-[13px]">
+              <thead>
+                <tr>
+                  <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
+                    Name
+                  </th>
+                  <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
+                    Gender
+                  </th>
+                  <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
+                    Sizes
+                  </th>
+                  <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
+                    Colors
+                  </th>
+                  <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
+                    Price (Rs)
+                  </th>
+                  <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
+                    Stock
+                  </th>
+                  <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
+                    Status
+                  </th>
+                  {(canEdit || canDelete) ? (
+                    <th className="border-b border-[#111827] px-4 py-[10px] text-left text-[12px] text-[#9ca3af]">
+                      Actions
+                    </th>
+                  ) : null}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
 
-      {/* MODAL */}
-      {showModal && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50">
-          <div className="flex max-h-[90vh] w-[min(760px,92vw)] flex-col rounded-2xl border border-[#111827] bg-[#0b1220] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-            <div className="mb-[14px] flex items-center justify-between">
-              <div className="text-[18px] font-bold">Add Product</div>
-              <button
-                type="button"
-                className="cursor-pointer border-0 bg-transparent text-[22px] text-[#9ca3af]"
-                onClick={() => setShowModal(false)}
-              >
-                ×
-              </button>
-            </div>
+              <tbody>
+                {filteredProducts.map((product) => (
+                  <tr key={product.id} className="border-t border-[#111827] hover:bg-[#02081b]">
+                    <td className="px-4 py-[10px]">
+                      <div className="flex items-center gap-[10px]">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#0f172a]">
+                          <Image
+                            src={getImageSrc(product.image)}
+                            alt={product.name}
+                            width={40}
+                            height={40}
+                            className="h-10 w-10 object-cover"
+                          />
+                        </div>
+                        <span className="text-[13px] text-[#e5e7eb]">{product.name}</span>
+                      </div>
+                    </td>
 
-            <div className="flex-1 overflow-y-auto pr-[6px]">
-              <form onSubmit={handleCreate}>
-                {/* Name */}
-                <div className="mb-[14px] flex flex-col gap-[6px]">
-                  <label className="text-[13px]" htmlFor="pname">
-                    Name *
-                  </label>
-                  <input
-                    id="pname"
-                    className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                </div>
+                    <td className="px-4 py-[10px] text-[#cbd5e1]">{product.gender}</td>
+                    <td className="px-4 py-[10px] text-[#cbd5e1]">
+                      {product.sizes?.join(", ") || "-"}
+                    </td>
+                    <td className="px-4 py-[10px] text-[#cbd5e1]">
+                      {product.colors?.join(", ") || "-"}
+                    </td>
+                    <td className="px-4 py-[10px] text-[#cbd5e1]">
+                      {formatPriceNPR(product.price)}
+                    </td>
+                    <td className="px-4 py-[10px] text-[#cbd5e1]">{product.stock}</td>
 
-                {/* Desc */}
-                <div className="mb-[14px] flex flex-col gap-[6px]">
-                  <label className="text-[13px]" htmlFor="pdesc">
-                    Description
-                  </label>
-                  <textarea
-                    id="pdesc"
-                    className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
-                    rows={3}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                </div>
-
-                {/* Price + Stock */}
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
-                  <div className="mb-[14px] flex flex-col gap-[6px]">
-                    <label className="text-[13px]" htmlFor="price">
-                      Price (Rs) *
-                    </label>
-                    <input
-                      id="price"
-                      type="number"
-                      min={0}
-                      className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
-                      value={price}
-                      onChange={(e) =>
-                        setPrice(e.target.value === "" ? "" : Number(e.target.value))
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="mb-[14px] flex flex-col gap-[6px]">
-                    <label className="text-[13px]" htmlFor="stock">
-                      Stock *
-                    </label>
-                    <input
-                      id="stock"
-                      type="number"
-                      min={0}
-                      className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
-                      value={stock}
-                      onChange={(e) =>
-                        setStock(e.target.value === "" ? "" : Number(e.target.value))
-                      }
-                      required
-                    />
-                  </div>
-                </div>
-
-                {/* Status + Gender */}
-                <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
-                  <div className="mb-[14px] flex flex-col gap-[6px]">
-                    <label className="text-[13px]" htmlFor="status">
-                      Status
-                    </label>
-                    <select
-                      id="status"
-                      className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value as ProductStatus)}
-                    >
-                      <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
-                    </select>
-                  </div>
-
-                  <div className="mb-[14px] flex flex-col gap-[6px]">
-                    <label className="text-[13px]" htmlFor="gender">
-                      Gender *
-                    </label>
-                    <select
-                      id="gender"
-                      className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
-                      value={gender}
-                      onChange={(e) => setGender(e.target.value as Gender)}
-                    >
-                      <option value="Male">Male</option>
-                      <option value="Female">Female</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Colors */}
-                <div className="mb-[14px] flex flex-col gap-[6px]">
-                  <label className="text-[13px]" htmlFor="colors">
-                    Colors (hex, comma separated) *
-                  </label>
-                  <input
-                    id="colors"
-                    className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
-                    placeholder="#000000, #ffffff"
-                    value={colors}
-                    onChange={(e) => setColors(e.target.value)}
-                  />
-                </div>
-
-                {/* Sizes */}
-                <div className="mb-[14px] flex flex-col gap-[6px]">
-                  <label className="text-[13px]">Sizes *</label>
-                  <div className="flex flex-wrap gap-2">
-                    {["S", "M", "L", "XL", "XXL"].map((s) => (
-                      <label
-                        key={s}
-                        className="inline-flex items-center gap-[6px] rounded-[10px] border border-[#1f2937] bg-[#0b1220] px-[10px] py-[6px] text-[12px]"
+                    <td className="px-4 py-[10px]">
+                      <span
+                        className={[
+                          "rounded-full px-3 py-1 text-[11px] font-semibold",
+                          product.status === "Active"
+                            ? "bg-[rgba(34,197,94,0.12)] text-[#4ade80]"
+                            : "bg-[rgba(148,163,184,0.12)] text-[#cbd5e1]",
+                        ].join(" ")}
                       >
-                        <input
-                          type="checkbox"
-                          checked={sizes.includes(s as Size)}
-                          onChange={() => toggleSize(s as Size)}
-                        />
-                        <span>{s}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
+                        {product.status}
+                      </span>
+                    </td>
 
-                {/* Category */}
-                <div className="mb-[14px] flex flex-col gap-[6px]">
-                  <label className="text-[13px]" htmlFor="category">
-                    Category *
-                  </label>
-                  <select
-                    id="category"
-                    className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
-                    value={categoryId}
-                    onChange={(e) => setCategoryId(e.target.value)}
-                  >
-                    <option value="">Select</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Main Image */}
-                <div className="mb-[14px] flex flex-col gap-[6px]">
-                  <label className="text-[13px]">Main Image *</label>
-
-                  <input
-                    ref={mainFileRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleMainFileChange}
-                  />
-
-                  <div
-                    className="cursor-pointer rounded-[10px] border border-dashed border-[#1f2937] bg-[#0b1220] p-[14px]"
-                    onClick={() => mainFileRef.current?.click()}
-                    role="button"
-                  >
-                    <div className="text-[12px] text-[#9ca3af]">
-                      Click to upload a local image. (Required)
-                    </div>
-
-                    {mainPreview && (
-                      <div className="mt-2 h-[72px] w-[72px] overflow-hidden rounded-[10px] border border-[#1f2937] bg-[#020617]">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={mainPreview} alt="Preview" className="h-full w-full object-cover" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Gallery */}
-                <div className="mb-[14px] flex flex-col gap-[6px]">
-                  <label className="text-[13px]">Gallery Images</label>
-
-                  <input
-                    ref={galleryFileRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={handleGalleryFilesChange}
-                  />
-
-                  <div
-                    className="cursor-pointer rounded-[10px] border border-dashed border-[#1f2937] bg-[#0b1220] p-[14px]"
-                    onClick={() => galleryFileRef.current?.click()}
-                    role="button"
-                  >
-                    <div className="text-[12px] text-[#9ca3af]">
-                      Upload one or more images (optional).
-                    </div>
-
-                    {galleryPreview.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {galleryPreview.map((src, idx) => (
-                          <div
-                            key={idx}
-                            className="h-[72px] w-[72px] overflow-hidden rounded-[10px] border border-[#1f2937] bg-[#020617]"
+                    {(canEdit || canDelete) ? (
+                      <td className="px-4 py-[10px]">
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(product)}
+                            className="mr-2 cursor-pointer rounded-lg border border-[#1f2937] bg-[#0b1220] px-[10px] py-[6px] text-[12px] text-[#e5e7eb]"
                           >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={src} alt={`Gallery ${idx + 1}`} className="h-full w-full object-cover" />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                            Edit
+                          </button>
+                        ) : null}
 
-                {/* Actions */}
-                <div className="mt-4 flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="cursor-pointer rounded-full bg-[#8b5cf6] px-[22px] py-[10px] text-white disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {submitting ? "Saving..." : "Save Product"}
-                  </button>
-                </div>
-              </form>
+                        {canDelete ? (
+                          <button
+                            type="button"
+                            onClick={() => requestDelete(product.id)}
+                            className="cursor-pointer rounded-lg border border-[#7f1d1d] bg-[#0b1220] px-[10px] py-[6px] text-[12px] text-[#fca5a5]"
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {confirmDeleteId && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50">
+            <div className="w-[min(420px,90vw)] rounded-[14px] border border-[#111827] bg-[#0b1220] p-[18px] shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+              <div className="mb-2 font-bold">Delete product?</div>
+              <div className="mb-2 text-[11px] text-[#9ca3af]">
+                This action cannot be undone.
+              </div>
+
+              <div className="mt-4 flex justify-end gap-[10px]">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteId(null)}
+                  className="cursor-pointer rounded-[10px] border border-[#1f2937] bg-[#0b1220] px-[14px] py-2 text-[#e5e7eb]"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={deletingId === confirmDeleteId}
+                  onClick={() => handleDeleteConfirmed(confirmDeleteId)}
+                  className="cursor-pointer rounded-[10px] border border-[#b91c1c] bg-[#ef4444] px-[14px] py-2 text-white disabled:opacity-60"
+                >
+                  {deletingId === confirmDeleteId ? "Deleting..." : "Delete"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Toast */}
-      {toast && (
-        <div
-          className={[
-            "fixed bottom-5 right-5 z-[1200] rounded-xl px-[14px] py-3 text-[13px] font-semibold text-[#0f172a]",
-            "shadow-[0_10px_30px_rgba(0,0,0,0.25)]",
-            toast.type === "success"
-              ? "border border-[#22c55e] bg-[#bbf7d0]"
-              : "border border-[#f43f5e] bg-[#fecdd3]",
-          ].join(" ")}
-        >
-          {toast.message}
-        </div>
-      )}
-    </div>
+        {showModal && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50">
+            <div className="flex max-h-[90vh] w-[min(760px,92vw)] flex-col rounded-2xl border border-[#111827] bg-[#0b1220] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
+              <div className="mb-[14px] flex items-center justify-between">
+                <div className="text-[18px] font-bold">
+                  {editingId ? "Edit Product" : "Add Product"}
+                </div>
+                <button
+                  type="button"
+                  className="cursor-pointer border-0 bg-transparent text-[22px] text-[#9ca3af]"
+                  onClick={() => setShowModal(false)}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto pr-[6px]">
+                <form onSubmit={handleSubmit}>
+                  <div className="mb-[14px] flex flex-col gap-[6px]">
+                    <label className="text-[13px]" htmlFor="pname">
+                      Name *
+                    </label>
+                    <input
+                      id="pname"
+                      className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                    />
+                  </div>
+
+                  <div className="mb-[14px] flex flex-col gap-[6px]">
+                    <label className="text-[13px]" htmlFor="pdesc">
+                      Description
+                    </label>
+                    <textarea
+                      id="pdesc"
+                      className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
+                      rows={3}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
+                    <div className="mb-[14px] flex flex-col gap-[6px]">
+                      <label className="text-[13px]" htmlFor="price">
+                        Price (Rs) *
+                      </label>
+                      <input
+                        id="price"
+                        type="number"
+                        min={0}
+                        className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
+                        value={price}
+                        onChange={(e) =>
+                          setPrice(e.target.value === "" ? "" : Number(e.target.value))
+                        }
+                        required
+                      />
+                    </div>
+
+                    <div className="mb-[14px] flex flex-col gap-[6px]">
+                      <label className="text-[13px]" htmlFor="stock">
+                        Stock *
+                      </label>
+                      <input
+                        id="stock"
+                        type="number"
+                        min={0}
+                        className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
+                        value={stock}
+                        onChange={(e) =>
+                          setStock(e.target.value === "" ? "" : Number(e.target.value))
+                        }
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(180px,1fr))] gap-3">
+                    <div className="mb-[14px] flex flex-col gap-[6px]">
+                      <label className="text-[13px]" htmlFor="status">
+                        Status
+                      </label>
+                      <select
+                        id="status"
+                        className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value as ProductStatus)}
+                      >
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                      </select>
+                    </div>
+
+                    <div className="mb-[14px] flex flex-col gap-[6px]">
+                      <label className="text-[13px]" htmlFor="gender">
+                        Gender *
+                      </label>
+                      <select
+                        id="gender"
+                        className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
+                        value={gender}
+                        onChange={(e) => setGender(e.target.value as Gender)}
+                      >
+                        <option value="Male">Male</option>
+                        <option value="Female">Female</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="mb-[14px] flex flex-col gap-[6px]">
+                    <label className="text-[13px]" htmlFor="colors">
+                      Colors (hex, comma separated) *
+                    </label>
+                    <input
+                      id="colors"
+                      className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
+                      placeholder="#000000, #ffffff"
+                      value={colors}
+                      onChange={(e) => setColors(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="mb-[14px] flex flex-col gap-[6px]">
+                    <label className="text-[13px]">Sizes *</label>
+                    <div className="flex flex-wrap gap-2">
+                      {["S", "M", "L", "XL", "XXL"].map((s) => (
+                        <label
+                          key={s}
+                          className="inline-flex items-center gap-[6px] rounded-[10px] border border-[#1f2937] bg-[#0b1220] px-[10px] py-[6px] text-[12px]"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={sizes.includes(s as Size)}
+                            onChange={() => toggleSize(s as Size)}
+                          />
+                          <span>{s}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mb-[14px] flex flex-col gap-[6px]">
+                    <label className="text-[13px]" htmlFor="category">
+                      Category *
+                    </label>
+                    <select
+                      id="category"
+                      className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
+                      value={categoryId}
+                      onChange={(e) => setCategoryId(e.target.value)}
+                    >
+                      <option value="">Select</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="mb-[14px] flex flex-col gap-[6px]">
+                    <label className="text-[13px]">Main Image *</label>
+
+                    <input
+                      ref={mainFileRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleMainFileChange}
+                    />
+
+                    <div
+                      className="cursor-pointer rounded-[10px] border border-dashed border-[#1f2937] bg-[#0b1220] p-[14px]"
+                      onClick={() => mainFileRef.current?.click()}
+                      role="button"
+                    >
+                      <div className="text-[12px] text-[#9ca3af]">
+                        Click to upload a local image.
+                      </div>
+
+                      {mainPreview && (
+                        <div className="mt-2 h-[72px] w-[72px] overflow-hidden rounded-[10px] border border-[#1f2937] bg-[#020617]">
+                          <img
+                            src={mainPreview}
+                            alt="Preview"
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mb-[14px] flex flex-col gap-[6px]">
+                    <label className="text-[13px]">Gallery Images</label>
+
+                    <input
+                      ref={galleryFileRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleGalleryFilesChange}
+                    />
+
+                    <div
+                      className="cursor-pointer rounded-[10px] border border-dashed border-[#1f2937] bg-[#0b1220] p-[14px]"
+                      onClick={() => galleryFileRef.current?.click()}
+                      role="button"
+                    >
+                      <div className="text-[12px] text-[#9ca3af]">
+                        Upload one or more images (optional).
+                      </div>
+
+                      {galleryPreview.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {galleryPreview.map((src, idx) => (
+                            <div
+                              key={`${src}-${idx}`}
+                              className="h-[72px] w-[72px] overflow-hidden rounded-[10px] border border-[#1f2937] bg-[#020617]"
+                            >
+                              <img
+                                src={src}
+                                alt={`Gallery ${idx + 1}`}
+                                className="h-full w-full object-cover"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="cursor-pointer rounded-full bg-[#8b5cf6] px-[22px] py-[10px] text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {submitting
+                        ? "Saving..."
+                        : editingId
+                        ? "Update Product"
+                        : "Save Product"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {toast && (
+          <div
+            className={[
+              "fixed bottom-5 right-5 z-[1200] rounded-xl px-[14px] py-3 text-[13px] font-semibold text-[#0f172a]",
+              "shadow-[0_10px_30px_rgba(0,0,0,0.25)]",
+              toast.type === "success"
+                ? "border border-[#22c55e] bg-[#bbf7d0]"
+                : "border border-[#f43f5e] bg-[#fecdd3]",
+            ].join(" ")}
+          >
+            {toast.message}
+          </div>
+        )}
+      </div>
+    </AdminPageGuard>
   );
 }

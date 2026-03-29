@@ -1,3 +1,4 @@
+// server/src/modules/reviews/controllers/reviews.controller.ts
 import { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 import { AppError } from "../../../middleware/error.middleware";
@@ -5,7 +6,6 @@ import { Review } from "../../../models/Review.model";
 import { Order } from "../../../models/Order.model";
 import { AuthRequest } from "../../auth/middleware/auth.middleware";
 
-// ✅ FIXED: your DB stores orderCode WITH "#"
 function normalizeOrderCode(v: string) {
   const raw = String(v || "").trim();
   if (!raw) return "";
@@ -13,9 +13,6 @@ function normalizeOrderCode(v: string) {
 }
 
 export const reviewController = {
-  // =======================================================
-  // GET /api/products/:productId/reviews
-  // =======================================================
   getByProduct: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { productId } = req.params;
@@ -52,10 +49,6 @@ export const reviewController = {
     }
   },
 
-  // =======================================================
-  // POST /api/products/:productId/reviews (customer)
-  // body: { rating, title, comment, orderId }
-  // =======================================================
   create: async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       const { productId } = req.params;
@@ -82,9 +75,8 @@ export const reviewController = {
       const product = new mongoose.Types.ObjectId(productId);
       const customer = new mongoose.Types.ObjectId(customerId);
 
-      // ✅ allow review only if Delivered + purchased
       const order = await Order.findOne({
-        orderCode,                    // ✅ now matches "#123456"
+        orderCode,
         customer,
         orderStatus: "Delivered",
         "items.productId": product,

@@ -1,3 +1,4 @@
+// server/src/modules/tickets/services/ticket.service.ts
 import mongoose from "mongoose";
 import { Ticket } from "../../../models/Ticket.model";
 
@@ -43,12 +44,9 @@ export const ticketService = {
       issueType: input.issueType,
       subject: input.subject,
       message: input.message,
-
       customer: customerObjId,
-
       customerName: input.customerName,
       customerEmail: input.customerEmail,
-
       productId: productObjId,
       imageUrl: input.imageUrl || null,
       replies: [],
@@ -57,9 +55,6 @@ export const ticketService = {
     return doc;
   },
 
-  // ---------------------------
-  // ADMIN
-  // ---------------------------
   async listAdminTickets(q?: string) {
     const s = (q || "").trim();
     const filter: any = {};
@@ -79,15 +74,18 @@ export const ticketService = {
   },
 
   async getAdminTicketById(id: string) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
     return Ticket.findById(id).lean();
   },
 
   async updateStatus(id: string, status: TicketStatus) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
     return Ticket.findByIdAndUpdate(id, { status }, { new: true }).lean();
   },
 
   async addAdminReply(id: string, text: string) {
-    // ✅ optional: admin reply sets Pending
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
+
     return Ticket.findByIdAndUpdate(
       id,
       {
@@ -98,23 +96,24 @@ export const ticketService = {
     ).lean();
   },
 
-  // ---------------------------
-  // CUSTOMER (keep email-based for now)
-  // ---------------------------
   async listCustomerTicketsByEmail(email: string) {
-    return Ticket.find({ customerEmail: email })
-      .sort({ createdAt: -1 })
-      .lean();
+    return Ticket.find({ customerEmail: email }).sort({ createdAt: -1 }).lean();
   },
 
   async getCustomerTicketByIdAndEmail(id: string, email: string) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
     return Ticket.findOne({ _id: id, customerEmail: email }).lean();
   },
 
   async addCustomerReply(id: string, email: string, text: string) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
+
     return Ticket.findOneAndUpdate(
       { _id: id, customerEmail: email },
-      { $push: { replies: { sender: "customer", text } } },
+      {
+        $push: { replies: { sender: "customer", text } },
+        $set: { status: "Open" },
+      },
       { new: true }
     ).lean();
   },

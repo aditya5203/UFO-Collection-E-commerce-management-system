@@ -4,6 +4,7 @@ import {
   adminAuthMiddleware,
   authorize,
 } from "../../auth/middleware/auth.middleware";
+import { authorizePermission } from "../../auth/middleware/permission.middleware";
 import { customerController } from "../controllers/customer.controller";
 
 const adminRouter = Router();
@@ -29,6 +30,12 @@ const adminRouter = Router();
  *         schema:
  *           type: string
  *         description: Search customers by name/email
+ *       - in: query
+ *         name: filter
+ *         schema:
+ *           type: string
+ *           enum: [all, blocked, deleted]
+ *         description: Filter customers
  *     responses:
  *       200:
  *         description: Customers list
@@ -39,6 +46,7 @@ adminRouter.get(
   "/",
   adminAuthMiddleware,
   authorize("admin", "superadmin"),
+  authorizePermission("customerView"),
   customerController.list
 );
 
@@ -69,12 +77,71 @@ adminRouter.get(
   "/:id",
   adminAuthMiddleware,
   authorize("admin", "superadmin"),
+  authorizePermission("customerView"),
   customerController.getOne
 );
 
 /**
- * ✅ NEW: Customer saved addresses (Shipping + Billing)
- *
+ * @swagger
+ * /api/admin/customers/{id}/block:
+ *   patch:
+ *     summary: Block customer
+ *     tags: [Customers - Admin]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Customer blocked
+ */
+adminRouter.patch(
+  "/:id/block",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("customerEdit"),
+  customerController.block
+);
+
+/**
+ * @swagger
+ * /api/admin/customers/{id}/unblock:
+ *   patch:
+ *     summary: Unblock customer
+ *     tags: [Customers - Admin]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Customer unblocked
+ */
+adminRouter.patch(
+  "/:id/unblock",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("customerEdit"),
+  customerController.unblock
+);
+
+/**
+ * @swagger
+ * /api/admin/customers/{id}:
+ *   delete:
+ *     summary: Soft delete customer
+ *     tags: [Customers - Admin]
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Customer deleted
+ */
+adminRouter.delete(
+  "/:id",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("customerDelete"),
+  customerController.remove
+);
+
+/**
  * @swagger
  * /api/admin/customers/{id}/addresses:
  *   get:
@@ -95,13 +162,14 @@ adminRouter.get(
  *       401:
  *         description: Unauthorized
  *       404:
- *         description: Customer not found (optional)
+ *         description: Customer not found
  */
 adminRouter.get(
   "/:id/addresses",
   adminAuthMiddleware,
   authorize("admin", "superadmin"),
-  customerController.getAddresses // ✅ this must exist in controller
+  authorizePermission("customerView"),
+  customerController.getAddresses
 );
 
 export default { adminRouter };

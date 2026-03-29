@@ -4,15 +4,14 @@ import { RegisterDto, LoginDto, JwtPayload } from "../types/auth.types";
 import jwt from "jsonwebtoken";
 import { config } from "../../../config";
 import { AppError } from "../../../middleware/error.middleware";
+import { fullSuperadminPermissions } from "../../../models/User.model";
 
-// ---------------- JWT Helper ----------------
 const generateToken = (payload: JwtPayload): string => {
   return jwt.sign(payload, config.jwt.secret, {
     expiresIn: config.jwt.expiresIn,
   } as jwt.SignOptions);
 };
 
-// ---------------- Size Recommendation Helper ----------------
 const SIZES = ["XS", "S", "M", "L", "XL", "XXL"] as const;
 type Size = (typeof SIZES)[number];
 
@@ -39,9 +38,40 @@ const getRecommendedSizes = (
   return { men, women };
 };
 
-// ---------------- Auth Service ----------------
+const sanitizeUserForResponse = (user: any) => {
+  const plain = typeof user.toJSON === "function" ? user.toJSON() : user;
+  const role = String(plain.role || "").toLowerCase();
+
+  return {
+    _id: plain._id,
+    email: plain.email,
+    name: plain.name,
+    role: plain.role,
+    status: plain.status || "active",
+    mustChangePassword: !!plain.mustChangePassword,
+    permissions:
+      role === "superadmin"
+        ? fullSuperadminPermissions()
+        : plain.permissions || {},
+    address: plain.address,
+    height: plain.height,
+    weight: plain.weight,
+    recommendedSizeMen: plain.recommendedSizeMen,
+    recommendedSizeWomen: plain.recommendedSizeWomen,
+    provider: plain.provider,
+    providerId: plain.providerId,
+    avatar: plain.avatar,
+    isBlocked: !!plain.isBlocked,
+    blockedAt: plain.blockedAt || null,
+    isDeleted: !!plain.isDeleted,
+    deletedAt: plain.deletedAt || null,
+    lastLogin: plain.lastLogin || null,
+    createdAt: plain.createdAt,
+    updatedAt: plain.updatedAt,
+  };
+};
+
 export const authService = {
-  // ---------- Register new user (email/password) ----------
   registerUser: async (userData: RegisterDto) => {
     const email = String(userData.email || "").trim().toLowerCase();
     const name = String(userData.name || "").trim();
@@ -70,19 +100,22 @@ export const authService = {
       Number.isFinite(weightKg as number) ? weightKg : undefined
     );
 
-    // ✅ IMPORTANT: DO NOT HASH HERE (your UserSchema.pre("save") will hash)
     const user = new User({
       email,
       name,
-      password: userData.password, // ✅ plain here → pre-save hook hashes it
+      password: userData.password,
       address: userData.address,
       role: "customer",
       provider: "credentials",
-
       height: Number.isFinite(heightFt as number) ? heightFt : undefined,
       weight: Number.isFinite(weightKg as number) ? weightKg : undefined,
       recommendedSizeMen: men,
       recommendedSizeWomen: women,
+      isBlocked: false,
+      blockedAt: null,
+      isDeleted: false,
+      deletedAt: null,
+      lastLogin: new Date(),
     });
 
     await user.save();
@@ -93,22 +126,23 @@ export const authService = {
       role: user.role,
     });
 
-    return { user: user.toJSON(), token };
+    return { user: sanitizeUserForResponse(user), token };
   },
 
-  // ---------- Login user (email/password) ----------
   loginUser: async (credentials: LoginDto) => {
     const email = String(credentials.email || "").trim().toLowerCase();
 
     const user = await User.findOne({ email }).select("+password");
     if (!user) throw new AppError("Invalid email or password", 401);
 
-    // ✅ block soft-deleted users
     if ((user as any).isDeleted) {
       throw new AppError("This account has been deleted.", 403);
     }
 
-    // ✅ block google accounts from password login
+    if ((user as any).isBlocked) {
+      throw new AppError("Your account has been blocked by admin.", 403);
+    }
+
     if (user.provider === "google") {
       throw new AppError("Use Google login for this account", 401);
     }
@@ -116,16 +150,18 @@ export const authService = {
     const ok = await user.comparePassword(String(credentials.password || ""));
     if (!ok) throw new AppError("Invalid email or password", 401);
 
+    (user as any).lastLogin = new Date();
+    await user.save();
+
     const token = generateToken({
       userId: user._id.toString(),
       email: user.email,
       role: user.role,
     });
 
-    return { user: user.toJSON(), token };
+    return { user: sanitizeUserForResponse(user), token };
   },
 
-  // ---------- Login / Signup with Google ----------
   loginWithGoogle: async (payload: {
     email: string;
     name: string;
@@ -137,12 +173,15 @@ export const authService = {
 
     let user = await User.findOne({ email });
 
-    // ✅ block soft-deleted users
     if (user && (user as any).isDeleted) {
       throw new AppError(
         "This account has been deleted. Please register again.",
         403
       );
+    }
+
+    if (user && (user as any).isBlocked) {
+      throw new AppError("Your account has been blocked by admin.", 403);
     }
 
     if (user && user.provider !== "google") {
@@ -160,10 +199,15 @@ export const authService = {
         providerId: payload.providerId,
         avatar: payload.avatar,
         role: "customer",
+        isBlocked: false,
+        blockedAt: null,
+        isDeleted: false,
+        deletedAt: null,
       });
-
-      await user.save();
     }
+
+    (user as any).lastLogin = new Date();
+    await user.save();
 
     const token = generateToken({
       userId: user._id.toString(),
@@ -171,31 +215,41 @@ export const authService = {
       role: user.role,
     });
 
-    return { user: user.toJSON(), token };
+    return { user: sanitizeUserForResponse(user), token };
   },
 
-  // ---------- Logout user ----------
   logoutUser: async (userId: string) => {
     const user = await User.findById(userId);
     if (!user) throw new AppError("User not found", 404);
     return { message: "Logged out successfully" };
   },
 
-  // ---------- Get current user ----------
   getUserById: async (userId: string) => {
     if (!userId) return null;
     const user = await User.findById(userId);
     if (!user) return null;
-    return user.toJSON();
+    return sanitizeUserForResponse(user);
   },
 
-  // ---------- Update profile ----------
   updateProfile: async (
     userId: string,
-    data: { name?: string; address?: string; height?: number | string; weight?: number | string }
+    data: {
+      name?: string;
+      address?: string;
+      height?: number | string;
+      weight?: number | string;
+    }
   ) => {
     const user = await User.findById(userId);
     if (!user) throw new AppError("User not found", 404);
+
+    if ((user as any).isDeleted) {
+      throw new AppError("This account has been deleted.", 403);
+    }
+
+    if ((user as any).isBlocked) {
+      throw new AppError("Your account has been blocked by admin.", 403);
+    }
 
     if (data.name !== undefined) user.name = String(data.name).trim();
     if (data.address !== undefined) user.address = String(data.address).trim();
@@ -215,10 +269,9 @@ export const authService = {
     if (women) user.recommendedSizeWomen = women;
 
     await user.save();
-    return user.toJSON();
+    return sanitizeUserForResponse(user);
   },
 
-  // ---------- Initialize superadmin ----------
   initializeSuperAdmin: async (userData: {
     email: string;
     password: string;
@@ -233,13 +286,20 @@ export const authService = {
     const existingUser = await User.findOne({ email });
     if (existingUser) throw new AppError("User with this email already exists", 409);
 
-    // ✅ IMPORTANT: DO NOT HASH HERE (pre-save hook will hash)
     const superAdmin = new User({
       email,
       name,
-      password: userData.password, // plain → hashed by hook
+      password: userData.password,
       role: "superadmin",
       provider: "credentials",
+      status: "active",
+      mustChangePassword: false,
+      permissions: fullSuperadminPermissions(),
+      isBlocked: false,
+      blockedAt: null,
+      isDeleted: false,
+      deletedAt: null,
+      lastLogin: new Date(),
     });
 
     await superAdmin.save();
@@ -250,10 +310,9 @@ export const authService = {
       role: superAdmin.role,
     });
 
-    return { user: superAdmin.toJSON(), token };
+    return { user: sanitizeUserForResponse(superAdmin), token };
   },
 
-  // ---------- Admin / Superadmin login ----------
   adminLogin: async (credentials: LoginDto) => {
     const email = String(credentials.email || "").trim().toLowerCase();
 
@@ -265,13 +324,23 @@ export const authService = {
 
     if (!user) throw new AppError("Invalid email or password", 401);
 
-    // ✅ block soft-deleted users
     if ((user as any).isDeleted) {
       throw new AppError("This account has been deleted.", 403);
     }
 
+    if ((user as any).isBlocked) {
+      throw new AppError("This admin account has been blocked.", 403);
+    }
+
+    if ((user as any).status === "inactive") {
+      throw new AppError("This admin account is inactive.", 403);
+    }
+
     const ok = await user.comparePassword(String(credentials.password || ""));
     if (!ok) throw new AppError("Invalid email or password", 401);
+
+    (user as any).lastLogin = new Date();
+    await user.save();
 
     const token = generateToken({
       userId: user._id.toString(),
@@ -279,6 +348,6 @@ export const authService = {
       role: user.role,
     });
 
-    return { user: user.toJSON(), token };
+    return { user: sanitizeUserForResponse(user), token };
   },
 };

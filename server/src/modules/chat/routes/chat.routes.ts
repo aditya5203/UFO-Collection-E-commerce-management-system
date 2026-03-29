@@ -3,21 +3,21 @@ import { chatController } from "../controllers/chat.controller";
 
 const router = Router();
 
-// (customerAuthMiddleware applied in routes/index.ts)
+// customerAuthMiddleware already applied in routes/index.ts
 
-// POST /api/chat/open
+// Open chat
 router.post("/open", chatController.open);
 
-// GET /api/chat/mine
+// My conversations
 router.get("/mine", chatController.mine);
 
-// GET /api/chat/:conversationId/messages
+// Get messages
 router.get("/:conversationId/messages", chatController.messages);
 
-// POST /api/chat/:conversationId/messages
+// Customer send message
 router.post("/:conversationId/messages", chatController.customerSend);
 
-// PATCH /api/chat/:conversationId/end
+// Customer end chat
 router.patch("/:conversationId/end", chatController.customerEnd);
 
 export default router;

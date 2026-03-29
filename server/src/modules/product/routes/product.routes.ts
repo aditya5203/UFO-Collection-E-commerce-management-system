@@ -1,7 +1,11 @@
 // server/src/modules/product/routes/product.routes.ts
 import { Router } from "express";
 import { productController } from "../controllers/product.controller";
-import { adminAuthMiddleware, authorize } from "../../auth/middleware/auth.middleware";
+import {
+  adminAuthMiddleware,
+  authorize,
+} from "../../auth/middleware/auth.middleware";
+import { authorizePermission } from "../../auth/middleware/permission.middleware";
 import { upload } from "../../../config/cloudinaryUpload";
 
 const publicRouter = Router();
@@ -16,39 +20,43 @@ adminRouter.use(adminAuthMiddleware);
 adminRouter.use(authorize("admin", "superadmin"));
 
 /**
- * Single upload (main image)
- * POST /api/admin/products/upload-image
- * form-data: file
+ * Upload endpoints
+ * Current page uses these for product create flow.
+ * For now protect them with productCreate permission.
  */
-adminRouter.post("/upload-image", upload.single("file"), (req, res) => {
-  if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+adminRouter.post(
+  "/upload-image",
+  authorizePermission("productCreate"),
+  upload.single("file"),
+  (req, res) => {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
-  // multer-storage-cloudinary exposes URL in `path`
-  const imageUrl = (req.file as any).path as string;
-  return res.status(201).json({ imageUrl });
-});
-
-/**
- * Multiple upload (gallery)
- * POST /api/admin/products/upload-images
- * form-data: files
- */
-adminRouter.post("/upload-images", upload.array("files", 10), (req, res) => {
-  const files = req.files as Express.Multer.File[] | undefined;
-
-  if (!files || files.length === 0) {
-    return res.status(400).json({ message: "No files uploaded" });
+    const imageUrl = (req.file as any).path as string;
+    return res.status(201).json({ imageUrl });
   }
+);
 
-  const imageUrls = files.map((f: any) => f.path as string);
-  return res.status(201).json({ imageUrls });
-});
+adminRouter.post(
+  "/upload-images",
+  authorizePermission("productCreate"),
+  upload.array("files", 10),
+  (req, res) => {
+    const files = req.files as Express.Multer.File[] | undefined;
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({ message: "No files uploaded" });
+    }
+
+    const imageUrls = files.map((f: any) => f.path as string);
+    return res.status(201).json({ imageUrls });
+  }
+);
 
 /* CRUD */
-adminRouter.get("/", productController.getAllForAdmin);
-adminRouter.post("/", productController.create);
-adminRouter.get("/:id", productController.getById);
-adminRouter.patch("/:id", productController.update);
-adminRouter.delete("/:id", productController.remove);
+adminRouter.get("/", authorizePermission("productView"), productController.getAllForAdmin);
+adminRouter.post("/", authorizePermission("productCreate"), productController.create);
+adminRouter.get("/:id", authorizePermission("productView"), productController.getById);
+adminRouter.patch("/:id", authorizePermission("productEdit"), productController.update);
+adminRouter.delete("/:id", authorizePermission("productDelete"), productController.remove);
 
 export default { publicRouter, adminRouter };

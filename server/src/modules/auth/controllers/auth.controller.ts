@@ -276,33 +276,41 @@ export const authController = {
 
   // ---------- ADMIN LOGIN ----------
   adminLogin: async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const credentials: LoginDto = req.body;
+  try {
+    const credentials: LoginDto = req.body;
 
-      if (!credentials.email || !credentials.password) {
-        throw new AppError("Email and password are required", 400);
-      }
-
-      const result = await authService.loginUser(credentials);
-
-      const role = String(result.user.role || "").toLowerCase();
-      if (role !== "admin" && role !== "superadmin") {
-        throw new AppError("Access denied. Admin only.", 403);
-      }
-
-      // ✅ ADMIN cookie
-      setCookie(res, ADMIN_COOKIE, result.token);
-
-      res.status(200).json({
-        success: true,
-        message: "Admin login successful",
-        token: result.token,
-        user: result.user,
-      });
-    } catch (error) {
-      next(error);
+    if (!credentials.email || !credentials.password) {
+      throw new AppError("Email and password are required", 400);
     }
-  },
+
+    const result = await authService.adminLogin(credentials);
+
+    const role = String(result.user.role || "").toLowerCase();
+    if (role !== "admin" && role !== "superadmin") {
+      throw new AppError("Access denied. Admin only.", 403);
+    }
+
+    setCookie(res, ADMIN_COOKIE, result.token);
+
+    res.status(200).json({
+      success: true,
+      message: "Admin login successful",
+      token: result.token,
+      user: {
+        _id: result.user._id,
+        name: result.user.name,
+        email: result.user.email,
+        role: result.user.role,
+        status: result.user.status,
+        mustChangePassword: result.user.mustChangePassword,
+        permissions: result.user.permissions || {},
+        avatar: result.user.avatar,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+},
 
   // ✅ NEW: CUSTOMER Logout (clears ONLY customer cookie)
   logout: async (req: AuthRequest, res: Response, next: NextFunction) => {

@@ -1,31 +1,36 @@
-// app/admin/advertisement/page.tsx
 "use client";
 
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
+import AdminPageGuard from "../_components/AdminPageGuard";
+import {
+  AdminSettingsResponse,
+  hasPermission,
+  normalizeAdminPermissions,
+} from "../_components/adminPermissions";
 
 type AdType = "Banner" | "Carousel" | "Pop-up" | "Video";
 type AdStatus = "Active" | "Inactive" | "Scheduled" | "Expired";
 type Audience = "All Customers" | "New Customers" | "Returning Customers";
-type AdPosition = "Home Top" | "Home Mid" | "Home Bottom" | "Category Top" | "Product Page";
+type AdPosition =
+  | "Home Top"
+  | "Home Mid"
+  | "Home Bottom"
+  | "Category Top"
+  | "Product Page";
 
 type AdRow = {
   id: string;
   title: string;
   type: AdType;
   status: AdStatus;
-  startDate: string; // YYYY-MM-DD
-  endDate: string; // YYYY-MM-DD
+  startDate: string;
+  endDate: string;
   audience: Audience;
   mediaKind: "image" | "video";
-
-  // ✅ Backward compatible single
   mediaUrl: string;
-
-  // ✅ NEW: for Carousel images
   mediaUrls?: string[];
-
   clickUrl?: string;
   position?: AdPosition;
   priority?: number;
@@ -55,7 +60,10 @@ function toISODateInput(v: any) {
 }
 
 const API_BASE =
-  (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api").replace(/\/+$/, "");
+  (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api").replace(
+    /\/+$/,
+    ""
+  );
 
 async function safeJson(res: Response) {
   const text = await res.text();
@@ -66,9 +74,10 @@ async function safeJson(res: Response) {
   }
 }
 
-/** Small helper for preview: get carousel first image */
 function firstMedia(ad: AdRow) {
-  const arr = Array.isArray(ad.mediaUrls) ? ad.mediaUrls.filter(Boolean) : [];
+  const arr = Array.isArray(ad.mediaUrls)
+    ? ad.mediaUrls.filter(Boolean)
+    : [];
   if (arr.length) return arr[0];
   return ad.mediaUrl || "/images/placeholder.png";
 }
@@ -88,41 +97,91 @@ function SmartMedia({ ad }: { ad: AdRow }) {
   return <Image src={src} alt={ad.title} fill className="object-cover" />;
 }
 
-export default function AdminAdvertisementPage() {
-  // filters
+function AdvertisementInner() {
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState<AdType | "All">("All");
   const [status, setStatus] = React.useState<AdStatus | "All">("All");
   const [audience, setAudience] = React.useState<Audience | "All">("All");
 
-  // data
   const [ads, setAds] = React.useState<AdRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [selected, setSelected] = React.useState<AdRow | null>(null);
 
-  // modal + form
   const [openForm, setOpenForm] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
-  // form state
-  const [formId, setFormId] = React.useState<string | null>(null); // null => create, string => edit
+  const [canCreate, setCanCreate] = React.useState(false);
+  const [canEdit, setCanEdit] = React.useState(false);
+  const [canDelete, setCanDelete] = React.useState(false);
+
+  const [formId, setFormId] = React.useState<string | null>(null);
   const [title, setTitle] = React.useState("");
   const [adType, setAdType] = React.useState<AdType>("Banner");
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
-  const [formAudience, setFormAudience] = React.useState<Audience>("All Customers");
+  const [formAudience, setFormAudience] =
+    React.useState<Audience>("All Customers");
   const [position, setPosition] = React.useState<AdPosition>("Home Top");
   const [priority, setPriority] = React.useState<number>(1);
   const [clickUrl, setClickUrl] = React.useState("");
   const [mediaKind, setMediaKind] = React.useState<"image" | "video">("image");
 
-  // ✅ single file (banner / video etc.)
   const [file, setFile] = React.useState<File | null>(null);
-
-  // ✅ multi files (carousel images)
   const [files, setFiles] = React.useState<File[]>([]);
 
   const isCarouselImages = adType === "Carousel" && mediaKind === "image";
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    const loadPermissions = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/admin/settings`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          if (mounted) {
+            setCanCreate(false);
+            setCanEdit(false);
+            setCanDelete(false);
+          }
+          return;
+        }
+
+        const json = (await safeJson(res)) as AdminSettingsResponse;
+        const role = String(json?.profile?.role || "admin");
+        const permissions = normalizeAdminPermissions(
+          role,
+          json?.profile?.permissions
+        );
+
+        if (mounted) {
+          setCanCreate(
+            hasPermission(role, permissions, "advertisementCreate")
+          );
+          setCanEdit(hasPermission(role, permissions, "advertisementEdit"));
+          setCanDelete(
+            hasPermission(role, permissions, "advertisementDelete")
+          );
+        }
+      } catch {
+        if (mounted) {
+          setCanCreate(false);
+          setCanEdit(false);
+          setCanDelete(false);
+        }
+      }
+    };
+
+    loadPermissions();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const resetForm = React.useCallback(() => {
     setFormId(null);
@@ -140,27 +199,31 @@ export default function AdminAdvertisementPage() {
   }, []);
 
   const openCreate = React.useCallback(() => {
+    if (!canCreate) return;
     resetForm();
     setOpenForm(true);
-  }, [resetForm]);
+  }, [resetForm, canCreate]);
 
-  const openEdit = React.useCallback((a: AdRow) => {
-    setFormId(a.id);
-    setTitle(a.title || "");
-    setAdType(a.type);
-    setStartDate(toISODateInput(a.startDate));
-    setEndDate(toISODateInput(a.endDate));
-    setFormAudience(a.audience);
-    setPosition((a.position || "Home Top") as AdPosition);
-    setPriority(Number(a.priority ?? 1));
-    setClickUrl(a.clickUrl || "");
-    setMediaKind(a.mediaKind);
+  const openEdit = React.useCallback(
+    (a: AdRow) => {
+      if (!canEdit) return;
 
-    // ✅ on edit: do not auto-load files; user can optionally upload to replace
-    setFile(null);
-    setFiles([]);
-    setOpenForm(true);
-  }, []);
+      setFormId(a.id);
+      setTitle(a.title || "");
+      setAdType(a.type);
+      setStartDate(toISODateInput(a.startDate));
+      setEndDate(toISODateInput(a.endDate));
+      setFormAudience(a.audience);
+      setPosition((a.position || "Home Top") as AdPosition);
+      setPriority(Number(a.priority ?? 1));
+      setClickUrl(a.clickUrl || "");
+      setMediaKind(a.mediaKind);
+      setFile(null);
+      setFiles([]);
+      setOpenForm(true);
+    },
+    [canEdit]
+  );
 
   async function fetchAds() {
     try {
@@ -204,21 +267,29 @@ export default function AdminAdvertisementPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, type, status, audience]);
 
-  const activeCount = React.useMemo(() => ads.filter((x) => x.status === "Active").length, [ads]);
-  const scheduledCount = React.useMemo(() => ads.filter((x) => x.status === "Scheduled").length, [ads]);
+  const activeCount = React.useMemo(
+    () => ads.filter((x) => x.status === "Active").length,
+    [ads]
+  );
+  const scheduledCount = React.useMemo(
+    () => ads.filter((x) => x.status === "Scheduled").length,
+    [ads]
+  );
 
   async function onSave() {
     try {
+      if (!(formId ? canEdit : canCreate)) return;
+
       setSaving(true);
 
       if (!title.trim()) return alert("Title is required");
       if (!startDate) return alert("Start date is required");
       if (!endDate) return alert("End date is required");
 
-      // ✅ create requires media
       if (!formId) {
         if (isCarouselImages) {
-          if (!files.length && !file) return alert("Please select 1+ images for Carousel");
+          if (!files.length && !file)
+            return alert("Please select 1+ images for Carousel");
         } else {
           if (!file) return alert("Please select image/video file");
         }
@@ -235,18 +306,17 @@ export default function AdminAdvertisementPage() {
       fd.append("clickUrl", clickUrl || "");
       fd.append("mediaKind", mediaKind);
 
-      // ✅ if Carousel images -> send multiple via "files"
       if (isCarouselImages) {
-        // allow either multiple or single fallback
         const list = files.length ? files : file ? [file] : [];
         for (const f of list) fd.append("files", f);
       } else {
-        // single media
         if (file) fd.append("file", file);
       }
 
       const isEdit = Boolean(formId);
-      const url = isEdit ? `${API_BASE}/admin/ads/${formId}` : `${API_BASE}/admin/ads`;
+      const url = isEdit
+        ? `${API_BASE}/admin/ads/${formId}`
+        : `${API_BASE}/admin/ads`;
       const method = isEdit ? "PATCH" : "POST";
 
       const res = await fetch(url, {
@@ -272,6 +342,8 @@ export default function AdminAdvertisementPage() {
 
   async function onToggle(ad: AdRow) {
     try {
+      if (!canEdit) return;
+
       const makeActive = ad.status !== "Active";
 
       const res = await fetch(`${API_BASE}/admin/ads/${ad.id}/toggle`, {
@@ -292,6 +364,7 @@ export default function AdminAdvertisementPage() {
   }
 
   async function onDelete(ad: AdRow) {
+    if (!canDelete) return;
     if (!confirm(`Delete "${ad.title}" ?`)) return;
 
     try {
@@ -316,20 +389,25 @@ export default function AdminAdvertisementPage() {
   return (
     <div className="min-h-screen bg-[#0e1620] text-white">
       <div className="mx-auto w-full max-w-[1200px] px-4 py-8">
-        {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Advertisement</h1>
-            <p className="mt-1 text-sm text-white/60">Connected to API + Cloudinary upload.</p>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Advertisement
+            </h1>
+            <p className="mt-1 text-sm text-white/60">
+              Connected to API + Cloudinary upload.
+            </p>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <button
-              onClick={openCreate}
-              className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#0e1620] shadow-sm hover:bg-white/90"
-            >
-              + Create Advertisement
-            </button>
+            {canCreate ? (
+              <button
+                onClick={openCreate}
+                className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#0e1620] shadow-sm hover:bg-white/90"
+              >
+                + Create Advertisement
+              </button>
+            ) : null}
 
             <Link
               href="/admin/advertisement/history"
@@ -340,31 +418,33 @@ export default function AdminAdvertisementPage() {
           </div>
         </div>
 
-        {/* Stats */}
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="text-xs text-white/60">Active Ads</div>
             <div className="mt-2 text-2xl font-semibold">{activeCount}</div>
-            <div className="mt-1 text-xs text-white/50">Currently visible to customers</div>
+            <div className="mt-1 text-xs text-white/50">
+              Currently visible to customers
+            </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="text-xs text-white/60">Scheduled</div>
             <div className="mt-2 text-2xl font-semibold">{scheduledCount}</div>
-            <div className="mt-1 text-xs text-white/50">Will go live on start date</div>
+            <div className="mt-1 text-xs text-white/50">
+              Will go live on start date
+            </div>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="text-xs text-white/60">Quick Tips</div>
             <div className="mt-2 text-sm text-white/70">
-              Use <span className="text-white">priority</span> to decide which banner appears first.
-              Add a <span className="text-white">click URL</span> to send users to collection pages.
+              Use <span className="text-white">priority</span> to decide which
+              banner appears first. Add a <span className="text-white">click URL</span> to send users to collection pages.
               For <span className="text-white">Carousel</span>, upload 2–6 images.
             </div>
           </div>
         </div>
 
-        {/* Filters */}
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-1 items-center gap-3 rounded-xl border border-white/10 bg-[#111c28] px-3 py-2">
@@ -416,14 +496,14 @@ export default function AdminAdvertisementPage() {
           </div>
         </div>
 
-        {/* Main grid */}
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          {/* Table */}
           <div className="rounded-2xl border border-white/10 bg-white/5">
             <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
               <div>
                 <div className="text-sm font-semibold">Advertisements</div>
-                <div className="text-xs text-white/50">Click any row to preview & manage.</div>
+                <div className="text-xs text-white/50">
+                  Click any row to preview & manage.
+                </div>
               </div>
               <div className="text-xs text-white/50">
                 Showing <span className="text-white">{filtered.length}</span>
@@ -447,7 +527,10 @@ export default function AdminAdvertisementPage() {
                 <tbody className="text-white/80">
                   {loading ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-10 text-center text-white/60">
+                      <td
+                        colSpan={7}
+                        className="px-4 py-10 text-center text-white/60"
+                      >
                         Loading…
                       </td>
                     </tr>
@@ -462,7 +545,9 @@ export default function AdminAdvertisementPage() {
                             isSel ? "bg-white/10" : "hover:bg-white/5"
                           }`}
                         >
-                          <td className="px-4 py-3 font-medium text-white">{a.title}</td>
+                          <td className="px-4 py-3 font-medium text-white">
+                            {a.title}
+                          </td>
                           <td className="px-4 py-3 text-white/70">{a.type}</td>
                           <td className="px-4 py-3">
                             <span
@@ -473,40 +558,61 @@ export default function AdminAdvertisementPage() {
                               {a.status}
                             </span>
                           </td>
-                          <td className="px-4 py-3 text-white/70">{fmtDate(a.startDate)}</td>
-                          <td className="px-4 py-3 text-white/70">{fmtDate(a.endDate)}</td>
-                          <td className="px-4 py-3 text-white/70">{a.audience}</td>
+                          <td className="px-4 py-3 text-white/70">
+                            {fmtDate(a.startDate)}
+                          </td>
+                          <td className="px-4 py-3 text-white/70">
+                            {fmtDate(a.endDate)}
+                          </td>
+                          <td className="px-4 py-3 text-white/70">
+                            {a.audience}
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openEdit(a);
-                                }}
-                                className="text-xs font-semibold text-white hover:underline"
-                              >
-                                Edit
-                              </button>
-                              <span className="text-white/30">|</span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onToggle(a);
-                                }}
-                                className="text-xs font-semibold text-white/70 hover:text-white hover:underline"
-                              >
-                                {a.status === "Active" ? "Deactivate" : "Activate"}
-                              </button>
-                              <span className="text-white/30">|</span>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDelete(a);
-                                }}
-                                className="text-xs font-semibold text-red-200 hover:text-red-100 hover:underline"
-                              >
-                                Delete
-                              </button>
+                              {canEdit ? (
+                                <>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openEdit(a);
+                                    }}
+                                    className="text-xs font-semibold text-white hover:underline"
+                                  >
+                                    Edit
+                                  </button>
+                                  <span className="text-white/30">|</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onToggle(a);
+                                    }}
+                                    className="text-xs font-semibold text-white/70 hover:text-white hover:underline"
+                                  >
+                                    {a.status === "Active"
+                                      ? "Deactivate"
+                                      : "Activate"}
+                                  </button>
+                                </>
+                              ) : (
+                                <span className="text-xs text-white/40">
+                                  View only
+                                </span>
+                              )}
+
+                              {canDelete ? (
+                                <>
+                                  <span className="text-white/30">|</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onDelete(a);
+                                    }}
+                                    className="text-xs font-semibold text-red-200 hover:text-red-100 hover:underline"
+                                  >
+                                    Delete
+                                  </button>
+                                </>
+                              ) : null}
                             </div>
                           </td>
                         </tr>
@@ -516,7 +622,10 @@ export default function AdminAdvertisementPage() {
 
                   {!loading && filtered.length === 0 && (
                     <tr>
-                      <td className="px-4 py-10 text-center text-white/60" colSpan={7}>
+                      <td
+                        className="px-4 py-10 text-center text-white/60"
+                        colSpan={7}
+                      >
                         No advertisements found.
                       </td>
                     </tr>
@@ -526,11 +635,12 @@ export default function AdminAdvertisementPage() {
             </div>
           </div>
 
-          {/* Preview */}
           <div className="rounded-2xl border border-white/10 bg-white/5">
             <div className="border-b border-white/10 px-4 py-3">
               <div className="text-sm font-semibold">Preview</div>
-              <div className="text-xs text-white/50">See how it will look on the site.</div>
+              <div className="text-xs text-white/50">
+                See how it will look on the site.
+              </div>
             </div>
 
             <div className="p-4">
@@ -542,7 +652,9 @@ export default function AdminAdvertisementPage() {
                 <>
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-base font-semibold">{selected.title}</div>
+                      <div className="text-base font-semibold">
+                        {selected.title}
+                      </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/60">
                         <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1">
                           {selected.type}
@@ -560,12 +672,14 @@ export default function AdminAdvertisementPage() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => openEdit(selected)}
-                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10"
-                    >
-                      Edit
-                    </button>
+                    {canEdit ? (
+                      <button
+                        onClick={() => openEdit(selected)}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                   </div>
 
                   <div className="mt-4 rounded-2xl border border-white/10 bg-[#111c28] p-3">
@@ -573,12 +687,13 @@ export default function AdminAdvertisementPage() {
                       <SmartMedia ad={selected} />
                     </div>
 
-                    {/* ✅ show carousel count */}
-                    {selected.type === "Carousel" && selected.mediaKind === "image" ? (
+                    {selected.type === "Carousel" &&
+                    selected.mediaKind === "image" ? (
                       <div className="mt-2 text-xs text-white/60">
                         Slides:{" "}
                         <span className="text-white">
-                          {Array.isArray(selected.mediaUrls) && selected.mediaUrls.length
+                          {Array.isArray(selected.mediaUrls) &&
+                          selected.mediaUrls.length
                             ? selected.mediaUrls.length
                             : selected.mediaUrl
                             ? 1
@@ -591,20 +706,27 @@ export default function AdminAdvertisementPage() {
                       <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                         <div className="text-white/50">Start → End</div>
                         <div className="mt-1 text-white">
-                          {fmtDate(selected.startDate)} → {fmtDate(selected.endDate)}
+                          {fmtDate(selected.startDate)} →{" "}
+                          {fmtDate(selected.endDate)}
                         </div>
                       </div>
                       <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                         <div className="text-white/50">Placement</div>
-                        <div className="mt-1 text-white">{selected.position ?? "-"}</div>
+                        <div className="mt-1 text-white">
+                          {selected.position ?? "-"}
+                        </div>
                       </div>
                       <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                         <div className="text-white/50">Priority</div>
-                        <div className="mt-1 text-white">{selected.priority ?? "-"}</div>
+                        <div className="mt-1 text-white">
+                          {selected.priority ?? "-"}
+                        </div>
                       </div>
                       <div className="rounded-xl border border-white/10 bg-white/5 p-3">
                         <div className="text-white/50">Click URL</div>
-                        <div className="mt-1 truncate text-white">{selected.clickUrl ?? "-"}</div>
+                        <div className="mt-1 truncate text-white">
+                          {selected.clickUrl ?? "-"}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -614,7 +736,6 @@ export default function AdminAdvertisementPage() {
           </div>
         </div>
 
-        {/* Modal */}
         {openForm && (
           <div
             className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center"
@@ -629,7 +750,9 @@ export default function AdminAdvertisementPage() {
                   <div className="text-sm font-semibold">
                     {formId ? "Edit Advertisement" : "Create Advertisement"}
                   </div>
-                  <div className="text-xs text-white/50">Connected to API + Cloudinary upload.</div>
+                  <div className="text-xs text-white/50">
+                    Connected to API + Cloudinary upload.
+                  </div>
                 </div>
                 <button
                   onClick={() => setOpenForm(false)}
@@ -689,7 +812,9 @@ export default function AdminAdvertisementPage() {
                     <div className="text-xs text-white/60">Audience</div>
                     <select
                       value={formAudience}
-                      onChange={(e) => setFormAudience(e.target.value as any)}
+                      onChange={(e) =>
+                        setFormAudience(e.target.value as any)
+                      }
                       className="mt-2 w-full rounded-lg border border-white/10 bg-[#111c28] px-3 py-2 text-sm outline-none"
                     >
                       <option>All Customers</option>
@@ -735,14 +860,18 @@ export default function AdminAdvertisementPage() {
                   </div>
 
                   <div className="md:col-span-2 rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/60">Upload Media (Image/Video)</div>
+                    <div className="text-xs text-white/60">
+                      Upload Media (Image/Video)
+                    </div>
 
                     <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
                       <div className="rounded-lg border border-white/10 bg-[#111c28] p-3">
                         <div className="text-xs text-white/50">Media Kind</div>
                         <select
                           value={mediaKind}
-                          onChange={(e) => setMediaKind(e.target.value as any)}
+                          onChange={(e) =>
+                            setMediaKind(e.target.value as any)
+                          }
                           className="mt-2 w-full rounded-lg border border-white/10 bg-[#0e1620] px-3 py-2 text-sm outline-none"
                         >
                           <option value="image">image</option>
@@ -753,19 +882,24 @@ export default function AdminAdvertisementPage() {
                         </div>
                         {adType === "Carousel" && mediaKind === "video" ? (
                           <div className="mt-2 text-xs text-yellow-200/80">
-                            Carousel + video is not recommended. Use Type=Video for video ads.
+                            Carousel + video is not recommended. Use Type=Video
+                            for video ads.
                           </div>
                         ) : null}
                       </div>
 
                       <div className="rounded-lg border border-white/10 bg-[#111c28] p-3">
                         <div className="text-xs text-white/50">
-                          {isCarouselImages ? "Choose Images (Multiple)" : "Choose File"}
+                          {isCarouselImages
+                            ? "Choose Images (Multiple)"
+                            : "Choose File"}
                         </div>
 
                         <input
                           type="file"
-                          accept={isCarouselImages ? "image/*" : "image/*,video/*"}
+                          accept={
+                            isCarouselImages ? "image/*" : "image/*,video/*"
+                          }
                           multiple={isCarouselImages}
                           onChange={(e) => {
                             const list = Array.from(e.target.files || []);
@@ -784,13 +918,15 @@ export default function AdminAdvertisementPage() {
                           {formId
                             ? "Optional: upload new file(s) to replace existing media."
                             : isCarouselImages
-                            ? "Required: upload 2–6 images for Carousel."
+                            ? "Required: upload 1+ images for Carousel."
                             : "Required: upload image/video before saving."}
                         </div>
 
                         {isCarouselImages && files.length ? (
                           <div className="mt-2 text-xs text-white/70">
-                            Selected: <span className="text-white">{files.length}</span> images
+                            Selected:{" "}
+                            <span className="text-white">{files.length}</span>{" "}
+                            images
                           </div>
                         ) : null}
                       </div>
@@ -824,5 +960,13 @@ export default function AdminAdvertisementPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AdminAdvertisementPage() {
+  return (
+    <AdminPageGuard permission="advertisementView">
+      <AdvertisementInner />
+    </AdminPageGuard>
   );
 }

@@ -1,8 +1,17 @@
-// client/app/admin/settings/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
+import {
+  ADMIN_PERMISSION_GROUPS,
+  AdminPermissions,
+  AdminPermissionKey,
+  AdminSettingsResponse,
+  defaultAdminPermissions,
+  hasPermission,
+  normalizeAdminPermissions,
+} from "../_components/adminPermissions";
+import AdminPageGuard from "../_components/AdminPageGuard";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
@@ -13,16 +22,8 @@ type AdminRow = {
   email: string;
   role: "admin" | "superadmin";
   status?: "active" | "inactive" | "invited";
-};
-
-type SettingsPayload = {
-  profile?: { name?: string; email?: string };
-  general?: {
-    storeName?: string;
-    supportEmail?: string;
-    supportPhone?: string;
-    currency?: string;
-  };
+  mustChangePassword?: boolean;
+  permissions?: Partial<AdminPermissions>;
 };
 
 async function safeJson(res: Response) {
@@ -33,8 +34,6 @@ async function safeJson(res: Response) {
     return { raw: text };
   }
 }
-
-/* -------------------- UI helpers (match dashboard style) -------------------- */
 
 function Field({
   label,
@@ -71,20 +70,25 @@ function Button({
   className = "",
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "solid" | "ghost";
+  variant?: "solid" | "ghost" | "danger";
 }) {
   const base =
-    "h-[40px] rounded-[12px] px-[14px] text-[13px] font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed";
+    "h-[40px] rounded-[12px] px-[14px] text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-60";
   const solid =
     "border border-[#111827] bg-[#1f2937] text-white hover:bg-[#0b1220]";
   const ghost =
     "border border-[#111827] bg-[#020617] text-white hover:bg-[#0b1220]";
+  const danger =
+    "border border-[rgba(248,113,113,0.35)] bg-[rgba(248,113,113,0.12)] text-[#fca5a5] hover:bg-[rgba(248,113,113,0.2)]";
+
   return (
     <button
       {...props}
-      className={[base, variant === "ghost" ? ghost : solid, className].join(
-        " "
-      )}
+      className={[
+        base,
+        variant === "ghost" ? ghost : variant === "danger" ? danger : solid,
+        className,
+      ].join(" ")}
     />
   );
 }
@@ -101,6 +105,7 @@ function Pill({
   const neutral = "bg-[#1f2937] text-white";
   const green = "bg-[rgba(34,197,94,0.18)] text-[#4ade80]";
   const red = "bg-[rgba(248,113,113,0.18)] text-[#f97373]";
+
   return (
     <span
       className={[
@@ -128,33 +133,43 @@ function Modal({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
-    if (open) window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+
+    if (open) {
+      window.addEventListener("keydown", onKey);
+      document.body.style.overflow = "hidden";
+    }
+
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
   }, [open, onClose]);
 
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[999] grid place-items-center bg-black/60 p-4"
-      onMouseDown={onClose}
-    >
-      <div
-        className="w-full max-w-[520px] overflow-hidden rounded-[14px] border border-[#111827] bg-[#020617] shadow-[0_12px_40px_rgba(0,0,0,0.55)]"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-[#111827] px-[14px] py-[12px]">
-          <div className="text-[13px] font-semibold text-white">{title}</div>
-          <button
-            className="rounded-[10px] px-[10px] py-[6px] text-[14px] text-white hover:bg-[#0b1220]"
-            onClick={onClose}
-            aria-label="Close"
-            type="button"
-          >
-            ✕
-          </button>
+    <div className="fixed inset-0 z-[999] bg-black/70" onMouseDown={onClose}>
+      <div className="flex min-h-screen items-center justify-center p-3 sm:p-4 md:p-6">
+        <div
+          className="flex max-h-[92vh] w-full max-w-[980px] flex-col overflow-hidden rounded-[18px] border border-[#111827] bg-[#020617] shadow-[0_20px_60px_rgba(0,0,0,0.6)]"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="flex shrink-0 items-center justify-between border-b border-[#111827] px-4 py-3 sm:px-5">
+            <div className="text-[14px] font-semibold text-white">{title}</div>
+            <button
+              className="rounded-[10px] px-[10px] py-[6px] text-[14px] text-white hover:bg-[#0b1220]"
+              onClick={onClose}
+              aria-label="Close"
+              type="button"
+            >
+              ✕
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
+            {children}
+          </div>
         </div>
-        <div className="p-[14px]">{children}</div>
       </div>
     </div>
   );
@@ -168,40 +183,137 @@ function ErrBox({ text }: { text: string }) {
   );
 }
 
-/* -------------------- Page -------------------- */
+function PermissionCheckbox({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: () => void;
+}) {
+  return (
+    <label className="flex min-h-[52px] items-center gap-[10px] rounded-[14px] border border-[#111827] bg-[#020617] px-[14px] py-[12px] text-[14px] text-white transition hover:border-[#1f2937] hover:bg-[#06101f]">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        className="h-4 w-4 shrink-0 accent-[#2563eb]"
+      />
+      <span className="leading-[1.35]">{label}</span>
+    </label>
+  );
+}
 
 export default function AdminSettingsPage() {
-  // Profile
+  const [currentRole, setCurrentRole] = React.useState<"admin" | "superadmin">(
+    "admin"
+  );
+  const [currentPermissions, setCurrentPermissions] = React.useState<AdminPermissions>(
+    defaultAdminPermissions()
+  );
+
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
 
-  // General
   const [storeName, setStoreName] = React.useState("");
   const [supportEmail, setSupportEmail] = React.useState("");
   const [supportPhone, setSupportPhone] = React.useState("");
   const [currency, setCurrency] = React.useState("NPR");
 
-  // Security (admins)
   const [admins, setAdmins] = React.useState<AdminRow[]>([]);
   const [loadingAdmins, setLoadingAdmins] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [statusLoadingId, setStatusLoadingId] = React.useState<string | null>(null);
 
-  // Modals
   const [openCreate, setOpenCreate] = React.useState(false);
+  const [openEdit, setOpenEdit] = React.useState(false);
   const [openPass, setOpenPass] = React.useState(false);
+  const [openResetPass, setOpenResetPass] = React.useState(false);
 
-  // Create Admin form
+  const [selectedAdmin, setSelectedAdmin] = React.useState<AdminRow | null>(null);
+
   const [aName, setAName] = React.useState("");
   const [aEmail, setAEmail] = React.useState("");
   const [aPass, setAPass] = React.useState("");
+  const [permissions, setPermissions] = React.useState<AdminPermissions>(
+    defaultAdminPermissions()
+  );
   const [createErr, setCreateErr] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
-  // Change Password form
+  const [editName, setEditName] = React.useState("");
+  const [editEmail, setEditEmail] = React.useState("");
+  const [editStatus, setEditStatus] = React.useState<"active" | "inactive" | "invited">(
+    "active"
+  );
+  const [editPermissions, setEditPermissions] = React.useState<AdminPermissions>(
+    defaultAdminPermissions()
+  );
+  const [editErr, setEditErr] = React.useState("");
+  const [updating, setUpdating] = React.useState(false);
+
+  const [resetPass, setResetPass] = React.useState("");
+  const [resetConfirmPass, setResetConfirmPass] = React.useState("");
+  const [resetErr, setResetErr] = React.useState("");
+  const [resetting, setResetting] = React.useState(false);
+
   const [oldPass, setOldPass] = React.useState("");
   const [newPass, setNewPass] = React.useState("");
   const [confirmPass, setConfirmPass] = React.useState("");
   const [passErr, setPassErr] = React.useState("");
   const [changing, setChanging] = React.useState(false);
+
+  const canViewAdmins = hasPermission(currentRole, currentPermissions, "adminsView");
+  const canCreateAdmins = hasPermission(currentRole, currentPermissions, "adminsCreate");
+  const canEditAdmins = hasPermission(currentRole, currentPermissions, "adminsEdit");
+  const canDeleteAdmins = hasPermission(currentRole, currentPermissions, "adminsDelete");
+  const canToggleAdminsStatus = hasPermission(currentRole, currentPermissions, "adminsStatus");
+  const canResetAdminsPassword = hasPermission(
+    currentRole,
+    currentPermissions,
+    "adminsResetPassword"
+  );
+
+  const togglePermission = (key: AdminPermissionKey) => {
+    setPermissions((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const toggleEditPermission = (key: AdminPermissionKey) => {
+    setEditPermissions((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const resetCreateForm = () => {
+    setCreateErr("");
+    setAName("");
+    setAEmail("");
+    setAPass("");
+    setPermissions(defaultAdminPermissions());
+  };
+
+  const openEditModal = (admin: AdminRow) => {
+    setSelectedAdmin(admin);
+    setEditErr("");
+    setEditName(admin.name || "");
+    setEditEmail(admin.email || "");
+    setEditStatus((admin.status || "active") as "active" | "inactive" | "invited");
+    setEditPermissions(normalizeAdminPermissions("admin", admin.permissions));
+    setOpenEdit(true);
+  };
+
+  const openResetPasswordModal = (admin: AdminRow) => {
+    setSelectedAdmin(admin);
+    setResetErr("");
+    setResetPass("");
+    setResetConfirmPass("");
+    setOpenResetPass(true);
+  };
 
   const loadAdmins = React.useCallback(async () => {
     try {
@@ -211,12 +323,14 @@ export default function AdminSettingsPage() {
         credentials: "include",
         cache: "no-store",
       });
+
       if (!res.ok) {
         setAdmins([]);
         return;
       }
+
       const j = await safeJson(res);
-      const items = Array.isArray(j?.items) ? j.items : Array.isArray(j) ? j : [];
+      const items = Array.isArray(j?.items) ? j.items : [];
       setAdmins(items);
     } finally {
       setLoadingAdmins(false);
@@ -224,7 +338,6 @@ export default function AdminSettingsPage() {
   }, []);
 
   const loadSettings = React.useCallback(async () => {
-    // Optional endpoints; page works even if not connected
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/settings`, {
         method: "GET",
@@ -232,24 +345,37 @@ export default function AdminSettingsPage() {
         cache: "no-store",
       });
       if (!res.ok) return;
-      const j = (await safeJson(res)) as SettingsPayload;
+
+      const j = (await safeJson(res)) as AdminSettingsResponse;
+      const role = (j?.profile?.role || "admin") as "admin" | "superadmin";
+      const normalizedPermissions = normalizeAdminPermissions(
+        role,
+        j?.profile?.permissions
+      );
 
       setName(j?.profile?.name || "");
       setEmail(j?.profile?.email || "");
+      setCurrentRole(role);
+      setCurrentPermissions(normalizedPermissions);
 
       setStoreName(j?.general?.storeName || "");
       setSupportEmail(j?.general?.supportEmail || "");
       setSupportPhone(j?.general?.supportPhone || "");
       setCurrency(j?.general?.currency || "NPR");
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, []);
 
   React.useEffect(() => {
-    loadAdmins();
     loadSettings();
-  }, [loadAdmins, loadSettings]);
+  }, [loadSettings]);
+
+  React.useEffect(() => {
+    if (canViewAdmins) {
+      loadAdmins();
+    } else {
+      setAdmins([]);
+    }
+  }, [canViewAdmins, loadAdmins]);
 
   const onSaveProfile = async () => {
     try {
@@ -281,7 +407,9 @@ export default function AdminSettingsPage() {
         }),
       });
       const j = await safeJson(res);
-      if (!res.ok) return alert(j?.message || "Failed to save general settings");
+      if (!res.ok) {
+        return alert(j?.message || "Failed to save general settings");
+      }
       alert("General settings saved ✅");
     } catch {
       alert("Network error");
@@ -296,7 +424,9 @@ export default function AdminSettingsPage() {
 
     if (!n) return setCreateErr("Name is required");
     if (!e) return setCreateErr("Email is required");
-    if (aPass.length < 8) return setCreateErr("Password must be at least 8 characters");
+    if (aPass.length < 8) {
+      return setCreateErr("Password must be at least 8 characters");
+    }
 
     try {
       setCreating(true);
@@ -304,8 +434,15 @@ export default function AdminSettingsPage() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: n, email: e, password: aPass, role: "admin" }),
+        body: JSON.stringify({
+          name: n,
+          email: e,
+          password: aPass,
+          role: "admin",
+          permissions,
+        }),
       });
+
       const j = await safeJson(res);
       if (!res.ok) {
         setCreateErr(j?.message || "Failed to create admin");
@@ -313,9 +450,7 @@ export default function AdminSettingsPage() {
       }
 
       setOpenCreate(false);
-      setAName("");
-      setAEmail("");
-      setAPass("");
+      resetCreateForm();
       await loadAdmins();
       alert("Admin created ✅");
     } catch {
@@ -325,12 +460,177 @@ export default function AdminSettingsPage() {
     }
   };
 
+  const onUpdateAdmin = async () => {
+    if (!selectedAdmin) return;
+
+    setEditErr("");
+
+    const n = editName.trim();
+    const e = editEmail.trim().toLowerCase();
+
+    if (!n) return setEditErr("Name is required");
+    if (!e) return setEditErr("Email is required");
+
+    try {
+      setUpdating(true);
+      const res = await fetch(`${API_BASE_URL}/api/admins/${selectedAdmin._id}`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: n,
+          email: e,
+          status: editStatus,
+          permissions: editPermissions,
+        }),
+      });
+
+      const j = await safeJson(res);
+      if (!res.ok) {
+        setEditErr(j?.message || "Failed to update admin");
+        return;
+      }
+
+      setOpenEdit(false);
+      setSelectedAdmin(null);
+      await loadAdmins();
+      alert("Admin updated ✅");
+    } catch {
+      setEditErr("Network error. Please try again.");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const onToggleAdminStatus = async (admin: AdminRow) => {
+    if (!canToggleAdminsStatus) {
+      alert("You do not have permission to change admin status.");
+      return;
+    }
+
+    if (admin.role === "superadmin") {
+      alert("Superadmin account status cannot be changed from here.");
+      return;
+    }
+
+    const action = admin.status === "inactive" ? "activate" : "deactivate";
+    const ok = window.confirm(`Are you sure you want to ${action} ${admin.name}?`);
+    if (!ok) return;
+
+    try {
+      setStatusLoadingId(admin._id);
+      const res = await fetch(`${API_BASE_URL}/api/admins/${admin._id}/status`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+
+      const j = await safeJson(res);
+      if (!res.ok) {
+        alert(j?.message || "Failed to update status");
+        return;
+      }
+
+      await loadAdmins();
+      alert(j?.message || "Status updated ✅");
+    } catch {
+      alert("Network error");
+    } finally {
+      setStatusLoadingId(null);
+    }
+  };
+
+  const onResetAdminPassword = async () => {
+    if (!selectedAdmin) return;
+
+    setResetErr("");
+
+    if (resetPass.length < 8) {
+      return setResetErr("New password must be at least 8 characters");
+    }
+
+    if (resetPass !== resetConfirmPass) {
+      return setResetErr("Passwords do not match");
+    }
+
+    try {
+      setResetting(true);
+
+      const res = await fetch(
+        `${API_BASE_URL}/api/admins/${selectedAdmin._id}/reset-password`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ newPassword: resetPass }),
+        }
+      );
+
+      const j = await safeJson(res);
+      if (!res.ok) {
+        setResetErr(j?.message || "Failed to reset password");
+        return;
+      }
+
+      setOpenResetPass(false);
+      setSelectedAdmin(null);
+      setResetPass("");
+      setResetConfirmPass("");
+      await loadAdmins();
+      alert("Admin password reset ✅");
+    } catch {
+      setResetErr("Network error. Please try again.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  const onDeleteAdmin = async (admin: AdminRow) => {
+    if (!canDeleteAdmins) {
+      alert("You do not have permission to delete admin.");
+      return;
+    }
+
+    if (admin.role === "superadmin") {
+      alert("Superadmin account cannot be deleted from here.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Are you sure you want to delete ${admin.name} (${admin.email})?`
+    );
+    if (!ok) return;
+
+    try {
+      setDeletingId(admin._id);
+      const res = await fetch(`${API_BASE_URL}/api/admins/${admin._id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const j = await safeJson(res);
+      if (!res.ok) {
+        alert(j?.message || "Failed to delete admin");
+        return;
+      }
+
+      await loadAdmins();
+      alert("Admin deleted ✅");
+    } catch {
+      alert("Network error");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const onChangePassword = async () => {
     setPassErr("");
 
     if (!oldPass) return setPassErr("Old password is required");
-    if (newPass.length < 8) return setPassErr("New password must be at least 8 characters");
-    if (newPass !== confirmPass) return setPassErr("New password and confirm password do not match");
+    if (newPass.length < 8) {
+      return setPassErr("New password must be at least 8 characters");
+    }
+    if (newPass !== confirmPass) {
+      return setPassErr("New password and confirm password do not match");
+    }
 
     try {
       setChanging(true);
@@ -351,6 +651,8 @@ export default function AdminSettingsPage() {
       setOldPass("");
       setNewPass("");
       setConfirmPass("");
+      await loadAdmins();
+      await loadSettings();
       alert("Password changed ✅");
     } catch {
       setPassErr("Network error. Please try again.");
@@ -360,179 +662,482 @@ export default function AdminSettingsPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Title (match dashboard size) */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-[22px] font-semibold text-white">Settings</h1>
-        <Link href="/admin/dashboard" className="text-[12px] text-[#60a5fa] hover:underline">
-          Back to Dashboard
-        </Link>
-      </div>
-
-      {/* PROFILE */}
-      <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-        <div className="text-[16px] font-medium text-white">Profile</div>
-        <div className="mt-3 grid grid-cols-1 gap-[14px] md:grid-cols-2">
-          <Field label="Name">
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
-          </Field>
-          <Field label="Email">
-            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
-          </Field>
-        </div>
-
-        <div className="mt-[14px] flex flex-wrap gap-[10px]">
-          <Button onClick={onSaveProfile}>Save Profile</Button>
-          <Button variant="ghost" onClick={() => { setPassErr(""); setOpenPass(true); }}>
-            Change Password
-          </Button>
-        </div>
-      </section>
-
-      {/* GENERAL */}
-      <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-        <div className="text-[16px] font-medium text-white">General</div>
-        <div className="mt-3 grid grid-cols-1 gap-[14px] md:grid-cols-2">
-          <Field label="Store Name">
-            <Input value={storeName} onChange={(e) => setStoreName(e.target.value)} placeholder="UFO Collection" />
-          </Field>
-          <Field label="Currency">
-            <Input value={currency} onChange={(e) => setCurrency(e.target.value)} placeholder="NPR" />
-          </Field>
-          <Field label="Support Email">
-            <Input value={supportEmail} onChange={(e) => setSupportEmail(e.target.value)} placeholder="support@ufo.com" />
-          </Field>
-          <Field label="Support Phone">
-            <Input value={supportPhone} onChange={(e) => setSupportPhone(e.target.value)} placeholder="+977 98XXXXXXXX" />
-          </Field>
-        </div>
-
-        <div className="mt-[14px]">
-          <Button onClick={onSaveGeneral}>Save General</Button>
-        </div>
-      </section>
-
-      {/* SECURITY */}
-      <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-        <div className="flex flex-wrap items-center justify-between gap-[10px]">
-          <div className="text-[16px] font-medium text-white">Security</div>
-          <Button
-            onClick={() => {
-              setCreateErr("");
-              setAName("");
-              setAEmail("");
-              setAPass("");
-              setOpenCreate(true);
-            }}
+    <AdminPageGuard permission="settingsView">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-[22px] font-semibold text-white">Settings</h1>
+          <Link
+            href="/admin/dashboard"
+            className="text-[12px] text-[#60a5fa] hover:underline"
           >
-            Create New Admin
-          </Button>
+            Back to Dashboard
+          </Link>
         </div>
 
-        <div className="mt-[12px] overflow-x-auto rounded-[12px] border border-[#111827]">
-          <table className="w-full min-w-[720px] border-collapse text-[13px]">
-            <thead>
-              <tr className="bg-[#0b1220] text-left text-[12px] text-[#9ca3af]">
-                <th className="px-[12px] py-[10px]">Name</th>
-                <th className="px-[12px] py-[10px]">Email</th>
-                <th className="px-[12px] py-[10px]">Role</th>
-                <th className="px-[12px] py-[10px]">Status</th>
-              </tr>
-            </thead>
+        <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
+          <div className="text-[16px] font-medium text-white">Profile</div>
+          <div className="mt-3 grid grid-cols-1 gap-[14px] md:grid-cols-2">
+            <Field label="Name">
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Your name"
+              />
+            </Field>
+            <Field label="Email">
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+              />
+            </Field>
+          </div>
 
-            <tbody>
-              {loadingAdmins ? (
-                <tr>
-                  <td colSpan={4} className="px-[12px] py-[12px] text-[#9ca3af]">
-                    Loading admins...
-                  </td>
-                </tr>
-              ) : admins.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-[12px] py-[12px] text-[#9ca3af]">
-                    No admins found (or API not connected).
-                  </td>
-                </tr>
-              ) : (
-                admins.map((a) => (
-                  <tr key={a._id} className="border-t border-[#111827]">
-                    <td className="px-[12px] py-[12px] text-white">{a.name}</td>
-                    <td className="px-[12px] py-[12px] text-[#9ca3af]">{a.email}</td>
-                    <td className="px-[12px] py-[12px]">
-                      <Pill tone="neutral">{a.role}</Pill>
-                    </td>
-                    <td className="px-[12px] py-[12px]">
-                      <Pill tone={a.status === "inactive" ? "red" : "green"}>
-                        {a.status || "active"}
-                      </Pill>
-                    </td>
+          <div className="mt-[14px] flex flex-wrap gap-[10px]">
+            <Button onClick={onSaveProfile}>Save Profile</Button>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setPassErr("");
+                setOpenPass(true);
+              }}
+            >
+              Change Password
+            </Button>
+          </div>
+        </section>
+
+        <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
+          <div className="text-[16px] font-medium text-white">General</div>
+          <div className="mt-3 grid grid-cols-1 gap-[14px] md:grid-cols-2">
+            <Field label="Store Name">
+              <Input
+                value={storeName}
+                onChange={(e) => setStoreName(e.target.value)}
+                placeholder="UFO Collection"
+              />
+            </Field>
+            <Field label="Currency">
+              <Input
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value)}
+                placeholder="NPR"
+              />
+            </Field>
+            <Field label="Support Email">
+              <Input
+                type="email"
+                value={supportEmail}
+                onChange={(e) => setSupportEmail(e.target.value)}
+                placeholder="support@ufo.com"
+              />
+            </Field>
+            <Field label="Support Phone">
+              <Input
+                value={supportPhone}
+                onChange={(e) => setSupportPhone(e.target.value)}
+                placeholder="+977 98XXXXXXXX"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-[14px]">
+            <Button onClick={onSaveGeneral}>Save General</Button>
+          </div>
+        </section>
+
+        {canViewAdmins ? (
+          <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
+            <div className="flex flex-wrap items-center justify-between gap-[10px]">
+              <div className="text-[16px] font-medium text-white">Admin Management</div>
+
+              {canCreateAdmins ? (
+                <Button
+                  onClick={() => {
+                    resetCreateForm();
+                    setOpenCreate(true);
+                  }}
+                >
+                  Create New Admin
+                </Button>
+              ) : null}
+            </div>
+
+            <div className="mt-[12px] overflow-x-auto rounded-[12px] border border-[#111827]">
+              <table className="w-full min-w-[1180px] border-collapse text-[13px]">
+                <thead>
+                  <tr className="bg-[#0b1220] text-left text-[12px] text-[#9ca3af]">
+                    <th className="px-[12px] py-[10px]">Name</th>
+                    <th className="px-[12px] py-[10px]">Email</th>
+                    <th className="px-[12px] py-[10px]">Role</th>
+                    <th className="px-[12px] py-[10px]">Status</th>
+                    <th className="px-[12px] py-[10px]">Password Reset</th>
+                    <th className="px-[12px] py-[10px]">Actions</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                </thead>
 
-        <div className="mt-[10px] text-[12px] text-[#6b7280]">
-          Tip: allow only <span className="text-white">superadmin</span> to create admins (backend enforced).
-        </div>
-      </section>
+                <tbody>
+                  {loadingAdmins ? (
+                    <tr>
+                      <td colSpan={6} className="px-[12px] py-[12px] text-[#9ca3af]">
+                        Loading admins...
+                      </td>
+                    </tr>
+                  ) : admins.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-[12px] py-[12px] text-[#9ca3af]">
+                        No admins found.
+                      </td>
+                    </tr>
+                  ) : (
+                    admins.map((a) => {
+                      const canDelete = canDeleteAdmins && a.role !== "superadmin";
+                      const canEdit = canEditAdmins && a.role !== "superadmin";
+                      const canStatus = canToggleAdminsStatus && a.role !== "superadmin";
+                      const canReset = canResetAdminsPassword && a.role !== "superadmin";
 
-      {/* Create Admin Modal */}
-      <Modal open={openCreate} title="Create New Admin" onClose={() => setOpenCreate(false)}>
-        <div className="space-y-[12px]">
-          {createErr ? <ErrBox text={createErr} /> : null}
+                      return (
+                        <tr key={a._id} className="border-t border-[#111827]">
+                          <td className="px-[12px] py-[12px] text-white">{a.name}</td>
+                          <td className="px-[12px] py-[12px] text-[#9ca3af]">
+                            {a.email}
+                          </td>
+                          <td className="px-[12px] py-[12px]">
+                            <Pill tone="neutral">{a.role}</Pill>
+                          </td>
+                          <td className="px-[12px] py-[12px]">
+                            <Pill tone={a.status === "inactive" ? "red" : "green"}>
+                              {a.status || "active"}
+                            </Pill>
+                          </td>
+                          <td className="px-[12px] py-[12px]">
+                            <Pill tone={a.mustChangePassword ? "red" : "green"}>
+                              {a.mustChangePassword ? "Required" : "Done"}
+                            </Pill>
+                          </td>
+                          <td className="px-[12px] py-[12px]">
+                            <div className="flex flex-wrap gap-2">
+                              {canEdit ? (
+                                <Button
+                                  variant="ghost"
+                                  onClick={() => openEditModal(a)}
+                                  className="h-[34px] px-[12px] text-[12px]"
+                                >
+                                  Edit
+                                </Button>
+                              ) : null}
 
-          <Field label="Full Name">
-            <Input value={aName} onChange={(e) => setAName(e.target.value)} placeholder="Admin name" />
-          </Field>
+                              {canStatus ? (
+                                <Button
+                                  variant="ghost"
+                                  disabled={statusLoadingId === a._id}
+                                  onClick={() => onToggleAdminStatus(a)}
+                                  className="h-[34px] px-[12px] text-[12px]"
+                                >
+                                  {statusLoadingId === a._id
+                                    ? "Saving..."
+                                    : a.status === "inactive"
+                                    ? "Activate"
+                                    : "Deactivate"}
+                                </Button>
+                              ) : null}
 
-          <Field label="Email">
-            <Input value={aEmail} onChange={(e) => setAEmail(e.target.value)} placeholder="admin@example.com" />
-          </Field>
+                              {canReset ? (
+                                <Button
+                                  variant="ghost"
+                                  onClick={() => openResetPasswordModal(a)}
+                                  className="h-[34px] px-[12px] text-[12px]"
+                                >
+                                  Reset Password
+                                </Button>
+                              ) : null}
 
-          <Field label="Password">
-            <Input type="password" value={aPass} onChange={(e) => setAPass(e.target.value)} placeholder="Min 8 characters" />
-          </Field>
+                              {canDelete ? (
+                                <Button
+                                  variant="danger"
+                                  disabled={deletingId === a._id}
+                                  onClick={() => onDeleteAdmin(a)}
+                                  className="h-[34px] px-[12px] text-[12px]"
+                                >
+                                  {deletingId === a._id ? "Deleting..." : "Delete"}
+                                </Button>
+                              ) : null}
 
-          <div className="flex justify-end gap-[10px] pt-[4px]">
-            <Button variant="ghost" onClick={() => setOpenCreate(false)} disabled={creating}>
-              Cancel
-            </Button>
-            <Button onClick={onCreateAdmin} disabled={creating}>
-              {creating ? "Creating..." : "Create Admin"}
-            </Button>
+                              {!canEdit && !canStatus && !canReset && !canDelete ? (
+                                <span className="text-[12px] text-[#6b7280]">—</span>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-[10px] text-[12px] text-[#6b7280]">
+              Superadmin can create multiple admins, edit permissions later, activate/deactivate
+              them, reset their password, and delete them.
+            </div>
+          </section>
+        ) : null}
+
+        <Modal
+          open={openCreate}
+          title="Create New Admin"
+          onClose={() => setOpenCreate(false)}
+        >
+          <div className="space-y-4">
+            {createErr ? <ErrBox text={createErr} /> : null}
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="Full Name">
+                <Input
+                  value={aName}
+                  onChange={(e) => setAName(e.target.value)}
+                  placeholder="Admin name"
+                />
+              </Field>
+
+              <Field label="Email">
+                <Input
+                  type="email"
+                  value={aEmail}
+                  onChange={(e) => setAEmail(e.target.value)}
+                  placeholder="admin@example.com"
+                />
+              </Field>
+            </div>
+
+            <Field label="Password">
+              <Input
+                type="password"
+                value={aPass}
+                onChange={(e) => setAPass(e.target.value)}
+                placeholder="Min 8 characters"
+              />
+            </Field>
+
+            <div className="space-y-3">
+              <div className="text-[12px] font-medium text-[#9ca3af]">
+                Action-based permissions
+              </div>
+
+              {ADMIN_PERMISSION_GROUPS.map((group) => (
+                <div
+                  key={group.title}
+                  className="rounded-[16px] border border-[#111827] bg-[#0b1220] p-4"
+                >
+                  <div className="mb-3 text-[15px] font-semibold text-white">
+                    {group.title}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {group.items.map((item) => (
+                      <PermissionCheckbox
+                        key={item.key}
+                        label={item.label}
+                        checked={permissions[item.key]}
+                        onChange={() => togglePermission(item.key)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="sticky bottom-0 flex justify-end gap-[10px] border-t border-[#111827] bg-[#020617] pt-4">
+              <Button
+                variant="ghost"
+                onClick={() => setOpenCreate(false)}
+                disabled={creating}
+              >
+                Cancel
+              </Button>
+              <Button onClick={onCreateAdmin} disabled={creating}>
+                {creating ? "Creating..." : "Create Admin"}
+              </Button>
+            </div>
           </div>
-        </div>
-      </Modal>
+        </Modal>
 
-      {/* Change Password Modal */}
-      <Modal open={openPass} title="Change Password" onClose={() => setOpenPass(false)}>
-        <div className="space-y-[12px]">
-          {passErr ? <ErrBox text={passErr} /> : null}
+        <Modal
+          open={openEdit}
+          title="Edit Admin"
+          onClose={() => setOpenEdit(false)}
+        >
+          <div className="space-y-4">
+            {editErr ? <ErrBox text={editErr} /> : null}
 
-          <Field label="Old Password">
-            <Input type="password" value={oldPass} onChange={(e) => setOldPass(e.target.value)} placeholder="Enter old password" />
-          </Field>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="Full Name">
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Admin name"
+                />
+              </Field>
 
-          <Field label="New Password">
-            <Input type="password" value={newPass} onChange={(e) => setNewPass(e.target.value)} placeholder="Min 8 characters" />
-          </Field>
+              <Field label="Email">
+                <Input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="admin@example.com"
+                />
+              </Field>
+            </div>
 
-          <Field label="Confirm New Password">
-            <Input type="password" value={confirmPass} onChange={(e) => setConfirmPass(e.target.value)} placeholder="Re-enter new password" />
-          </Field>
+            <Field label="Status">
+              <select
+                value={editStatus}
+                onChange={(e) =>
+                  setEditStatus(e.target.value as "active" | "inactive" | "invited")
+                }
+                className="h-[44px] w-full rounded-[14px] border border-[#111827] bg-[#020617] px-[14px] text-[13px] text-white outline-none"
+              >
+                <option value="active">active</option>
+                <option value="inactive">inactive</option>
+                <option value="invited">invited</option>
+              </select>
+            </Field>
 
-          <div className="flex justify-end gap-[10px] pt-[4px]">
-            <Button variant="ghost" onClick={() => setOpenPass(false)} disabled={changing}>
-              Cancel
-            </Button>
-            <Button onClick={onChangePassword} disabled={changing}>
-              {changing ? "Changing..." : "Change Password"}
-            </Button>
+            <div className="space-y-3">
+              <div className="text-[12px] font-medium text-[#9ca3af]">
+                Update permissions
+              </div>
+
+              {ADMIN_PERMISSION_GROUPS.map((group) => (
+                <div
+                  key={group.title}
+                  className="rounded-[16px] border border-[#111827] bg-[#0b1220] p-4"
+                >
+                  <div className="mb-3 text-[15px] font-semibold text-white">
+                    {group.title}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {group.items.map((item) => (
+                      <PermissionCheckbox
+                        key={item.key}
+                        label={item.label}
+                        checked={editPermissions[item.key]}
+                        onChange={() => toggleEditPermission(item.key)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="sticky bottom-0 flex justify-end gap-[10px] border-t border-[#111827] bg-[#020617] pt-4">
+              <Button
+                variant="ghost"
+                onClick={() => setOpenEdit(false)}
+                disabled={updating}
+              >
+                Cancel
+              </Button>
+              <Button onClick={onUpdateAdmin} disabled={updating}>
+                {updating ? "Updating..." : "Update Admin"}
+              </Button>
+            </div>
           </div>
-        </div>
-      </Modal>
-    </div>
+        </Modal>
+
+        <Modal
+          open={openResetPass}
+          title="Reset Admin Password"
+          onClose={() => setOpenResetPass(false)}
+        >
+          <div className="space-y-[12px]">
+            {resetErr ? <ErrBox text={resetErr} /> : null}
+
+            <Field label="New Password">
+              <Input
+                type="password"
+                value={resetPass}
+                onChange={(e) => setResetPass(e.target.value)}
+                placeholder="Min 8 characters"
+              />
+            </Field>
+
+            <Field label="Confirm New Password">
+              <Input
+                type="password"
+                value={resetConfirmPass}
+                onChange={(e) => setResetConfirmPass(e.target.value)}
+                placeholder="Re-enter new password"
+              />
+            </Field>
+
+            <div className="flex justify-end gap-[10px] pt-[4px]">
+              <Button
+                variant="ghost"
+                onClick={() => setOpenResetPass(false)}
+                disabled={resetting}
+              >
+                Cancel
+              </Button>
+              <Button onClick={onResetAdminPassword} disabled={resetting}>
+                {resetting ? "Resetting..." : "Reset Password"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+
+        <Modal
+          open={openPass}
+          title="Change Password"
+          onClose={() => setOpenPass(false)}
+        >
+          <div className="space-y-[12px]">
+            {passErr ? <ErrBox text={passErr} /> : null}
+
+            <Field label="Old Password">
+              <Input
+                type="password"
+                value={oldPass}
+                onChange={(e) => setOldPass(e.target.value)}
+                placeholder="Enter old password"
+              />
+            </Field>
+
+            <Field label="New Password">
+              <Input
+                type="password"
+                value={newPass}
+                onChange={(e) => setNewPass(e.target.value)}
+                placeholder="Min 8 characters"
+              />
+            </Field>
+
+            <Field label="Confirm New Password">
+              <Input
+                type="password"
+                value={confirmPass}
+                onChange={(e) => setConfirmPass(e.target.value)}
+                placeholder="Re-enter new password"
+              />
+            </Field>
+
+            <div className="flex justify-end gap-[10px] pt-[4px]">
+              <Button
+                variant="ghost"
+                onClick={() => setOpenPass(false)}
+                disabled={changing}
+              >
+                Cancel
+              </Button>
+              <Button onClick={onChangePassword} disabled={changing}>
+                {changing ? "Changing..." : "Change Password"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      </div>
+    </AdminPageGuard>
   );
 }

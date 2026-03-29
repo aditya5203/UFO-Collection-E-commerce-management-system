@@ -13,6 +13,7 @@ import notificationRoutes from "../modules/notifications/routes/notification.rou
 
 // ✅ Dashboard (Admin)
 import dashboardRoutes from "../modules/admin/routes/dashboard.routes";
+import analyticsRoutes from "../modules/admin/routes/analytics.routes";
 
 // ✅ Reviews
 import reviewRoutes from "../modules/reviews/routes/reviews.routes";
@@ -33,17 +34,22 @@ import adsRoutes from "../modules/ads/routes/ads.routes";
 // ✅ Discounts
 import discountRoutes from "../modules/discounts/routes/discount.routes";
 
-// ✅ NEW: Settings + Admins (for Settings page)
+// ✅ Settings + Admins
 import adminSettingsRoutes from "../modules/admin/routes/settings.routes";
 import adminsRoutes from "../modules/admin/routes/admins.routes";
+
+// ✅ AI
+import aiRoutes from "../modules/ai/routes/ai.routes";
 
 import {
   adminAuthMiddleware,
   customerAuthMiddleware,
-  anyAuthMiddleware, // ✅ NEW (accepts adminToken OR token)
+  anyAuthMiddleware,
 } from "../modules/auth/middleware/auth.middleware";
 
 const router = Router();
+
+console.log("✅ main routes index loaded");
 
 /* -------------------- PUBLIC ENDPOINTS -------------------- */
 router.use("/payments", paymentRoutes);
@@ -62,18 +68,22 @@ router.use("/ads", adsRoutes.publicRouter);
 // ✅ tickets (public create)
 router.use("/tickets", ticketRoutes);
 
-// ✅ ✅ PUBLIC DISCOUNTS (for homepage + discounts list)
+// ✅ PUBLIC DISCOUNTS
 router.use("/discounts", discountRoutes.publicRouter);
+
+// ✅ AI TRY-ON
+console.log("✅ mounting /ai routes");
+router.use("/ai", aiRoutes);
 
 /* -------------------- CUSTOMER (PROTECTED) -------------------- */
 router.use("/addresses", customerAuthMiddleware, addressRoutes);
 router.use("/chat", customerAuthMiddleware, chatRoutes);
 router.use("/tickets", customerAuthMiddleware, customerTicketRoutes);
 
-// ✅ CUSTOMER DISCOUNTS (collect / my-collected / validate / collect-all)
+// ✅ CUSTOMER DISCOUNTS
 router.use("/discounts", customerAuthMiddleware, discountRoutes.customerRouter);
 
-// ✅ NOTIFICATIONS (Customer OR Admin) ✅ FIX
+// ✅ NOTIFICATIONS (Customer OR Admin)
 router.use("/notifications", anyAuthMiddleware, notificationRoutes);
 
 /* -------------------- ADMIN (PROTECTED) -------------------- */
@@ -87,17 +97,17 @@ router.use("/admin/reviews", adminAuthMiddleware, adminReviewsRoutes);
 router.use("/admin/tickets", adminAuthMiddleware, adminTicketRoutes);
 router.use("/admin/ads", adminAuthMiddleware, adsRoutes.adminRouter);
 
-// ✅ ADMIN DISCOUNTS (CRUD + collected list)
+// ✅ ADMIN DISCOUNTS
 router.use("/admin/discounts", adminAuthMiddleware, discountRoutes.adminRouter);
 
 // ✅ ADMIN DASHBOARD
 router.use("/admin/dashboard", adminAuthMiddleware, dashboardRoutes);
 
-/* -------------------- ✅ NEW: ADMIN SETTINGS + ADMINS -------------------- */
-// /api/admin/settings, /api/admin/profile, /api/admin/change-password
-router.use("/admin", adminAuthMiddleware, adminSettingsRoutes);
+// ✅ ADMIN ANALYTICS
+router.use("/admin/analytics", adminAuthMiddleware, analyticsRoutes);
 
-// /api/admins (list + create admin)
+// ✅ ADMIN SETTINGS + ADMINS
+router.use("/admin", adminAuthMiddleware, adminSettingsRoutes);
 router.use("/admins", adminAuthMiddleware, adminsRoutes);
 
 export default router;

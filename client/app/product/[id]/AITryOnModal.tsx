@@ -17,7 +17,27 @@ type ProductPreview = {
   name?: string;
 };
 
-export default function AITryOnModal({ open, onClose, productId, productName }: Props) {
+function getImageUrl(src?: string) {
+  const value = typeof src === "string" ? src.trim() : "";
+  if (!value) return "";
+
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+
+  const base = API_BASE.replace(/\/api$/, "");
+
+  if (value.startsWith("/uploads/")) return `${base}${value}`;
+  if (value.startsWith("uploads/")) return `${base}/${value}`;
+  if (value.startsWith("/images/")) return value;
+
+  return value;
+}
+
+export default function AITryOnModal({
+  open,
+  onClose,
+  productId,
+  productName,
+}: Props) {
   const [file, setFile] = React.useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
 
@@ -25,9 +45,8 @@ export default function AITryOnModal({ open, onClose, productId, productName }: 
   const [error, setError] = React.useState<string | null>(null);
 
   const [resultUrl, setResultUrl] = React.useState<string | null>(null);
-
-  // ✅ Product preview (UI only)
-  const [productPreview, setProductPreview] = React.useState<ProductPreview | null>(null);
+  const [productPreview, setProductPreview] =
+    React.useState<ProductPreview | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -37,29 +56,40 @@ export default function AITryOnModal({ open, onClose, productId, productName }: 
     setResultUrl(null);
     setError(null);
     setLoading(false);
+    setProductPreview(null);
   }, [open]);
 
-  // ✅ Load product image for UI preview (optional)
   React.useEffect(() => {
-    if (!open) return;
-    if (!productId) return;
+    if (!open || !productId) return;
 
     let ignore = false;
 
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/products/${productId}`, { cache: "no-store" });
-        const raw = await res.json().catch(() => ({} as any));
-        if (!res.ok) throw new Error(raw?.message || "Failed to load product preview");
+        const res = await fetch(`${API_BASE}/products/${productId}`, {
+          cache: "no-store",
+        });
+
+        const json = await res.json().catch(() => ({} as any));
+        if (!res.ok) {
+          throw new Error(json?.message || "Failed to load product preview");
+        }
+
+        const raw = json?.data ?? json;
 
         if (ignore) return;
+
         setProductPreview({
-          image: raw?.image || raw?.images?.[0] || "",
+          image: getImageUrl(raw?.image || raw?.images?.[0] || ""),
           name: raw?.name || productName,
         });
       } catch {
-        // If product fetch fails, still keep modal working
-        if (!ignore) setProductPreview({ image: "", name: productName });
+        if (!ignore) {
+          setProductPreview({
+            image: "",
+            name: productName,
+          });
+        }
       }
     })();
 
@@ -73,25 +103,53 @@ export default function AITryOnModal({ open, onClose, productId, productName }: 
       setPreviewUrl(null);
       return;
     }
+
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
+
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
   React.useEffect(() => {
     if (!open) return;
+
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
+
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0] || null;
+
+    if (!selected) {
+      setFile(null);
+      setError(null);
+      return;
+    }
+
+    if (!selected.type.startsWith("image/")) {
+      setError("Please upload a valid image file.");
+      return;
+    }
+
+    if (selected.size > 8 * 1024 * 1024) {
+      setError("Image size must be less than 8MB.");
+      return;
+    }
+
+    setError(null);
+    setFile(selected);
+  };
 
   const runTryOn = async () => {
     if (!file) {
       setError("Please upload a clear front-facing photo.");
       return;
     }
+
     if (loading) return;
 
     try {
@@ -102,21 +160,24 @@ export default function AITryOnModal({ open, onClose, productId, productName }: 
       const fd = new FormData();
       fd.append("personImage", file);
       fd.append("productId", productId);
-      // ✅ product image NOT sent to backend
 
       const res = await fetch(`${API_BASE}/ai/tryon`, {
         method: "POST",
         body: fd,
-        credentials: "include",
       });
 
       const data = await res.json().catch(() => ({} as any));
-      if (!res.ok) throw new Error(data?.message || "AI try-on failed.");
+
+      if (!res.ok) {
+        throw new Error(data?.message || "AI try-on failed.");
+      }
 
       const out = data?.imageUrl || data?.outputUrl || data?.resultUrl;
-      if (!out) throw new Error("AI output missing (no imageUrl returned).");
+      if (!out) {
+        throw new Error("AI output missing.");
+      }
 
-      setResultUrl(String(out));
+      setResultUrl(getImageUrl(String(out)));
     } catch (e: any) {
       setError(e?.message || "Failed to generate try-on image.");
     } finally {
@@ -162,9 +223,10 @@ export default function AITryOnModal({ open, onClose, productId, productName }: 
         </div>
 
         <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-[1fr_1fr_1fr]">
-          {/* left */}
           <div className="rounded-[14px] border border-[#111827] bg-[#0b0f1a]/50 p-4">
-            <div className="text-[13px] font-semibold text-white">1) Upload your photo</div>
+            <div className="text-[13px] font-semibold text-white">
+              1) Upload your photo
+            </div>
             <div className="mt-1 text-[12px] text-[#9ca3af]">
               Use a clear, front-facing photo with good lighting.
             </div>
@@ -174,9 +236,11 @@ export default function AITryOnModal({ open, onClose, productId, productName }: 
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                onChange={onFileChange}
               />
-              <div className="text-[12px] text-[#cbd5e1]">Click to choose image</div>
+              <div className="text-[12px] text-[#cbd5e1]">
+                Click to choose image
+              </div>
             </label>
 
             {previewUrl ? (
@@ -198,16 +262,23 @@ export default function AITryOnModal({ open, onClose, productId, productName }: 
             )}
           </div>
 
-          {/* middle */}
           <div className="rounded-[14px] border border-[#111827] bg-[#0b0f1a]/50 p-4">
-            <div className="text-[13px] font-semibold text-white">2) Selected product</div>
+            <div className="text-[13px] font-semibold text-white">
+              2) Selected product
+            </div>
             <div className="mt-1 text-[12px] text-[#9ca3af]">
               This product will be used for AI try-on.
             </div>
 
             <div className="mt-4 overflow-hidden rounded-[12px] border border-[#111827] bg-[#050816] p-4">
               <div className="relative h-[260px] w-full">
-                <Image src={productImg} alt={productTitle} fill className="object-contain" />
+                <Image
+                  src={productImg}
+                  alt={productTitle}
+                  fill
+                  className="object-contain"
+                  unoptimized={productImg.startsWith("http")}
+                />
               </div>
             </div>
 
@@ -217,7 +288,7 @@ export default function AITryOnModal({ open, onClose, productId, productName }: 
               disabled={loading}
               className={`mt-4 w-full rounded-[10px] px-4 py-3 text-[13px] font-semibold ${
                 loading
-                  ? "bg-[#334155] text-[#cbd5e1] cursor-not-allowed"
+                  ? "cursor-not-allowed bg-[#334155] text-[#cbd5e1]"
                   : "bg-[#1d9bf0] text-white hover:bg-[#1580c5]"
               }`}
             >
@@ -231,9 +302,10 @@ export default function AITryOnModal({ open, onClose, productId, productName }: 
             ) : null}
           </div>
 
-          {/* right */}
           <div className="rounded-[14px] border border-[#111827] bg-[#0b0f1a]/50 p-4">
-            <div className="text-[13px] font-semibold text-white">3) AI result</div>
+            <div className="text-[13px] font-semibold text-white">
+              3) AI result
+            </div>
             <div className="mt-1 text-[12px] text-[#9ca3af]">
               Your generated try-on image will appear here.
             </div>
@@ -245,14 +317,17 @@ export default function AITryOnModal({ open, onClose, productId, productName }: 
                     src={resultUrl}
                     alt="AI try-on result"
                     fill
-                    className="object-cover"
+                    className="object-contain"
                     unoptimized
                   />
                 </div>
               ) : (
                 <div className="p-4 text-[12px] text-[#9ca3af]">
                   No result yet. Click{" "}
-                  <span className="text-white font-semibold">Generate Try-On</span>.
+                  <span className="font-semibold text-white">
+                    Generate Try-On
+                  </span>
+                  .
                 </div>
               )}
             </div>

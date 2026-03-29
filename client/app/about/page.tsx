@@ -3,35 +3,29 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Poppins } from "next/font/google";
-
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-});
 
 export default function AboutPage() {
   return (
-    <div
-      className={`min-h-screen bg-[#050611] text-[#f5f5f7] ${poppins.className}`}
-    >
+    <div className="min-h-screen bg-[#050611] text-[#f5f5f7] font-[Poppins]">
+      {/* Global font import (same as your CSS) */}
+      <style jsx global>{`
+        @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
+      `}</style>
+
       {/* HEADER */}
-      <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[#050611]/95 backdrop-blur-[12px]">
-        <div className="mx-auto flex min-h-20 w-full max-w-[1160px] items-center justify-between px-4 max-[640px]:flex-col max-[640px]:items-start max-[640px]:gap-[10px] max-[640px]:py-3">
+      <header className="sticky top-0 z-40 h-20 border-b border-[#191b2d] bg-[#050611]/95 backdrop-blur-[12px]">
+        <div className="mx-auto flex h-full w-full max-w-[1160px] items-center justify-between px-4 max-[640px]:flex-col max-[640px]:items-start max-[640px]:gap-[10px] max-[640px]:py-3">
           {/* Brand */}
           <div className="flex items-center gap-[10px]">
-            {/* ✅ changed h-[44px] w-[44px] -> h-11 w-11 (44px) */}
-            <div className="h-11 w-11 overflow-hidden rounded-full border-2 border-white">
+            <div className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white">
               <Image
                 src="/images/logo.png"
                 alt="UFO Collection logo"
                 width={44}
                 height={44}
                 className="h-full w-full object-cover"
-                priority
               />
             </div>
-
             <div className="text-[28px] font-bold uppercase tracking-[0.18em] text-white max-[640px]:text-[22px]">
               UFO Collection
             </div>
@@ -114,7 +108,7 @@ export default function AboutPage() {
               <div className="mt-2 h-px w-20 bg-[#3c3f59]" />
             </div>
 
-            <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-stretch gap-8 max-[900px]:grid-cols-1">
+            <div className="grid grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] gap-8 items-stretch max-[900px]:grid-cols-1">
               {/* Image */}
               <div className="relative w-full overflow-hidden rounded-[18px] border border-[#20233a] bg-[#111324] pb-[75%]">
                 <Image
@@ -122,7 +116,6 @@ export default function AboutPage() {
                   alt="Folded clothes, shoes and accessories"
                   fill
                   className="object-cover"
-                  sizes="(max-width: 900px) 100vw, 50vw"
                 />
               </div>
 
@@ -230,7 +223,7 @@ export default function AboutPage() {
                 placeholder="Enter your email id"
               />
               <button
-                className="cursor-pointer rounded-full border-0 bg-white px-5 py-[10px] text-[13px] font-medium text-[#050616]"
+                className="cursor-pointer rounded-full bg-white px-5 py-[10px] text-[13px] font-medium text-[#050616] border-0"
                 type="submit"
               >
                 SUBSCRIBE
@@ -262,24 +255,16 @@ export default function AboutPage() {
             </div>
             <ul className="m-0 grid list-none gap-2 p-0 text-[12px] text-[#d4d6ea]">
               <li>
-                <Link href="/homepage" className="hover:text-[#c9b9ff]">
-                  Home
-                </Link>
+                <Link href="/">Home</Link>
               </li>
               <li>
-                <Link href="/about" className="hover:text-[#c9b9ff]">
-                  About us
-                </Link>
+                <Link href="/about">About us</Link>
               </li>
               <li>
-                <a href="#" className="hover:text-[#c9b9ff]">
-                  Delivery
-                </a>
+                <a href="#">Delivery</a>
               </li>
               <li>
-                <a href="#" className="hover:text-[#c9b9ff]">
-                  Privacy policy
-                </a>
+                <a href="#">Privacy policy</a>
               </li>
             </ul>
           </div>

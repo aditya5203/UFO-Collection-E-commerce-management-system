@@ -20,7 +20,14 @@ async function addHistory(params: {
   adId: any;
   title: string;
   type: string;
-  action: "Created" | "Updated" | "Activated" | "Deactivated" | "Scheduled" | "Expired" | "Deleted";
+  action:
+    | "Created"
+    | "Updated"
+    | "Activated"
+    | "Deactivated"
+    | "Scheduled"
+    | "Expired"
+    | "Deleted";
   changedBy: string;
   note?: string;
 }) {
@@ -43,22 +50,27 @@ async function safeCloudinaryDestroy(publicId?: string | null, kind?: MediaKind)
 
   try {
     await cloudinary.uploader.destroy(pid, { resource_type });
-  } catch {
-    // ignore cloudinary delete errors
-  }
+  } catch {}
 }
 
-async function safeCloudinaryDestroyMany(publicIds: string[] | undefined, kind?: MediaKind) {
-  const list = Array.isArray(publicIds) ? publicIds.map((x) => String(x || "").trim()).filter(Boolean) : [];
+async function safeCloudinaryDestroyMany(
+  publicIds: string[] | undefined,
+  kind?: MediaKind
+) {
+  const list = Array.isArray(publicIds)
+    ? publicIds.map((x) => String(x || "").trim()).filter(Boolean)
+    : [];
   if (!list.length) return;
 
-  // Cloudinary destroy is per publicId, do sequential to be safe
   for (const pid of list) {
     await safeCloudinaryDestroy(pid, kind);
   }
 }
 
-function detectKind(payload: any, fileOrFiles: { mimetype?: string } | undefined): MediaKind {
+function detectKind(
+  payload: any,
+  fileOrFiles: { mimetype?: string } | undefined
+): MediaKind {
   if (String(payload?.mediaKind || "").trim() === "video") return "video";
   if (fileOrFiles?.mimetype?.startsWith("video/")) return "video";
   return "image";
@@ -72,7 +84,6 @@ function uploadedToUrlAndId(file: any) {
 }
 
 export const adService = {
-  /* ===================== PUBLIC (HOMEPAGE) ===================== */
   publicList: async (query: any) => {
     const position = String(query.position || "").trim();
     const status = String(query.status || "Active").trim();
@@ -89,16 +100,20 @@ export const adService = {
     if (position) where.position = position;
     if (audience) where.audience = audience;
 
-    const items = await Ad.find(where).sort({ priority: 1, createdAt: -1 }).lean();
+    const items = await Ad.find(where)
+      .sort({ priority: 1, createdAt: -1 })
+      .lean();
 
     return items.map((x: any) => {
-      const mediaUrls = Array.isArray(x.mediaUrls) ? x.mediaUrls.filter(Boolean) : [];
+      const mediaUrls = Array.isArray(x.mediaUrls)
+        ? x.mediaUrls.filter(Boolean)
+        : [];
       return {
         id: String(x._id),
         title: x.title,
         mediaKind: x.mediaKind,
-        mediaUrl: x.mediaUrl, // fallback
-        mediaUrls, // ✅ homepage can use slider
+        mediaUrl: x.mediaUrl,
+        mediaUrls,
         clickUrl: x.clickUrl || "",
         priority: x.priority ?? 999,
         position: x.position,
@@ -107,7 +122,6 @@ export const adService = {
     });
   },
 
-  /* ===================== ADMIN LIST ===================== */
   adminList: async (query: any) => {
     const q = String(query.q || "").trim();
     const type = String(query.type || "").trim();
@@ -141,7 +155,6 @@ export const adService = {
     }));
   },
 
-  /* ===================== ADMIN CREATE ===================== */
   create: async (
     payload: any,
     single: Express.Multer.File | undefined,
@@ -154,19 +167,24 @@ export const adService = {
     if (!String(payload.title || "").trim()) throw new Error("Title is required");
     if (!String(payload.type || "").trim()) throw new Error("Type is required");
     if (!startDate || !endDate) throw new Error("Start/End date is required");
-    if (endDate.getTime() < startDate.getTime()) throw new Error("End date must be >= start date");
+    if (endDate.getTime() < startDate.getTime()) {
+      throw new Error("End date must be >= start date");
+    }
 
     const type = String(payload.type).trim();
 
     const hasMulti = Array.isArray(multi) && multi.length > 0;
     const hasSingle = Boolean(single);
 
-    if (!hasMulti && !hasSingle) throw new Error("Media file is required (image/video)");
+    if (!hasMulti && !hasSingle) {
+      throw new Error("Media file is required (image/video)");
+    }
 
-    // Decide media kind
-    const mediaKind: MediaKind = detectKind(payload, hasSingle ? single : multi?.[0]);
+    const mediaKind: MediaKind = detectKind(
+      payload,
+      hasSingle ? single : multi?.[0]
+    );
 
-    // ✅ If Carousel + image => store multiple
     let mediaUrls: string[] = [];
     let mediaPublicIds: string[] = [];
 
@@ -179,15 +197,15 @@ export const adService = {
         if (url) mediaUrls.push(url);
         if (publicId) mediaPublicIds.push(publicId);
       }
+
       if (!mediaUrls.length) throw new Error("Carousel upload failed");
     }
 
-    // Backward compatible single mediaUrl
     let mediaUrl = "";
     let mediaPublicId: string | null = null;
 
     if (type === "Carousel" && mediaKind === "image") {
-      mediaUrl = mediaUrls[0]; // first slide
+      mediaUrl = mediaUrls[0];
       mediaPublicId = mediaPublicIds[0] || null;
     } else {
       const use = single || (hasMulti ? multi![0] : undefined);
@@ -205,24 +223,17 @@ export const adService = {
       title: String(payload.title).trim(),
       type,
       status: finalStatus,
-
       startDate,
       endDate,
-
       audience: payload.audience || "All Customers",
       position: payload.position || "Home Top",
       priority: Number(payload.priority || 999),
-
       clickUrl: String(payload.clickUrl || "").trim(),
-
       mediaKind,
       mediaUrl,
       mediaPublicId,
-
-      // ✅ new
       mediaUrls,
       mediaPublicIds,
-
       createdBy: changedBy,
       updatedBy: changedBy,
     });
@@ -239,7 +250,6 @@ export const adService = {
     return ad;
   },
 
-  /* ===================== ADMIN UPDATE ===================== */
   update: async (
     id: string,
     payload: any,
@@ -250,19 +260,32 @@ export const adService = {
     const ad = await Ad.findById(id);
     if (!ad) throw new Error("Ad not found");
 
-    const startDate = payload.startDate ? toDateOrNull(payload.startDate) : ad.startDate;
-    const endDate = payload.endDate ? toDateOrNull(payload.endDate) : ad.endDate;
+    const startDate = payload.startDate
+      ? toDateOrNull(payload.startDate)
+      : ad.startDate;
+    const endDate = payload.endDate
+      ? toDateOrNull(payload.endDate)
+      : ad.endDate;
 
     if (!startDate || !endDate) throw new Error("Invalid start/end date");
-    if (endDate.getTime() < startDate.getTime()) throw new Error("End date must be >= start date");
+    if (endDate.getTime() < startDate.getTime()) {
+      throw new Error("End date must be >= start date");
+    }
 
-    // Update base fields
     if (payload.title !== undefined) ad.title = String(payload.title).trim();
     if (payload.type !== undefined) ad.type = String(payload.type).trim() as any;
-    if (payload.audience !== undefined) ad.audience = String(payload.audience).trim() as any;
-    if (payload.position !== undefined) ad.position = String(payload.position).trim() as any;
-    if (payload.clickUrl !== undefined) ad.clickUrl = String(payload.clickUrl).trim();
-    if (payload.priority !== undefined) ad.priority = Number(payload.priority);
+    if (payload.audience !== undefined) {
+      ad.audience = String(payload.audience).trim() as any;
+    }
+    if (payload.position !== undefined) {
+      ad.position = String(payload.position).trim() as any;
+    }
+    if (payload.clickUrl !== undefined) {
+      ad.clickUrl = String(payload.clickUrl).trim();
+    }
+    if (payload.priority !== undefined) {
+      ad.priority = Number(payload.priority);
+    }
 
     ad.startDate = startDate;
     ad.endDate = endDate;
@@ -270,14 +293,18 @@ export const adService = {
     const hasMulti = Array.isArray(multi) && multi.length > 0;
     const hasSingle = Boolean(single);
 
-    // ✅ replace media if new upload exists
     if (hasSingle || hasMulti) {
-      const nextKind: MediaKind = detectKind(payload, hasSingle ? single : multi?.[0]);
+      const nextKind: MediaKind = detectKind(
+        payload,
+        hasSingle ? single : multi?.[0]
+      );
       const nextType = String(ad.type || "").trim();
 
-      // delete old (single + multi)
       await safeCloudinaryDestroy(ad.mediaPublicId as any, ad.mediaKind as any);
-      await safeCloudinaryDestroyMany(ad.mediaPublicIds as any, ad.mediaKind as any);
+      await safeCloudinaryDestroyMany(
+        ad.mediaPublicIds as any,
+        ad.mediaKind as any
+      );
 
       if (nextType === "Carousel" && nextKind === "image") {
         const files = hasMulti ? multi! : hasSingle ? [single!] : [];
@@ -289,13 +316,12 @@ export const adService = {
           if (url) urls.push(url);
           if (publicId) pids.push(publicId);
         }
+
         if (!urls.length) throw new Error("Carousel upload failed");
 
         (ad as any).mediaKind = "image";
         (ad as any).mediaUrls = urls;
         (ad as any).mediaPublicIds = pids;
-
-        // keep old field valid
         (ad as any).mediaUrl = urls[0];
         (ad as any).mediaPublicId = pids[0] || null;
       } else {
@@ -306,14 +332,11 @@ export const adService = {
         (ad as any).mediaKind = nextKind;
         (ad as any).mediaUrl = url;
         (ad as any).mediaPublicId = publicId || null;
-
-        // clear carousel arrays
         (ad as any).mediaUrls = [];
         (ad as any).mediaPublicIds = [];
       }
     }
 
-    // Status rule
     if (payload.status !== undefined) {
       const requestedStatus = String(payload.status).trim();
       if (requestedStatus === "Inactive") ad.status = "Inactive" as any;
@@ -339,13 +362,15 @@ export const adService = {
     return ad;
   },
 
-  /* ===================== ADMIN DELETE ===================== */
   remove: async (id: string, changedBy: string) => {
     const ad = await Ad.findById(id);
     if (!ad) throw new Error("Ad not found");
 
     await safeCloudinaryDestroy(ad.mediaPublicId as any, ad.mediaKind as any);
-    await safeCloudinaryDestroyMany(ad.mediaPublicIds as any, ad.mediaKind as any);
+    await safeCloudinaryDestroyMany(
+      ad.mediaPublicIds as any,
+      ad.mediaKind as any
+    );
 
     await addHistory({
       adId: ad._id,
@@ -360,7 +385,6 @@ export const adService = {
     return true;
   },
 
-  /* ===================== ADMIN TOGGLE ACTIVE/INACTIVE ===================== */
   toggleActive: async (id: string, makeActive: boolean, changedBy: string) => {
     const ad = await Ad.findById(id);
     if (!ad) throw new Error("Ad not found");
@@ -394,7 +418,6 @@ export const adService = {
     return ad;
   },
 
-  /* ===================== HISTORY ===================== */
   historyList: async (query: any) => {
     const q = String(query.q || "").trim();
     const type = String(query.type || "").trim();
@@ -411,7 +434,9 @@ export const adService = {
     if (type && type !== "All") where.type = type;
     if (action && action !== "All") where.action = action;
 
-    const items = await AdHistory.find(where).sort({ changedAt: -1 }).lean();
+    const items = await AdHistory.find(where)
+      .sort({ changedAt: -1 })
+      .lean();
 
     return items.map((x: any) => ({
       id: String(x._id),

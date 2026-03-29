@@ -1,3 +1,4 @@
+// server/src/modules/discounts/controllers/discount.controller.ts
 import { Response } from "express";
 import { AuthRequest } from "../../auth/middleware/auth.middleware";
 import discountService from "../services/discount.service";
@@ -5,19 +6,17 @@ import { Product } from "../../../models/Product.model";
 import mongoose from "mongoose";
 
 export const discountController = {
-  // ✅ PUBLIC: AVAILABLE COUPONS
-  // GET /api/discounts/available
   async available(_req: AuthRequest, res: Response) {
     try {
       const data = await discountService.listAvailable();
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to fetch coupons" });
+      return res
+        .status(500)
+        .json({ message: err?.message || "Failed to fetch coupons" });
     }
   },
 
-  // ✅ CUSTOMER: COLLECT ALL
-  // POST /api/discounts/collect-all
   async collectAll(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.userId;
@@ -26,11 +25,12 @@ export const discountController = {
       const data = await discountService.collectAllAvailable(userId);
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(400).json({ message: err?.message || "Failed to collect all coupons" });
+      return res
+        .status(400)
+        .json({ message: err?.message || "Failed to collect all coupons" });
     }
   },
 
-  // CUSTOMER: COLLECT
   async collect(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.userId;
@@ -40,11 +40,12 @@ export const discountController = {
       const data = await discountService.collectCoupon(userId, code);
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(400).json({ message: err?.message || "Failed to collect coupon" });
+      return res
+        .status(400)
+        .json({ message: err?.message || "Failed to collect coupon" });
     }
   },
 
-  // CUSTOMER: MY COLLECTED
   async myCollected(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.userId;
@@ -53,11 +54,12 @@ export const discountController = {
       const data = await discountService.listMyCollected(userId);
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to fetch coupons" });
+      return res
+        .status(500)
+        .json({ message: err?.message || "Failed to fetch coupons" });
     }
   },
 
-  // CUSTOMER: VALIDATE
   async validate(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.userId;
@@ -83,7 +85,9 @@ export const discountController = {
         .select("_id name price stock status image images categoryId")
         .lean();
 
-      const productMap = new Map<string, any>(products.map((p: any) => [String(p._id), p]));
+      const productMap = new Map<string, any>(
+        products.map((p: any) => [String(p._id), p])
+      );
 
       let subtotalPaisa = 0;
       for (const [pid, qty] of qtyByProductId.entries()) {
@@ -117,59 +121,66 @@ export const discountController = {
         },
       });
     } catch (err: any) {
-      return res.status(400).json({ message: err?.message || "Failed to validate coupon" });
+      return res
+        .status(400)
+        .json({ message: err?.message || "Failed to validate coupon" });
     }
   },
 
-  // ADMIN: LIST
   async adminList(_req: AuthRequest, res: Response) {
     try {
       const data = await discountService.adminList();
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to list coupons" });
+      return res
+        .status(500)
+        .json({ message: err?.message || "Failed to list coupons" });
     }
   },
 
-  // ADMIN: CREATE
   async adminCreate(req: AuthRequest, res: Response) {
     try {
       const data = await discountService.adminCreate(req.body);
       return res.status(201).json({ data });
     } catch (err: any) {
-      return res.status(400).json({ message: err?.message || "Failed to create coupon" });
+      return res
+        .status(400)
+        .json({ message: err?.message || "Failed to create coupon" });
     }
   },
 
-  // ADMIN: UPDATE
   async adminUpdate(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
       const data = await discountService.adminUpdate(id, req.body);
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(400).json({ message: err?.message || "Failed to update coupon" });
+      return res
+        .status(400)
+        .json({ message: err?.message || "Failed to update coupon" });
     }
   },
 
-  // ADMIN: DELETE
   async adminDelete(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
       const data = await discountService.adminDelete(id);
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(400).json({ message: err?.message || "Failed to delete coupon" });
+      return res
+        .status(400)
+        .json({ message: err?.message || "Failed to delete coupon" });
     }
   },
 
-  // ADMIN: COLLECTED LIST
   async adminCollected(_req: AuthRequest, res: Response) {
     try {
       const data = await discountService.adminCollected();
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to fetch collected list" });
+      return res
+        .status(500)
+        .json({ message: err?.message || "Failed to fetch collected list" });
     }
   },
 };

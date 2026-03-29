@@ -1,3 +1,4 @@
+// server/src/modules/reviews/controllers/admin.reviews.controller.ts
 import { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 import { AppError } from "../../../middleware/error.middleware";
@@ -8,7 +9,6 @@ function safeRegex(input: string) {
 }
 
 export const adminReviewsController = {
-  // GET /api/admin/reviews
   list: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const {
@@ -22,19 +22,19 @@ export const adminReviewsController = {
 
       const filter: any = {};
 
-      // filters
       if (productId && mongoose.Types.ObjectId.isValid(productId)) {
         filter.product = new mongoose.Types.ObjectId(productId);
       }
+
       if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
         filter.customer = new mongoose.Types.ObjectId(customerId);
       }
+
       if (rating) {
         const r = Number(rating);
         if (!Number.isNaN(r) && r >= 1 && r <= 5) filter.rating = r;
       }
 
-      // search (title/comment/orderCode)
       if (search.trim()) {
         const rx = safeRegex(search.trim());
         filter.$or = [{ title: rx }, { comment: rx }, { orderCode: rx }];
@@ -57,15 +57,12 @@ export const adminReviewsController = {
 
       const reviews = (items as any[]).map((r) => ({
         id: String(r._id),
-
         rating: Number(r.rating || 0),
         title: r.title || "",
         comment: r.comment || "",
         orderCode: r.orderCode || "",
-
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
-
         product: r.product
           ? {
               id: String(r.product._id),
@@ -73,7 +70,6 @@ export const adminReviewsController = {
               image: r.product.image || "",
             }
           : null,
-
         customer: r.customer
           ? {
               id: String(r.customer._id),
@@ -98,7 +94,6 @@ export const adminReviewsController = {
     }
   },
 
-  // DELETE /api/admin/reviews/:id
   remove: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params;

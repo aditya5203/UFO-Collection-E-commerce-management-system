@@ -1,3 +1,4 @@
+// client/app/admin/customers/[id]/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -8,6 +9,13 @@ import {
   useSearchParams,
   useParams,
 } from "next/navigation";
+import AdminPageGuard from "../../_components/AdminPageGuard";
+import {
+  AdminPermissions,
+  AdminSettingsResponse,
+  hasPermission,
+  normalizeAdminPermissions,
+} from "../../_components/adminPermissions";
 
 type TabKey = "overview" | "orders" | "tickets" | "addresses";
 
@@ -19,6 +27,10 @@ type CustomerRow = {
   createdAt: string;
   lastLogin?: string;
   numberOfOrders?: number;
+  status?: "active" | "blocked" | "deleted";
+  isBlocked?: boolean;
+  isDeleted?: boolean;
+  deletedAt?: string;
 };
 
 type PaymentStatus = "Paid" | "Pending" | "Failed";
@@ -43,21 +55,17 @@ type Address = {
   userId?: string;
   type: AddressType;
   label?: AddressLabel;
-
   email?: string;
   firstName?: string;
   lastName?: string;
   country?: string;
-
   provinceId?: string;
   district?: string;
   cityOrMunicipality?: string;
-
   addressLine?: string;
   street?: string;
   postalCode?: string;
   phone?: string;
-
   isDefault?: boolean;
   createdAt?: string;
 };
@@ -185,14 +193,10 @@ function AddressCard({ a }: { a: Address }) {
           ) : null}
         </div>
 
-        {id ? (
-          <div className="text-xs text-slate-500">ID: {id}</div>
-        ) : null}
+        {id ? <div className="text-xs text-slate-500">ID: {id}</div> : null}
       </div>
 
-      <div className="mt-4 text-sm text-slate-200">
-        {addressLinePretty(a)}
-      </div>
+      <div className="mt-4 text-sm text-slate-200">{addressLinePretty(a)}</div>
 
       <div className="mt-3 flex flex-wrap gap-2">
         {a.cityOrMunicipality ? <Pill>{a.cityOrMunicipality}</Pill> : null}
@@ -205,6 +209,15 @@ function AddressCard({ a }: { a: Address }) {
       </div>
     </div>
   );
+}
+
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { raw: text };
+  }
 }
 
 export default function CustomerDetailsPage() {
@@ -227,16 +240,55 @@ export default function CustomerDetailsPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string>("");
 
-  // ✅ Orders tab state
   const [orders, setOrders] = React.useState<OrderRow[]>([]);
   const [ordersLoading, setOrdersLoading] = React.useState(false);
   const [ordersError, setOrdersError] = React.useState("");
 
-  // ✅ Addresses tab state
   const [addrLoading, setAddrLoading] = React.useState(false);
   const [addrError, setAddrError] = React.useState("");
   const [shipping, setShipping] = React.useState<Address[]>([]);
   const [billing, setBilling] = React.useState<Address[]>([]);
+
+  const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
+  const [permissions, setPermissions] = React.useState<AdminPermissions | null>(null);
+
+  React.useEffect(() => {
+    let mounted = true;
+
+    const loadAdminProfile = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/settings`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!res.ok) return;
+
+        const body = (await safeJson(res)) as AdminSettingsResponse;
+        const nextRole = (body?.profile?.role || "admin") as "admin" | "superadmin";
+        const nextPermissions = normalizeAdminPermissions(
+          nextRole,
+          body?.profile?.permissions
+        );
+
+        if (!mounted) return;
+        setRole(nextRole);
+        setPermissions(nextPermissions);
+      } catch {
+        // ignore
+      }
+    };
+
+    loadAdminProfile();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const canViewOrders = hasPermission(role, permissions, "orderView");
+  const canViewTickets = hasPermission(role, permissions, "ticketView");
 
   const loadCustomer = async (id: string) => {
     setLoading(true);
@@ -246,14 +298,10 @@ export default function CustomerDetailsPage() {
       const res = await fetch(`${API_BASE}/api/admin/customers/${id}`, {
         method: "GET",
         credentials: "include",
+        cache: "no-store",
       });
 
-      if (res.status === 401 || res.status === 403) {
-        router.replace("/admin/login");
-        return;
-      }
-
-      const json = await res.json().catch(() => ({} as any));
+      const json = await safeJson(res);
 
       if (!res.ok) {
         setCustomer(null);
@@ -270,7 +318,6 @@ export default function CustomerDetailsPage() {
     }
   };
 
-  // ✅ Fetch orders for this customer (ADMIN)
   const loadOrders = React.useCallback(
     async (id: string) => {
       setOrdersLoading(true);
@@ -279,15 +326,13 @@ export default function CustomerDetailsPage() {
       try {
         const res = await fetch(
           `${API_BASE}/api/admin/orders?customerId=${encodeURIComponent(id)}`,
-          { credentials: "include" }
+          {
+            credentials: "include",
+            cache: "no-store",
+          }
         );
 
-        if (res.status === 401 || res.status === 403) {
-          router.replace("/admin/login");
-          return;
-        }
-
-        const json = await res.json().catch(() => ({} as any));
+        const json = await safeJson(res);
 
         if (!res.ok) {
           setOrders([]);
@@ -303,68 +348,60 @@ export default function CustomerDetailsPage() {
         setOrdersLoading(false);
       }
     },
-    [router]
+    []
   );
 
-  // ✅ Fetch addresses for this customer (ADMIN)
-  const loadAddresses = React.useCallback(
-    async (id: string) => {
-      setAddrLoading(true);
-      setAddrError("");
+  const loadAddresses = React.useCallback(async (id: string) => {
+    setAddrLoading(true);
+    setAddrError("");
 
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/admin/customers/${encodeURIComponent(id)}/addresses`,
-          { credentials: "include" }
-        );
-
-        if (res.status === 401 || res.status === 403) {
-          router.replace("/admin/login");
-          return;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/admin/customers/${encodeURIComponent(id)}/addresses`,
+        {
+          credentials: "include",
+          cache: "no-store",
         }
+      );
 
-        const json = await res.json().catch(() => ({} as any));
+      const json = await safeJson(res);
 
-        if (!res.ok) {
-          setShipping([]);
-          setBilling([]);
-          setAddrError(json?.message || "Failed to load addresses");
-          return;
-        }
-
-        const s: Address[] = Array.isArray(json?.shipping) ? json.shipping : [];
-        const b: Address[] = Array.isArray(json?.billing) ? json.billing : [];
-
-        setShipping(s);
-        setBilling(b);
-      } catch {
+      if (!res.ok) {
         setShipping([]);
         setBilling([]);
-        setAddrError("Network error while loading addresses");
-      } finally {
-        setAddrLoading(false);
+        setAddrError(json?.message || "Failed to load addresses");
+        return;
       }
-    },
-    [router]
-  );
+
+      const s: Address[] = Array.isArray(json?.shipping) ? json.shipping : [];
+      const b: Address[] = Array.isArray(json?.billing) ? json.billing : [];
+
+      setShipping(s);
+      setBilling(b);
+    } catch {
+      setShipping([]);
+      setBilling([]);
+      setAddrError("Network error while loading addresses");
+    } finally {
+      setAddrLoading(false);
+    }
+  }, []);
 
   React.useEffect(() => {
     if (!customerId) return;
     loadCustomer(customerId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customerId]);
 
-  // ✅ Only load orders when user opens Orders tab
   React.useEffect(() => {
     if (!customerId) return;
     if (tab !== "orders") return;
+    if (!canViewOrders) return;
 
     if (orders.length === 0 && !ordersLoading && !ordersError) {
       loadOrders(customerId);
     }
-  }, [tab, customerId, loadOrders, orders.length, ordersLoading, ordersError]);
+  }, [tab, customerId, canViewOrders, loadOrders, orders.length, ordersLoading, ordersError]);
 
-  // ✅ Only load addresses when user opens Addresses tab
   React.useEffect(() => {
     if (!customerId) return;
     if (tab !== "addresses") return;
@@ -383,301 +420,300 @@ export default function CustomerDetailsPage() {
     addrError,
   ]);
 
-  // counts
-  const ordersCount = orders.length ? orders.length : customer?.numberOfOrders ?? 0;
+  const ordersCount = customer?.numberOfOrders ?? 0;
   const ticketsCount = 0;
   const addressesCount = shipping.length + billing.length;
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-extrabold">Customer</h1>
-          <Link
-            href="/admin/customers"
-            className="rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900/55"
-          >
-            Back
-          </Link>
-        </div>
+      <AdminPageGuard permission="customerView">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-extrabold">Customer</h1>
+            <Link
+              href="/admin/customers"
+              className="rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900/55"
+            >
+              Back
+            </Link>
+          </div>
 
-        <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-6 text-slate-300">
-          Loading...
+          <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-6 text-slate-300">
+            Loading...
+          </div>
         </div>
-      </div>
+      </AdminPageGuard>
     );
   }
 
   if (!customer) {
     return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-extrabold">Customer</h1>
-          <Link
-            href="/admin/customers"
-            className="rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900/55"
-          >
-            Back
-          </Link>
-        </div>
+      <AdminPageGuard permission="customerView">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-extrabold">Customer</h1>
+            <Link
+              href="/admin/customers"
+              className="rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900/55"
+            >
+              Back
+            </Link>
+          </div>
 
-        <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-6 text-slate-300">
-          {error || "Customer not found."}
+          <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-6 text-slate-300">
+            {error || "Customer not found."}
+          </div>
         </div>
-      </div>
+      </AdminPageGuard>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            {customer.name || "-"}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge text={customer.role || "customer"} />
-            <span className="text-sm text-slate-400">{customer.email || "-"}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Link
-            href="/admin/customers"
-            className="rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900/55"
-          >
-            Back
-          </Link>
-
-          <button
-            className="rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900/55"
-            onClick={() => alert("Mock: message customer")}
-            type="button"
-          >
-            Message
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-700/50 bg-[#0A1324] p-3">
-        <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>
-          Overview
-        </TabButton>
-
-        <TabButton active={tab === "orders"} onClick={() => setTab("orders")}>
-          Orders <span className="ml-2 text-xs opacity-70">({ordersCount})</span>
-        </TabButton>
-
-        <TabButton active={tab === "tickets"} onClick={() => setTab("tickets")}>
-          Tickets <span className="ml-2 text-xs opacity-70">({ticketsCount})</span>
-        </TabButton>
-
-        <TabButton active={tab === "addresses"} onClick={() => setTab("addresses")}>
-          Addresses{" "}
-          <span className="ml-2 text-xs opacity-70">
-            ({tab === "addresses" ? addressesCount : "—"})
-          </span>
-        </TabButton>
-      </div>
-
-      {/* TAB: OVERVIEW */}
-      {tab === "overview" && (
-        <div className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Created At
-            </p>
-            <p className="mt-2 text-lg font-bold text-slate-100">
-              {formatDateShort(customer.createdAt)}
-            </p>
-            <p className="mt-1 text-sm text-slate-400">Account creation date</p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Last Login
-            </p>
-            <p className="mt-2 text-lg font-bold text-slate-100">
-              {formatDateShort(customer.lastLogin)}
-            </p>
-            <p className="mt-1 text-sm text-slate-400">Last time user logged in</p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Total Orders
-            </p>
-            <p className="mt-2 text-lg font-bold text-slate-100">{ordersCount}</p>
-            <p className="mt-1 text-sm text-slate-400">Lifetime orders</p>
-          </div>
-        </div>
-      )}
-
-      {/* TAB: ORDERS */}
-      {tab === "orders" && (
-        <TableShell title="Orders" right={<span>{ordersCount} total</span>}>
-          {ordersError ? (
-            <div className="px-6 py-6">
-              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-                {ordersError}
-              </div>
+    <AdminPageGuard permission="customerView">
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-extrabold tracking-tight">
+              {customer.name || "-"}
+            </h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge text={customer.role || "customer"} />
+              <span className="text-sm text-slate-400">{customer.email || "-"}</span>
             </div>
-          ) : null}
-
-          <div className="overflow-x-auto">
-            <table className="min-w-[980px] w-full border-collapse">
-              <thead className="bg-slate-900/30">
-                <tr className="text-left text-sm font-semibold text-slate-200">
-                  <th className="px-6 py-4">Order</th>
-                  <th className="px-6 py-4">Total</th>
-                  <th className="px-6 py-4">Payment</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Created</th>
-                  <th className="px-6 py-4 text-right">Action</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {ordersLoading ? (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
-                      Loading...
-                    </td>
-                  </tr>
-                ) : orders.length ? (
-                  orders.map((o) => {
-                    const code = o.orderCode || o.id;
-                    const paisa = Number.isFinite(o.totalPaisa as number)
-                      ? (o.totalPaisa as number)
-                      : Math.round(Number(o.total || 0) * 100);
-
-                    return (
-                      <tr
-                        key={o.id}
-                        className="border-t border-slate-700/40 text-sm text-slate-100 hover:bg-slate-900/20"
-                      >
-                        <td className="px-6 py-5 font-semibold">{code}</td>
-                        <td className="px-6 py-5 text-slate-300">{formatNPR(paisa)}</td>
-                        <td className="px-6 py-5">
-                          <Pill>{o.paymentStatus}</Pill>
-                        </td>
-                        <td className="px-6 py-5">
-                          <Pill>{o.orderStatus}</Pill>
-                        </td>
-                        <td className="px-6 py-5 text-slate-400">
-                          {formatDateShort(o.createdAt)}
-                        </td>
-                        <td className="px-6 py-5 text-right">
-                          <Link
-                            href={`/admin/orders/${o.id}`}
-                            className="font-semibold text-slate-200 hover:text-slate-100"
-                          >
-                            View
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
-                      No orders for this customer.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
           </div>
-        </TableShell>
-      )}
 
-      {/* TAB: TICKETS */}
-      {tab === "tickets" && (
-        <TableShell title="Customer Tickets" right={<span>0 total</span>}>
-          <div className="px-6 py-10 text-sm text-slate-400">
-            Tickets module not connected yet.
-          </div>
-        </TableShell>
-      )}
-
-      {/* ✅ TAB: ADDRESSES (CONNECTED) */}
-      {tab === "addresses" && (
-        <TableShell
-          title="Addresses"
-          right={
-            <button
-              type="button"
-              onClick={() => customerId && loadAddresses(customerId)}
-              className="rounded-xl border border-slate-700/50 bg-slate-900/25 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-900/40"
-              disabled={addrLoading}
+          <div className="flex items-center gap-2">
+            <Link
+              href="/admin/customers"
+              className="rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900/55"
             >
-              {addrLoading ? "Refreshing..." : "Refresh"}
-            </button>
-          }
-        >
-          {addrError ? (
-            <div className="px-6 py-6">
-              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-                {addrError}
-              </div>
-            </div>
+              Back
+            </Link>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-700/50 bg-[#0A1324] p-3">
+          <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>
+            Overview
+          </TabButton>
+
+          {canViewOrders ? (
+            <TabButton active={tab === "orders"} onClick={() => setTab("orders")}>
+              Orders <span className="ml-2 text-xs opacity-70">({ordersCount})</span>
+            </TabButton>
           ) : null}
 
-          <div className="px-6 pb-6">
-            {addrLoading ? (
-              <div className="py-8 text-sm text-slate-400">Loading addresses...</div>
-            ) : (
-              <div className="grid gap-6 lg:grid-cols-2">
-                {/* Shipping */}
-                <div>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-100">Shipping</h3>
-                    <span className="text-xs text-slate-400">
-                      {shipping.length} saved
-                    </span>
-                  </div>
+          {canViewTickets ? (
+            <TabButton active={tab === "tickets"} onClick={() => setTab("tickets")}>
+              Tickets <span className="ml-2 text-xs opacity-70">({ticketsCount})</span>
+            </TabButton>
+          ) : null}
 
-                  {shipping.length ? (
-                    <div className="space-y-4">
-                      {shipping.map((a) => (
-                        <AddressCard key={a._id || a.id || Math.random()} a={a} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-slate-700/50 bg-slate-900/15 p-5 text-sm text-slate-400">
-                      No shipping addresses found.
-                    </div>
-                  )}
-                </div>
+          <TabButton active={tab === "addresses"} onClick={() => setTab("addresses")}>
+            Addresses{" "}
+            <span className="ml-2 text-xs opacity-70">
+              ({tab === "addresses" ? addressesCount : "—"})
+            </span>
+          </TabButton>
+        </div>
 
-                {/* Billing */}
-                <div>
-                  <div className="mb-3 flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-100">Billing</h3>
-                    <span className="text-xs text-slate-400">
-                      {billing.length} saved
-                    </span>
-                  </div>
+        {tab === "overview" && (
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Created At
+              </p>
+              <p className="mt-2 text-lg font-bold text-slate-100">
+                {formatDateShort(customer.createdAt)}
+              </p>
+              <p className="mt-1 text-sm text-slate-400">Account creation date</p>
+            </div>
 
-                  {billing.length ? (
-                    <div className="space-y-4">
-                      {billing.map((a) => (
-                        <AddressCard key={a._id || a.id || Math.random()} a={a} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-slate-700/50 bg-slate-900/15 p-5 text-sm text-slate-400">
-                      No billing addresses found.
-                    </div>
-                  )}
+            <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Last Login
+              </p>
+              <p className="mt-2 text-lg font-bold text-slate-100">
+                {formatDateShort(customer.lastLogin)}
+              </p>
+              <p className="mt-1 text-sm text-slate-400">Last time user logged in</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Total Orders
+              </p>
+              <p className="mt-2 text-lg font-bold text-slate-100">{ordersCount}</p>
+              <p className="mt-1 text-sm text-slate-400">Lifetime orders</p>
+            </div>
+          </div>
+        )}
+
+        {tab === "orders" && canViewOrders && (
+          <TableShell title="Orders" right={<span>{ordersCount} total</span>}>
+            {ordersError ? (
+              <div className="px-6 py-6">
+                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+                  {ordersError}
                 </div>
               </div>
-            )}
-          </div>
-        </TableShell>
-      )}
-    </div>
+            ) : null}
+
+            <div className="overflow-x-auto">
+              <table className="min-w-[980px] w-full border-collapse">
+                <thead className="bg-slate-900/30">
+                  <tr className="text-left text-sm font-semibold text-slate-200">
+                    <th className="px-6 py-4">Order</th>
+                    <th className="px-6 py-4">Total</th>
+                    <th className="px-6 py-4">Payment</th>
+                    <th className="px-6 py-4">Status</th>
+                    <th className="px-6 py-4">Created</th>
+                    <th className="px-6 py-4 text-right">Action</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {ordersLoading ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
+                        Loading...
+                      </td>
+                    </tr>
+                  ) : orders.length ? (
+                    orders.map((o) => {
+                      const code = o.orderCode || o.id;
+                      const paisa = Number.isFinite(o.totalPaisa as number)
+                        ? (o.totalPaisa as number)
+                        : Math.round(Number(o.total || 0) * 100);
+
+                      return (
+                        <tr
+                          key={o.id}
+                          className="border-t border-slate-700/40 text-sm text-slate-100 hover:bg-slate-900/20"
+                        >
+                          <td className="px-6 py-5 font-semibold">{code}</td>
+                          <td className="px-6 py-5 text-slate-300">{formatNPR(paisa)}</td>
+                          <td className="px-6 py-5">
+                            <Pill>{o.paymentStatus}</Pill>
+                          </td>
+                          <td className="px-6 py-5">
+                            <Pill>{o.orderStatus}</Pill>
+                          </td>
+                          <td className="px-6 py-5 text-slate-400">
+                            {formatDateShort(o.createdAt)}
+                          </td>
+                          <td className="px-6 py-5 text-right">
+                            <Link
+                              href={`/admin/orders/${o.id}`}
+                              className="font-semibold text-slate-200 hover:text-slate-100"
+                            >
+                              View
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
+                        No orders for this customer.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </TableShell>
+        )}
+
+        {tab === "tickets" && canViewTickets && (
+          <TableShell title="Customer Tickets" right={<span>0 total</span>}>
+            <div className="px-6 py-10 text-sm text-slate-400">
+              Tickets module not connected yet.
+            </div>
+          </TableShell>
+        )}
+
+        {tab === "addresses" && (
+          <TableShell
+            title="Addresses"
+            right={
+              <button
+                type="button"
+                onClick={() => customerId && loadAddresses(customerId)}
+                className="rounded-xl border border-slate-700/50 bg-slate-900/25 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-900/40"
+                disabled={addrLoading}
+              >
+                {addrLoading ? "Refreshing..." : "Refresh"}
+              </button>
+            }
+          >
+            {addrError ? (
+              <div className="px-6 py-6">
+                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+                  {addrError}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="px-6 pb-6">
+              {addrLoading ? (
+                <div className="py-8 text-sm text-slate-400">Loading addresses...</div>
+              ) : (
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div>
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-slate-100">Shipping</h3>
+                      <span className="text-xs text-slate-400">
+                        {shipping.length} saved
+                      </span>
+                    </div>
+
+                    {shipping.length ? (
+                      <div className="space-y-4">
+                        {shipping.map((a, index) => (
+                          <AddressCard
+                            key={a._id || a.id || `shipping-${index}`}
+                            a={a}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-slate-700/50 bg-slate-900/15 p-5 text-sm text-slate-400">
+                        No shipping addresses found.
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="mb-3 flex items-center justify-between">
+                      <h3 className="text-sm font-bold text-slate-100">Billing</h3>
+                      <span className="text-xs text-slate-400">
+                        {billing.length} saved
+                      </span>
+                    </div>
+
+                    {billing.length ? (
+                      <div className="space-y-4">
+                        {billing.map((a, index) => (
+                          <AddressCard
+                            key={a._id || a.id || `billing-${index}`}
+                            a={a}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-slate-700/50 bg-slate-900/15 p-5 text-sm text-slate-400">
+                        No billing addresses found.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </TableShell>
+        )}
+      </div>
+    </AdminPageGuard>
   );
 }

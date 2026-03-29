@@ -1,8 +1,8 @@
-// app/admin/advertisement/history/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
+import AdminPageGuard from "../../_components/AdminPageGuard";
 
 type AdType = "Banner" | "Carousel" | "Pop-up" | "Video";
 type HistoryAction =
@@ -46,7 +46,10 @@ function fmtDateTime(s: string) {
 }
 
 const API_BASE =
-  (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api").replace(/\/+$/, "");
+  (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api").replace(
+    /\/+$/,
+    ""
+  );
 
 async function safeJson(res: Response) {
   const text = await res.text();
@@ -57,7 +60,7 @@ async function safeJson(res: Response) {
   }
 }
 
-export default function AdvertisementHistoryPage() {
+function AdvertisementHistoryInner() {
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState<AdType | "All">("All");
   const [action, setAction] = React.useState<HistoryAction | "All">("All");
@@ -102,7 +105,9 @@ export default function AdvertisementHistoryPage() {
       <div className="mx-auto w-full max-w-[1200px] px-4 py-8">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Advertisement History</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Advertisement History
+            </h1>
             <p className="mt-1 text-sm text-white/60">
               Track every change (API connected).
             </p>
@@ -165,7 +170,9 @@ export default function AdvertisementHistoryPage() {
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
             <div>
               <div className="text-sm font-semibold">Change Log</div>
-              <div className="text-xs text-white/50">Newest changes appear on top.</div>
+              <div className="text-xs text-white/50">
+                Newest changes appear on top.
+              </div>
             </div>
             <div className="text-xs text-white/50">
               Showing <span className="text-white">{items.length}</span>
@@ -188,32 +195,57 @@ export default function AdvertisementHistoryPage() {
               <tbody className="text-white/80">
                 {loading ? (
                   <tr>
-                    <td className="px-4 py-10 text-center text-white/60" colSpan={6}>
+                    <td
+                      className="px-4 py-10 text-center text-white/60"
+                      colSpan={6}
+                    >
                       Loading…
                     </td>
                   </tr>
                 ) : items.length === 0 ? (
                   <tr>
-                    <td className="px-4 py-10 text-center text-white/60" colSpan={6}>
+                    <td
+                      className="px-4 py-10 text-center text-white/60"
+                      colSpan={6}
+                    >
                       No history found.
                     </td>
                   </tr>
                 ) : (
                   items
                     .slice()
-                    .sort((a, b) => new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime())
+                    .sort(
+                      (a, b) =>
+                        new Date(b.changedAt).getTime() -
+                        new Date(a.changedAt).getTime()
+                    )
                     .map((h) => (
-                      <tr key={h.id} className="border-b border-white/10 hover:bg-white/5">
-                        <td className="px-4 py-3 font-medium text-white">{h.title}</td>
+                      <tr
+                        key={h.id}
+                        className="border-b border-white/10 hover:bg-white/5"
+                      >
+                        <td className="px-4 py-3 font-medium text-white">
+                          {h.title}
+                        </td>
                         <td className="px-4 py-3 text-white/70">{h.type}</td>
                         <td className="px-4 py-3">
-                          <span className={`inline-flex items-center rounded-lg border px-3 py-1 text-xs font-semibold ${pillAction(h.action)}`}>
+                          <span
+                            className={`inline-flex items-center rounded-lg border px-3 py-1 text-xs font-semibold ${pillAction(
+                              h.action
+                            )}`}
+                          >
                             {h.action}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-white/70">{h.changedBy}</td>
-                        <td className="px-4 py-3 text-white/70">{fmtDateTime(h.changedAt)}</td>
-                        <td className="px-4 py-3 text-white/70">{h.note ?? "-"}</td>
+                        <td className="px-4 py-3 text-white/70">
+                          {h.changedBy}
+                        </td>
+                        <td className="px-4 py-3 text-white/70">
+                          {fmtDateTime(h.changedAt)}
+                        </td>
+                        <td className="px-4 py-3 text-white/70">
+                          {h.note ?? "-"}
+                        </td>
                       </tr>
                     ))
                 )}
@@ -227,5 +259,13 @@ export default function AdvertisementHistoryPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AdvertisementHistoryPage() {
+  return (
+    <AdminPageGuard permission="advertisementView">
+      <AdvertisementHistoryInner />
+    </AdminPageGuard>
   );
 }

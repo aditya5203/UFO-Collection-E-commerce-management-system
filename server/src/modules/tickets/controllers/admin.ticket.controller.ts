@@ -1,14 +1,10 @@
+// server/src/modules/tickets/controllers/admin.ticket.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { ticketService, TicketStatus } from "../services/ticket.service";
-
-// ✅ Notifications
 import { notificationService } from "../../notifications/services/notification.service";
-
-// ✅ Ticket model
 import { Ticket } from "../../../models/Ticket.model";
-
-// ✅ User model fallback (old tickets)
 import { User } from "../../../models/User.model";
+import { Product } from "../../../models/Product.model";
 
 function toDateOnly(d: any) {
   try {
@@ -23,7 +19,6 @@ async function resolveCustomerIdFromTicket(ticket: any) {
   const direct = String(ticket?.customer || "");
   if (direct) return direct;
 
-  // fallback by email (for old tickets)
   const email = String(ticket?.customerEmail || "").trim();
   if (!email) return "";
 
@@ -32,11 +27,41 @@ async function resolveCustomerIdFromTicket(ticket: any) {
 }
 
 export const adminTicketController = {
-  // GET /api/admin/tickets?q=
+  /**
+   * @swagger
+   * /api/admin/tickets:
+   *   get:
+   *     summary: List admin tickets
+   *     tags: [Tickets - Admin]
+   *     security:
+   *       - cookieAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: q
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Tickets list
+   */
   list: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const q = String(req.query.q || "");
       const items = await ticketService.listAdminTickets(q);
+
+      const productIds = items
+        .map((t: any) => String(t.productId || ""))
+        .filter(Boolean);
+
+      const products = productIds.length
+        ? await Product.find({ _id: { $in: productIds } })
+            .select("_id name")
+            .lean()
+        : [];
+
+      const productMap = new Map<string, string>(
+        (products as any[]).map((p) => [String(p._id), p.name || "Product"])
+      );
 
       return res.json({
         success: true,
@@ -45,7 +70,7 @@ export const adminTicketController = {
           ticketId: t.ticketCode,
           customerName: t.customerName,
           customerEmail: t.customerEmail,
-          productName: t.productId ? "Product" : "-",
+          productName: t.productId ? productMap.get(String(t.productId)) || "Product" : "-",
           issueType: t.issueType,
           submittedAt: toDateOnly(t.createdAt),
           status: t.status,
@@ -56,7 +81,24 @@ export const adminTicketController = {
     }
   },
 
-  // GET /api/admin/tickets/:id
+  /**
+   * @swagger
+   * /api/admin/tickets/{id}:
+   *   get:
+   *     summary: Get ticket details
+   *     tags: [Tickets - Admin]
+   *     security:
+   *       - cookieAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *     responses:
+   *       200:
+   *         description: Ticket detail
+   */
   getOne: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = String(req.params.id || "");
@@ -64,6 +106,12 @@ export const adminTicketController = {
 
       if (!t) {
         return res.status(404).json({ success: false, message: "Ticket not found" });
+      }
+
+      let productName = "-";
+      if (t.productId) {
+        const p: any = await Product.findById(t.productId).select("_id name").lean();
+        productName = p?.name || "Product";
       }
 
       return res.json({
@@ -77,10 +125,8 @@ export const adminTicketController = {
           subject: t.subject,
           message: t.message,
           imageUrl: t.imageUrl || null,
-
           customer: { name: t.customerName, email: t.customerEmail },
-          product: { name: t.productId ? "Product" : "-", id: t.productId || null },
-
+          product: { name: productName, id: t.productId || null },
           replies: (t.replies || []).map((r: any) => ({
             id: r._id,
             sender: r.sender,
@@ -94,7 +140,18 @@ export const adminTicketController = {
     }
   },
 
-  // PATCH /api/admin/tickets/:id/status
+  /**
+   * @swagger
+   * /api/admin/tickets/{id}/status:
+   *   patch:
+   *     summary: Update ticket status
+   *     tags: [Tickets - Admin]
+   *     security:
+   *       - cookieAuth: []
+   *     responses:
+   *       200:
+   *         description: Status updated
+   */
   updateStatus: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = String(req.params.id || "");
@@ -104,14 +161,19 @@ export const adminTicketController = {
         return res.status(400).json({ success: false, message: "Invalid status" });
       }
 
-      // get current ticket for notification target
-      const before: any = await Ticket.findById(id).select("status customer customerEmail ticketCode").lean();
-      if (!before) return res.status(404).json({ success: false, message: "Ticket not found" });
+      const before: any = await Ticket.findById(id)
+        .select("status customer customerEmail ticketCode")
+        .lean();
+
+      if (!before) {
+        return res.status(404).json({ success: false, message: "Ticket not found" });
+      }
 
       const updated = await ticketService.updateStatus(id, status);
-      if (!updated) return res.status(404).json({ success: false, message: "Ticket not found" });
+      if (!updated) {
+        return res.status(404).json({ success: false, message: "Ticket not found" });
+      }
 
-      // notify only on change
       if (String(before.status) !== String(status)) {
         const customerId = await resolveCustomerIdFromTicket(before);
 
@@ -135,7 +197,18 @@ export const adminTicketController = {
     }
   },
 
-  // POST /api/admin/tickets/:id/reply
+  /**
+   * @swagger
+   * /api/admin/tickets/{id}/reply:
+   *   post:
+   *     summary: Reply to ticket
+   *     tags: [Tickets - Admin]
+   *     security:
+   *       - cookieAuth: []
+   *     responses:
+   *       200:
+   *         description: Reply added
+   */
   reply: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = String(req.params.id || "");
@@ -145,17 +218,16 @@ export const adminTicketController = {
         return res.status(400).json({ success: false, message: "Reply text required" });
       }
 
-      // Save reply
       const updated: any = await ticketService.addAdminReply(id, text);
       if (!updated) {
         return res.status(404).json({ success: false, message: "Ticket not found" });
       }
 
-      // Fresh ticket to get customer
-      const fresh: any = await Ticket.findById(id).select("customer customerEmail ticketCode").lean();
+      const fresh: any = await Ticket.findById(id)
+        .select("customer customerEmail ticketCode")
+        .lean();
       const customerId = await resolveCustomerIdFromTicket(fresh);
 
-      // Create notification
       if (customerId) {
         try {
           await notificationService.create({

@@ -1,19 +1,19 @@
 // server/src/modules/orders/routes/order.routes.ts
-
 import { Router } from "express";
 import {
   customerAuthMiddleware,
   adminAuthMiddleware,
   authorize,
-  anyAuthMiddleware, // ✅ NEW
+  anyAuthMiddleware,
 } from "../../auth/middleware/auth.middleware";
+import { authorizePermission } from "../../auth/middleware/permission.middleware";
 import { orderController } from "../controllers/order.controller";
 
 const publicRouter = Router();
 const adminRouter = Router();
 
 /* ------------------------------------------------------------------
- * ✅ PUBLIC (Customer) Endpoints
+ * PUBLIC (Customer) Endpoints
  * ------------------------------------------------------------------*/
 
 /**
@@ -137,16 +137,33 @@ publicRouter.get(
 publicRouter.get("/track/:code", orderController.track);
 
 /**
- * ✅ NEW: Download Invoice PDF (Admin OR Customer)
- * GET /api/orders/:id/invoice
- *
- * - Admin can download any order invoice
- * - Customer can download only their own invoice
+ * @swagger
+ * /api/orders/{id}/invoice:
+ *   get:
+ *     summary: Download invoice PDF (customer own order or admin any order)
+ *     tags: [Orders - Public]
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Invoice PDF
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Order not found
  */
 publicRouter.get("/:id/invoice", anyAuthMiddleware, orderController.downloadInvoice);
 
 /* ------------------------------------------------------------------
- * ✅ ADMIN Endpoints
+ * ADMIN Endpoints
  * ------------------------------------------------------------------*/
 
 /**
@@ -169,7 +186,7 @@ publicRouter.get("/:id/invoice", anyAuthMiddleware, orderController.downloadInvo
  *         name: search
  *         schema:
  *           type: string
- *         description: "Search by orderCode or customer name/email"
+ *         description: Search by orderCode or customer name/email
  *       - in: query
  *         name: customerId
  *         schema:
@@ -192,6 +209,7 @@ adminRouter.get(
   "/",
   adminAuthMiddleware,
   authorize("admin", "superadmin"),
+  authorizePermission("orderView"),
   orderController.list
 );
 
@@ -221,6 +239,7 @@ adminRouter.get(
   "/:id",
   adminAuthMiddleware,
   authorize("admin", "superadmin"),
+  authorizePermission("orderView"),
   orderController.getOne
 );
 
@@ -261,6 +280,7 @@ adminRouter.patch(
   "/:id",
   adminAuthMiddleware,
   authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
   orderController.update
 );
 

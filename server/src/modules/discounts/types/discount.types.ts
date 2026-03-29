@@ -1,10 +1,11 @@
+// server/src/modules/discounts/types/discount.types.ts
 export type ValidateCartItem = {
   productId: string;
   qty: number;
 };
 
 export type ValidateRequestBody = {
-  couponCode?: string;        // optional: validate a specific coupon
-  items: ValidateCartItem[];  // cart items
-  shippingPaisa?: number;     // optional
+  couponCode?: string;
+  items: ValidateCartItem[];
+  shippingPaisa?: number;
 };

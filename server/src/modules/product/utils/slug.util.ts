@@ -1,3 +1,4 @@
+//modules/auth/product/utils/slug.util.ts
 // Helper to generate a URL-friendly slug from a product name
 export const generateProductSlug = (name: string): string => {
   return name

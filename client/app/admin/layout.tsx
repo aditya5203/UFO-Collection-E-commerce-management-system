@@ -1,3 +1,4 @@
+// client/app/admin/layout.tsx
 "use client";
 
 import AdminSidebar from "./_components/AdminSidebar";
@@ -10,12 +11,10 @@ export default function AdminLayout({
 }) {
   return (
     <div className="admin-shell">
-      {/* ✅ Fixed Sidebar */}
       <aside className="admin-sidebar-fixed">
         <AdminSidebar />
       </aside>
 
-      {/* ✅ Main Content Scrolls */}
       <main className="admin-main">{children}</main>
 
       <style jsx global>{`
@@ -24,7 +23,6 @@ export default function AdminLayout({
           --admin-bg: #0b1220;
         }
 
-        /* ===== Shell ===== */
         .admin-shell {
           height: 100vh;
           background: var(--admin-bg);
@@ -33,7 +31,6 @@ export default function AdminLayout({
             sans-serif;
         }
 
-        /* ===== Fixed Sidebar ===== */
         .admin-sidebar-fixed {
           position: fixed;
           top: 0;
@@ -46,7 +43,6 @@ export default function AdminLayout({
           overflow: hidden;
         }
 
-        /* ===== Main Content ===== */
         .admin-main {
           height: 100vh;
           margin-left: var(--admin-sidebar-w);
@@ -55,7 +51,6 @@ export default function AdminLayout({
           overflow-x: hidden;
         }
 
-        /* ===== Sidebar Inner Layout ===== */
         .admin-sidebar {
           width: 100%;
           height: 100%;
@@ -63,7 +58,7 @@ export default function AdminLayout({
           display: flex;
           flex-direction: column;
           gap: 20px;
-          min-height: 0; /* IMPORTANT */
+          min-height: 0;
         }
 
         .sidebar-brand {
@@ -73,29 +68,24 @@ export default function AdminLayout({
           color: #f8fafc;
         }
 
-        /* Allow nav area to grow */
         .admin-sidebar nav {
           flex: 1;
           min-height: 0;
         }
 
-        /* ===== Scrollable Menu ===== */
         .admin-nav {
           list-style: none;
           padding: 0;
           margin: 0;
-
           display: flex;
           flex-direction: column;
           gap: 6px;
-
           height: 100%;
           overflow-y: auto;
           min-height: 0;
           padding-right: 6px;
         }
 
-        /* Scrollbar Styling */
         .admin-nav::-webkit-scrollbar {
           width: 6px;
         }
@@ -104,7 +94,6 @@ export default function AdminLayout({
           border-radius: 999px;
         }
 
-        /* ===== Nav Links ===== */
         .admin-nav-link {
           display: flex;
           align-items: center;
@@ -134,14 +123,12 @@ export default function AdminLayout({
           justify-content: center;
         }
 
-        /* ===== Footer / Logout ===== */
         .sidebar-foot {
           margin-top: auto;
           font-size: 11px;
           color: #6b7280;
         }
 
-        /* ===== Mobile Layout ===== */
         @media (max-width: 900px) {
           .admin-sidebar-fixed {
             position: sticky;

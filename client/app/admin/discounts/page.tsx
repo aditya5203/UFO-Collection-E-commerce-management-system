@@ -2,6 +2,13 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import AdminPageGuard from "../_components/AdminPageGuard";
+import {
+  AdminPermissions,
+  AdminSettingsResponse,
+  hasPermission,
+  normalizeAdminPermissions,
+} from "../_components/adminPermissions";
 
 type CouponType = "PERCENT" | "FLAT" | "FREESHIP";
 type CouponScope = "ALL" | "CATEGORY" | "PRODUCT";
@@ -35,6 +42,43 @@ type CollectedRow = {
   coupon: { id: string; code: string; title: string; type: CouponType };
 };
 
+type FormState = {
+  id?: string;
+  code: string;
+  title: string;
+  description: string;
+  type: CouponType;
+  scope: CouponScope;
+  value: number;
+  maxDiscountCap: number | null;
+  minOrder: number | null;
+  startAt: string;
+  endAt: string;
+  globalUsageLimit: number | null;
+  maxUsesPerUser: number | null;
+  status: CouponStatus;
+};
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API_BASE = `${API_BASE_URL}/api`;
+
+const emptyForm: FormState = {
+  code: "",
+  title: "Discount",
+  description: "",
+  type: "PERCENT",
+  scope: "ALL",
+  value: 10,
+  maxDiscountCap: 500,
+  minOrder: 1000,
+  startAt: "",
+  endAt: "",
+  globalUsageLimit: null,
+  maxUsesPerUser: 1,
+  status: "ACTIVE",
+};
+
 function formatDate(d?: string | null) {
   if (!d) return "—";
   try {
@@ -54,18 +98,21 @@ function moneyLabelRs(v?: number | null) {
 function statusPill(status: CouponStatus) {
   const base =
     "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1";
-  if (status === "ACTIVE")
+  if (status === "ACTIVE") {
     return `${base} bg-emerald-500/10 text-emerald-300 ring-emerald-500/20`;
+  }
   return `${base} bg-amber-500/10 text-amber-300 ring-amber-500/20`;
 }
 
 function collectedPill(status: CollectedRow["status"]) {
   const base =
     "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1";
-  if (status === "USED")
+  if (status === "USED") {
     return `${base} bg-emerald-500/10 text-emerald-300 ring-emerald-500/20`;
-  if (status === "EXPIRED")
+  }
+  if (status === "EXPIRED") {
     return `${base} bg-rose-500/10 text-rose-300 ring-rose-500/20`;
+  }
   return `${base} bg-sky-500/10 text-sky-300 ring-sky-500/20`;
 }
 
@@ -81,7 +128,14 @@ function scopeLabel(s: CouponScope) {
   return "Product";
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return { raw: text };
+  }
+}
 
 async function apiFetch(path: string, opts: RequestInit = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -91,65 +145,74 @@ async function apiFetch(path: string, opts: RequestInit = {}) {
       "Content-Type": "application/json",
       ...(opts.headers || {}),
     },
+    cache: "no-store",
   });
 
-  const data = await res.json().catch(() => ({}));
+  const data = await safeJson(res);
   if (!res.ok) {
-    throw new Error(data?.message || "Request failed");
+    throw new Error((data as any)?.message || "Request failed");
   }
   return data;
 }
 
-type FormState = {
-  id?: string; // for edit
-  code: string;
-  title: string;
-  description: string;
-  type: CouponType;
-  scope: CouponScope;
-  value: number;
-  maxDiscountCap: number | null;
-  minOrder: number | null;
-  startAt: string; // yyyy-mm-dd
-  endAt: string; // yyyy-mm-dd
-  globalUsageLimit: number | null;
-  maxUsesPerUser: number | null;
-  status: CouponStatus;
-};
-
-const emptyForm: FormState = {
-  code: "",
-  title: "Discount",
-  description: "",
-  type: "PERCENT",
-  scope: "ALL",
-  value: 10,
-  maxDiscountCap: 500,
-  minOrder: 1000,
-  startAt: "",
-  endAt: "",
-  globalUsageLimit: null,
-  maxUsesPerUser: 1,
-  status: "ACTIVE",
-};
-
 export default function AdminDiscountsPage() {
   const [tab, setTab] = useState<"coupons" | "collected">("coupons");
-
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<CouponRow[]>([]);
   const [collected, setCollected] = useState<CollectedRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // filters
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | CouponStatus>("ALL");
   const [typeFilter, setTypeFilter] = useState<"ALL" | CouponType>("ALL");
 
-  // modal
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
+
+  const [role, setRole] = useState<"admin" | "superadmin">("admin");
+  const [permissions, setPermissions] = useState<AdminPermissions | null>(null);
+
+  const canCreate = hasPermission(role, permissions, "discountCreate");
+  const canEdit = hasPermission(role, permissions, "discountEdit");
+  const canDelete = hasPermission(role, permissions, "discountDelete");
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadAdminProfile = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/admin/settings`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!res.ok) return;
+
+        const body = (await safeJson(res)) as AdminSettingsResponse;
+        const nextRole = (body?.profile?.role || "admin") as
+          | "admin"
+          | "superadmin";
+        const nextPermissions = normalizeAdminPermissions(
+          nextRole,
+          body?.profile?.permissions
+        );
+
+        if (!mounted) return;
+        setRole(nextRole);
+        setPermissions(nextPermissions);
+      } catch {
+        // ignore
+      }
+    };
+
+    loadAdminProfile();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const stats = useMemo(() => {
     const active = rows.filter((r) => r.status === "ACTIVE").length;
@@ -177,7 +240,7 @@ export default function AdminDiscountsPage() {
     setError(null);
     try {
       const res = await apiFetch("/admin/discounts");
-      setRows(Array.isArray(res?.data) ? res.data : []);
+      setRows(Array.isArray((res as any)?.data) ? (res as any).data : []);
     } catch (e: any) {
       setError(e?.message || "Failed to load coupons");
     } finally {
@@ -190,7 +253,7 @@ export default function AdminDiscountsPage() {
     setError(null);
     try {
       const res = await apiFetch("/admin/discounts/collected/list");
-      setCollected(Array.isArray(res?.data) ? res.data : []);
+      setCollected(Array.isArray((res as any)?.data) ? (res as any).data : []);
     } catch (e: any) {
       setError(e?.message || "Failed to load collected list");
     } finally {
@@ -206,12 +269,40 @@ export default function AdminDiscountsPage() {
     if (tab === "collected") loadCollected();
   }, [tab]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !saving) {
+        setOpen(false);
+      }
+    };
+
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open, saving]);
+
   function openCreate() {
+    if (!canCreate) {
+      setError("You do not have permission to create coupons.");
+      return;
+    }
     setForm(emptyForm);
     setOpen(true);
   }
 
   function openEdit(row: CouponRow) {
+    if (!canEdit) {
+      setError("You do not have permission to edit coupons.");
+      return;
+    }
+
     setForm({
       id: row.id,
       code: row.code || "",
@@ -257,33 +348,42 @@ export default function AdminDiscountsPage() {
       eligibleProductIds: [],
     };
 
-    // FREESHIP: value not necessary
     if (payload.type === "FREESHIP") payload.value = 0;
-
-    // FLAT: cap doesn't matter
     if (payload.type !== "PERCENT") payload.maxDiscountCap = null;
 
     return payload;
   }
 
   async function saveCoupon() {
+    if (form.id && !canEdit) {
+      setError("You do not have permission to edit coupons.");
+      return;
+    }
+    if (!form.id && !canCreate) {
+      setError("You do not have permission to create coupons.");
+      return;
+    }
+
     const code = String(form.code || "").trim().toUpperCase();
     if (!code) return setError("Coupon code is required");
-    if (!/^[A-Z0-9_-]{3,20}$/.test(code))
+    if (!/^[A-Z0-9_-]{3,20}$/.test(code)) {
       return setError("Code must be 3–20 chars (A-Z, 0-9, _ or -)");
-
+    }
     if (!String(form.title || "").trim()) return setError("Title is required");
 
     if (form.type === "PERCENT") {
-      if (form.value < 1 || form.value > 100)
+      if (form.value < 1 || form.value > 100) {
         return setError("Percent must be between 1 and 100");
+      }
     }
+
     if (form.type === "FLAT") {
       if (form.value <= 0) return setError("Flat discount must be > 0");
     }
 
     setSaving(true);
     setError(null);
+
     try {
       const payload = normalizePayload(form);
 
@@ -309,8 +409,14 @@ export default function AdminDiscountsPage() {
   }
 
   async function deleteCoupon(id: string) {
+    if (!canDelete) {
+      setError("You do not have permission to delete coupons.");
+      return;
+    }
+
     if (!confirm("Delete this coupon?")) return;
     setError(null);
+
     try {
       await apiFetch(`/admin/discounts/${id}`, { method: "DELETE" });
       await loadCoupons();
@@ -320,8 +426,14 @@ export default function AdminDiscountsPage() {
   }
 
   async function toggleStatus(row: CouponRow) {
+    if (!canEdit) {
+      setError("You do not have permission to edit coupons.");
+      return;
+    }
+
     const next: CouponStatus = row.status === "ACTIVE" ? "PAUSED" : "ACTIVE";
     setError(null);
+
     try {
       await apiFetch(`/admin/discounts/${row.id}`, {
         method: "PATCH",
@@ -334,219 +446,360 @@ export default function AdminDiscountsPage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-40px)] text-slate-100">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Discounts</h1>
-          <p className="mt-1 text-sm text-slate-400">
-            Create and manage coupon codes. Customers can collect and use them at checkout.
-          </p>
-        </div>
+    <AdminPageGuard permission="discountView">
+      <div className="min-h-[calc(100vh-40px)] text-slate-100">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Discounts</h1>
+            <p className="mt-1 text-sm text-slate-400">
+              Create and manage coupon codes. Customers can collect and use them
+              at checkout.
+            </p>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setTab("coupons")}
-            className={`rounded-xl px-3 py-2 text-sm font-medium ring-1 transition ${
-              tab === "coupons"
-                ? "bg-slate-800 ring-slate-700"
-                : "bg-transparent text-slate-300 ring-slate-800 hover:bg-slate-900"
-            }`}
-          >
-            Coupons
-          </button>
-          <button
-            onClick={() => setTab("collected")}
-            className={`rounded-xl px-3 py-2 text-sm font-medium ring-1 transition ${
-              tab === "collected"
-                ? "bg-slate-800 ring-slate-700"
-                : "bg-transparent text-slate-300 ring-slate-800 hover:bg-slate-900"
-            }`}
-          >
-            Collected
-          </button>
-
-          {tab === "coupons" && (
+          <div className="flex items-center gap-2">
             <button
-              onClick={openCreate}
-              className="ml-2 rounded-xl bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-200 ring-1 ring-emerald-500/25 hover:bg-emerald-500/20"
+              onClick={() => setTab("coupons")}
+              className={`rounded-xl px-3 py-2 text-sm font-medium ring-1 transition ${
+                tab === "coupons"
+                  ? "bg-slate-800 ring-slate-700"
+                  : "bg-transparent text-slate-300 ring-slate-800 hover:bg-slate-900"
+              }`}
             >
-              + Create Coupon
+              Coupons
             </button>
-          )}
-        </div>
-      </div>
 
-      {/* Error */}
-      {error && (
-        <div className="mt-4 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
-          {error}
-        </div>
-      )}
+            <button
+              onClick={() => setTab("collected")}
+              className={`rounded-xl px-3 py-2 text-sm font-medium ring-1 transition ${
+                tab === "collected"
+                  ? "bg-slate-800 ring-slate-700"
+                  : "bg-transparent text-slate-300 ring-slate-800 hover:bg-slate-900"
+              }`}
+            >
+              Collected
+            </button>
 
-      {/* Stats */}
-      {tab === "coupons" && (
-        <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
-            <p className="text-xs text-slate-400">Total Coupons</p>
-            <p className="mt-2 text-2xl font-semibold">{stats.total}</p>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
-            <p className="text-xs text-slate-400">Active</p>
-            <p className="mt-2 text-2xl font-semibold text-emerald-200">
-              {stats.active}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
-            <p className="text-xs text-slate-400">Paused</p>
-            <p className="mt-2 text-2xl font-semibold text-amber-200">
-              {stats.paused}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
-            <p className="text-xs text-slate-400">Used Count (Total)</p>
-            <p className="mt-2 text-2xl font-semibold">{stats.usedTotal}</p>
+            {tab === "coupons" && canCreate ? (
+              <button
+                onClick={openCreate}
+                className="ml-2 rounded-xl bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-200 ring-1 ring-emerald-500/25 hover:bg-emerald-500/20"
+              >
+                + Create Coupon
+              </button>
+            ) : null}
           </div>
         </div>
-      )}
 
-      {/* Content */}
-      <div className="mt-6">
-        {tab === "coupons" ? (
-          <>
-            {/* Filters */}
-            <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/40 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="relative w-full sm:max-w-sm">
-                  <input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search by code or title..."
-                    className="w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-slate-700"
-                  />
+        {error && (
+          <div className="mt-4 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+            {error}
+          </div>
+        )}
+
+        {tab === "coupons" && (
+          <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs text-slate-400">Total Coupons</p>
+              <p className="mt-2 text-2xl font-semibold">{stats.total}</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs text-slate-400">Active</p>
+              <p className="mt-2 text-2xl font-semibold text-emerald-200">
+                {stats.active}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs text-slate-400">Paused</p>
+              <p className="mt-2 text-2xl font-semibold text-amber-200">
+                {stats.paused}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+              <p className="text-xs text-slate-400">Used Count (Total)</p>
+              <p className="mt-2 text-2xl font-semibold">{stats.usedTotal}</p>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6">
+          {tab === "coupons" ? (
+            <>
+              <div className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+                  <div className="relative w-full sm:max-w-sm">
+                    <label htmlFor="coupon-search" className="sr-only">
+                      Search coupons
+                    </label>
+                    <input
+                      id="coupon-search"
+                      value={q}
+                      onChange={(e) => setQ(e.target.value)}
+                      placeholder="Search by code or title..."
+                      className="w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-slate-700"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <div>
+                      <label htmlFor="coupon-status-filter" className="sr-only">
+                        Filter by status
+                      </label>
+                      <select
+                        id="coupon-status-filter"
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as any)}
+                        className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-700"
+                      >
+                        <option value="ALL">All status</option>
+                        <option value="ACTIVE">Active</option>
+                        <option value="PAUSED">Paused</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="coupon-type-filter" className="sr-only">
+                        Filter by type
+                      </label>
+                      <select
+                        id="coupon-type-filter"
+                        value={typeFilter}
+                        onChange={(e) => setTypeFilter(e.target.value as any)}
+                        className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-700"
+                      >
+                        <option value="ALL">All types</option>
+                        <option value="PERCENT">Percent</option>
+                        <option value="FLAT">Flat</option>
+                        <option value="FREESHIP">Free Ship</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="flex gap-2">
-                  <select
-                    value={statusFilter}
-                    onChange={(e) =>
-                      setStatusFilter(e.target.value as any)
-                    }
-                    className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-700"
+                  <button
+                    onClick={loadCoupons}
+                    className="rounded-xl border border-slate-800 bg-slate-900/30 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/50"
                   >
-                    <option value="ALL">All status</option>
-                    <option value="ACTIVE">Active</option>
-                    <option value="PAUSED">Paused</option>
-                  </select>
-
-                  <select
-                    value={typeFilter}
-                    onChange={(e) => setTypeFilter(e.target.value as any)}
-                    className="rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm text-slate-100 outline-none focus:border-slate-700"
-                  >
-                    <option value="ALL">All types</option>
-                    <option value="PERCENT">Percent</option>
-                    <option value="FLAT">Flat</option>
-                    <option value="FREESHIP">Free Ship</option>
-                  </select>
+                    Refresh
+                  </button>
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/40">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px] border-collapse">
+                    <thead className="bg-slate-900/40">
+                      <tr className="text-left text-xs uppercase tracking-wider text-slate-400">
+                        <th className="px-4 py-3">Code</th>
+                        <th className="px-4 py-3">Title</th>
+                        <th className="px-4 py-3">Type</th>
+                        <th className="px-4 py-3">Scope</th>
+                        <th className="px-4 py-3">Min Order</th>
+                        <th className="px-4 py-3">Validity</th>
+                        <th className="px-4 py-3">Used</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-slate-800/70">
+                      {loading ? (
+                        <tr>
+                          <td
+                            className="px-4 py-8 text-sm text-slate-400"
+                            colSpan={9}
+                          >
+                            Loading...
+                          </td>
+                        </tr>
+                      ) : filteredRows.length === 0 ? (
+                        <tr>
+                          <td
+                            className="px-4 py-8 text-sm text-slate-400"
+                            colSpan={9}
+                          >
+                            No coupons found.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredRows.map((r) => (
+                          <tr key={r.id} className="text-sm text-slate-200">
+                            <td className="px-4 py-3">
+                              <div className="font-semibold">{r.code}</div>
+                              <div className="mt-0.5 text-xs text-slate-500">
+                                {r.globalUsageLimit
+                                  ? `Limit ${r.usedCount}/${r.globalUsageLimit}`
+                                  : `Used ${r.usedCount}`}
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3">
+                              <div className="font-medium">{r.title}</div>
+                            </td>
+
+                            <td className="px-4 py-3 text-slate-300">
+                              {typeLabel(r.type, r.value, r.maxDiscountCap)}
+                            </td>
+
+                            <td className="px-4 py-3 text-slate-300">
+                              {scopeLabel(r.scope)}
+                            </td>
+
+                            <td className="px-4 py-3 text-slate-300">
+                              {moneyLabelRs(r.minOrder)}
+                            </td>
+
+                            <td className="px-4 py-3 text-slate-300">
+                              <div className="text-xs">
+                                {formatDate(r.startAt)} – {formatDate(r.endAt)}
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-3 text-slate-300">
+                              {r.usedCount ?? 0}
+                            </td>
+
+                            <td className="px-4 py-3">
+                              <span className={statusPill(r.status)}>
+                                {r.status}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3">
+                              <div className="flex justify-end gap-2">
+                                {canEdit ? (
+                                  <button
+                                    onClick={() => openEdit(r)}
+                                    className="rounded-lg border border-slate-800 bg-slate-900/30 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-900/50"
+                                  >
+                                    Edit
+                                  </button>
+                                ) : null}
+
+                                {canEdit ? (
+                                  <button
+                                    onClick={() => toggleStatus(r)}
+                                    className="rounded-lg border border-slate-800 bg-slate-900/30 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-900/50"
+                                  >
+                                    {r.status === "ACTIVE" ? "Pause" : "Activate"}
+                                  </button>
+                                ) : null}
+
+                                {canDelete ? (
+                                  <button
+                                    onClick={() => deleteCoupon(r.id)}
+                                    className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs text-rose-200 hover:bg-rose-500/15"
+                                  >
+                                    Delete
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/40">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-800/70 px-4 py-3">
+                <div>
+                  <h2 className="text-sm font-semibold">Collected Coupons</h2>
+                  <p className="text-xs text-slate-400">
+                    Track which users collected and used coupons.
+                  </p>
+                </div>
+
                 <button
-                  onClick={loadCoupons}
+                  onClick={loadCollected}
                   className="rounded-xl border border-slate-800 bg-slate-900/30 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/50"
                 >
                   Refresh
                 </button>
               </div>
-            </div>
 
-            {/* Table */}
-            <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/40">
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[980px] border-collapse">
                   <thead className="bg-slate-900/40">
                     <tr className="text-left text-xs uppercase tracking-wider text-slate-400">
-                      <th className="px-4 py-3">Code</th>
-                      <th className="px-4 py-3">Title</th>
-                      <th className="px-4 py-3">Type</th>
-                      <th className="px-4 py-3">Scope</th>
-                      <th className="px-4 py-3">Min Order</th>
-                      <th className="px-4 py-3">Validity</th>
-                      <th className="px-4 py-3">Used</th>
+                      <th className="px-4 py-3">User</th>
+                      <th className="px-4 py-3">Coupon</th>
                       <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
+                      <th className="px-4 py-3">Collected</th>
+                      <th className="px-4 py-3">Used</th>
+                      <th className="px-4 py-3">Order</th>
                     </tr>
                   </thead>
+
                   <tbody className="divide-y divide-slate-800/70">
                     {loading ? (
                       <tr>
-                        <td className="px-4 py-8 text-sm text-slate-400" colSpan={9}>
+                        <td
+                          className="px-4 py-8 text-sm text-slate-400"
+                          colSpan={6}
+                        >
                           Loading...
                         </td>
                       </tr>
-                    ) : filteredRows.length === 0 ? (
+                    ) : collected.length === 0 ? (
                       <tr>
-                        <td className="px-4 py-8 text-sm text-slate-400" colSpan={9}>
-                          No coupons found.
+                        <td
+                          className="px-4 py-8 text-sm text-slate-400"
+                          colSpan={6}
+                        >
+                          No collected coupons yet.
                         </td>
                       </tr>
                     ) : (
-                      filteredRows.map((r) => (
+                      collected.map((r) => (
                         <tr key={r.id} className="text-sm text-slate-200">
                           <td className="px-4 py-3">
-                            <div className="font-semibold">{r.code}</div>
-                            <div className="mt-0.5 text-xs text-slate-500">
-                              {r.globalUsageLimit
-                                ? `Limit ${r.usedCount}/${r.globalUsageLimit}`
-                                : `Used ${r.usedCount}`}
+                            <div className="font-medium">
+                              {r.user?.name || "—"}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {r.user?.email || ""}
                             </div>
                           </td>
+
                           <td className="px-4 py-3">
-                            <div className="font-medium">{r.title}</div>
-                          </td>
-                          <td className="px-4 py-3 text-slate-300">
-                            {typeLabel(r.type, r.value, r.maxDiscountCap)}
-                          </td>
-                          <td className="px-4 py-3 text-slate-300">
-                            {scopeLabel(r.scope)}
-                          </td>
-                          <td className="px-4 py-3 text-slate-300">
-                            {moneyLabelRs(r.minOrder)}
-                          </td>
-                          <td className="px-4 py-3 text-slate-300">
-                            <div className="text-xs">
-                              {formatDate(r.startAt)} – {formatDate(r.endAt)}
+                            <div className="font-semibold">
+                              {r.coupon?.code || "—"}
+                            </div>
+                            <div className="text-xs text-slate-500">
+                              {r.coupon?.title || ""}
                             </div>
                           </td>
+
+                          <td className="px-4 py-3">
+                            <span className={collectedPill(r.status)}>
+                              {r.status}
+                            </span>
+                          </td>
+
                           <td className="px-4 py-3 text-slate-300">
-                            {r.usedCount ?? 0}
+                            {formatDate(r.collectedAt)}
                           </td>
-                          <td className="px-4 py-3">
-                            <span className={statusPill(r.status)}>{r.status}</span>
+
+                          <td className="px-4 py-3 text-slate-300">
+                            {formatDate(r.usedAt)}
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() => openEdit(r)}
-                                className="rounded-lg border border-slate-800 bg-slate-900/30 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-900/50"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => toggleStatus(r)}
-                                className="rounded-lg border border-slate-800 bg-slate-900/30 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-900/50"
-                              >
-                                {r.status === "ACTIVE" ? "Pause" : "Activate"}
-                              </button>
-                              <button
-                                onClick={() => deleteCoupon(r.id)}
-                                className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-1.5 text-xs text-rose-200 hover:bg-rose-500/15"
-                              >
-                                Delete
-                              </button>
-                            </div>
+
+                          <td className="px-4 py-3 text-slate-300">
+                            {r.orderId ? (
+                              <span className="rounded-md border border-slate-800 bg-slate-900/30 px-2 py-1 text-xs">
+                                {r.orderId}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
                           </td>
                         </tr>
                       ))
@@ -555,330 +808,387 @@ export default function AdminDiscountsPage() {
                 </table>
               </div>
             </div>
-          </>
-        ) : (
-          // Collected tab
-          <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/40">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-800/70 px-4 py-3">
-              <div>
-                <h2 className="text-sm font-semibold">Collected Coupons</h2>
-                <p className="text-xs text-slate-400">
-                  Track which users collected and used coupons.
-                </p>
-              </div>
-              <button
-                onClick={loadCollected}
-                className="rounded-xl border border-slate-800 bg-slate-900/30 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/50"
-              >
-                Refresh
-              </button>
-            </div>
+          )}
+        </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] border-collapse">
-                <thead className="bg-slate-900/40">
-                  <tr className="text-left text-xs uppercase tracking-wider text-slate-400">
-                    <th className="px-4 py-3">User</th>
-                    <th className="px-4 py-3">Coupon</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Collected</th>
-                    <th className="px-4 py-3">Used</th>
-                    <th className="px-4 py-3">Order</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/70">
-                  {loading ? (
-                    <tr>
-                      <td className="px-4 py-8 text-sm text-slate-400" colSpan={6}>
-                        Loading...
-                      </td>
-                    </tr>
-                  ) : collected.length === 0 ? (
-                    <tr>
-                      <td className="px-4 py-8 text-sm text-slate-400" colSpan={6}>
-                        No collected coupons yet.
-                      </td>
-                    </tr>
-                  ) : (
-                    collected.map((r) => (
-                      <tr key={r.id} className="text-sm text-slate-200">
-                        <td className="px-4 py-3">
-                          <div className="font-medium">{r.user?.name || "—"}</div>
-                          <div className="text-xs text-slate-500">{r.user?.email || ""}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="font-semibold">{r.coupon?.code || "—"}</div>
-                          <div className="text-xs text-slate-500">{r.coupon?.title || ""}</div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={collectedPill(r.status)}>{r.status}</span>
-                        </td>
-                        <td className="px-4 py-3 text-slate-300">{formatDate(r.collectedAt)}</td>
-                        <td className="px-4 py-3 text-slate-300">{formatDate(r.usedAt)}</td>
-                        <td className="px-4 py-3 text-slate-300">
-                          {r.orderId ? (
-                            <span className="rounded-md border border-slate-800 bg-slate-900/30 px-2 py-1 text-xs">
-                              {r.orderId}
-                            </span>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+        {open && (
+          <div
+            className="fixed inset-0 z-50 overflow-y-auto bg-black/60 p-4"
+            onClick={closeModal}
+          >
+            <div className="flex min-h-full items-start justify-center py-6">
+              <div
+                className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="coupon-modal-title"
+              >
+                <div className="shrink-0 border-b border-slate-800/70 px-5 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h3
+                        id="coupon-modal-title"
+                        className="text-base font-semibold"
+                      >
+                        {form.id ? "Edit Coupon" : "Create Coupon"}
+                      </h3>
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        Configure discount rules for customers.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={closeModal}
+                      className="rounded-xl border border-slate-800 bg-slate-900/30 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/50"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-5 py-5">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label
+                        htmlFor="coupon-code"
+                        className="text-xs text-slate-400"
+                      >
+                        Code
+                      </label>
+                      <input
+                        id="coupon-code"
+                        value={form.code}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            code: e.target.value.toUpperCase(),
+                          }))
+                        }
+                        disabled={!!form.id}
+                        placeholder="NEWYEAR10"
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700 disabled:opacity-60"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        Use A–Z, 0–9, _ or - (3–20 chars)
+                      </p>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-title"
+                        className="text-xs text-slate-400"
+                      >
+                        Title
+                      </label>
+                      <input
+                        id="coupon-title"
+                        value={form.title}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, title: e.target.value }))
+                        }
+                        placeholder="New Year Sale"
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label
+                        htmlFor="coupon-description"
+                        className="text-xs text-slate-400"
+                      >
+                        Description (optional)
+                      </label>
+                      <input
+                        id="coupon-description"
+                        value={form.description}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            description: e.target.value,
+                          }))
+                        }
+                        placeholder="Extra 10% off on all products"
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-type"
+                        className="text-xs text-slate-400"
+                      >
+                        Type
+                      </label>
+                      <select
+                        id="coupon-type"
+                        value={form.type}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            type: e.target.value as CouponType,
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
+                      >
+                        <option value="PERCENT">Percent</option>
+                        <option value="FLAT">Flat (Rs)</option>
+                        <option value="FREESHIP">Free Shipping</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-scope"
+                        className="text-xs text-slate-400"
+                      >
+                        Scope
+                      </label>
+                      <select
+                        id="coupon-scope"
+                        value={form.scope}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            scope: e.target.value as CouponScope,
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
+                      >
+                        <option value="ALL">All products</option>
+                        <option value="CATEGORY">Specific category</option>
+                        <option value="PRODUCT">Specific product</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-value"
+                        className="text-xs text-slate-400"
+                      >
+                        {form.type === "PERCENT"
+                          ? "Percent (%)"
+                          : form.type === "FLAT"
+                          ? "Flat value (Rs)"
+                          : "Value"}
+                      </label>
+                      <input
+                        id="coupon-value"
+                        type="number"
+                        value={form.value}
+                        disabled={form.type === "FREESHIP"}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            value: Number(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-max-cap"
+                        className="text-xs text-slate-400"
+                      >
+                        Max cap (Rs) (percent only)
+                      </label>
+                      <input
+                        id="coupon-max-cap"
+                        type="number"
+                        value={form.maxDiscountCap ?? ""}
+                        disabled={form.type !== "PERCENT"}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            maxDiscountCap:
+                              e.target.value === ""
+                                ? null
+                                : Number(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700 disabled:opacity-60"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-min-order"
+                        className="text-xs text-slate-400"
+                      >
+                        Min order (Rs)
+                      </label>
+                      <input
+                        id="coupon-min-order"
+                        type="number"
+                        value={form.minOrder ?? ""}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            minOrder:
+                              e.target.value === ""
+                                ? null
+                                : Number(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-per-user-limit"
+                        className="text-xs text-slate-400"
+                      >
+                        Per user limit
+                      </label>
+                      <input
+                        id="coupon-per-user-limit"
+                        type="number"
+                        value={form.maxUsesPerUser ?? ""}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            maxUsesPerUser:
+                              e.target.value === ""
+                                ? null
+                                : Number(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-global-usage-limit"
+                        className="text-xs text-slate-400"
+                      >
+                        Global usage limit
+                      </label>
+                      <input
+                        id="coupon-global-usage-limit"
+                        type="number"
+                        value={form.globalUsageLimit ?? ""}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            globalUsageLimit:
+                              e.target.value === ""
+                                ? null
+                                : Number(e.target.value),
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-start-date"
+                        className="text-xs text-slate-400"
+                      >
+                        Start date
+                      </label>
+                      <input
+                        id="coupon-start-date"
+                        type="date"
+                        value={form.startAt}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, startAt: e.target.value }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-end-date"
+                        className="text-xs text-slate-400"
+                      >
+                        End date
+                      </label>
+                      <input
+                        id="coupon-end-date"
+                        type="date"
+                        value={form.endAt}
+                        onChange={(e) =>
+                          setForm((p) => ({ ...p, endAt: e.target.value }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="coupon-status"
+                        className="text-xs text-slate-400"
+                      >
+                        Status
+                      </label>
+                      <select
+                        id="coupon-status"
+                        value={form.status}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            status: e.target.value as CouponStatus,
+                          }))
+                        }
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
+                      >
+                        <option value="ACTIVE">Active</option>
+                        <option value="PAUSED">Paused</option>
+                      </select>
+                    </div>
+
+                    {form.scope !== "ALL" && (
+                      <div className="rounded-2xl border border-slate-800 bg-slate-900/20 p-4 sm:col-span-2">
+                        <p className="text-sm font-semibold">
+                          Scope selection (next step)
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          You selected{" "}
+                          <span className="font-medium">{form.scope}</span>. In
+                          the next step we will connect category/product pickers
+                          from backend.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="shrink-0 border-t border-slate-800/70 px-5 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs text-slate-500">
+                      Totals are calculated server-side at checkout for safety.
+                    </p>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={closeModal}
+                        disabled={saving}
+                        className="rounded-xl border border-slate-800 bg-slate-900/30 px-4 py-2 text-sm text-slate-200 hover:bg-slate-900/50 disabled:opacity-60"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        onClick={saveCoupon}
+                        disabled={saving}
+                        className="rounded-xl bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-200 ring-1 ring-emerald-500/25 hover:bg-emerald-500/20 disabled:opacity-60"
+                      >
+                        {saving ? "Saving..." : form.id ? "Update" : "Create"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
       </div>
-
-      {/* Modal */}
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-800 bg-slate-950 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800/70 px-5 py-4">
-              <div>
-                <h3 className="text-base font-semibold">
-                  {form.id ? "Edit Coupon" : "Create Coupon"}
-                </h3>
-                <p className="mt-0.5 text-xs text-slate-400">
-                  Configure discount rules for customers.
-                </p>
-              </div>
-              <button
-                onClick={closeModal}
-                className="rounded-xl border border-slate-800 bg-slate-900/30 px-3 py-2 text-sm text-slate-200 hover:bg-slate-900/50"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="grid gap-4 px-5 py-5 sm:grid-cols-2">
-              <div>
-                <label className="text-xs text-slate-400">Code</label>
-                <input
-                  value={form.code}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, code: e.target.value.toUpperCase() }))
-                  }
-                  disabled={!!form.id} // code shouldn't change after create
-                  placeholder="NEWYEAR10"
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700 disabled:opacity-60"
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  Use A–Z, 0–9, _ or - (3–20 chars)
-                </p>
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">Title</label>
-                <input
-                  value={form.title}
-                  onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                  placeholder="New Year Sale"
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="text-xs text-slate-400">Description (optional)</label>
-                <input
-                  value={form.description}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, description: e.target.value }))
-                  }
-                  placeholder="Extra 10% off on all products"
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">Type</label>
-                <select
-                  value={form.type}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, type: e.target.value as CouponType }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
-                >
-                  <option value="PERCENT">Percent</option>
-                  <option value="FLAT">Flat (Rs)</option>
-                  <option value="FREESHIP">Free Shipping</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">Scope</label>
-                <select
-                  value={form.scope}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, scope: e.target.value as CouponScope }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
-                >
-                  <option value="ALL">All products</option>
-                  <option value="CATEGORY">Specific category</option>
-                  <option value="PRODUCT">Specific product</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">
-                  {form.type === "PERCENT"
-                    ? "Percent (%)"
-                    : form.type === "FLAT"
-                    ? "Flat value (Rs)"
-                    : "Value"}
-                </label>
-                <input
-                  type="number"
-                  value={form.value}
-                  disabled={form.type === "FREESHIP"}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, value: Number(e.target.value) }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700 disabled:opacity-60"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">Max cap (Rs) (percent only)</label>
-                <input
-                  type="number"
-                  value={form.maxDiscountCap ?? ""}
-                  disabled={form.type !== "PERCENT"}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      maxDiscountCap:
-                        e.target.value === "" ? null : Number(e.target.value),
-                    }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700 disabled:opacity-60"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">Min order (Rs)</label>
-                <input
-                  type="number"
-                  value={form.minOrder ?? ""}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      minOrder: e.target.value === "" ? null : Number(e.target.value),
-                    }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">Per user limit</label>
-                <input
-                  type="number"
-                  value={form.maxUsesPerUser ?? ""}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      maxUsesPerUser:
-                        e.target.value === "" ? null : Number(e.target.value),
-                    }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">Global usage limit</label>
-                <input
-                  type="number"
-                  value={form.globalUsageLimit ?? ""}
-                  onChange={(e) =>
-                    setForm((p) => ({
-                      ...p,
-                      globalUsageLimit:
-                        e.target.value === "" ? null : Number(e.target.value),
-                    }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">Start date</label>
-                <input
-                  type="date"
-                  value={form.startAt}
-                  onChange={(e) => setForm((p) => ({ ...p, startAt: e.target.value }))}
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">End date</label>
-                <input
-                  type="date"
-                  value={form.endAt}
-                  onChange={(e) => setForm((p) => ({ ...p, endAt: e.target.value }))}
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-400">Status</label>
-                <select
-                  value={form.status}
-                  onChange={(e) =>
-                    setForm((p) => ({ ...p, status: e.target.value as CouponStatus }))
-                  }
-                  className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-900/40 px-3 py-2 text-sm outline-none focus:border-slate-700"
-                >
-                  <option value="ACTIVE">Active</option>
-                  <option value="PAUSED">Paused</option>
-                </select>
-              </div>
-
-              {/* Scope helpers (UI only for now) */}
-              {form.scope !== "ALL" && (
-                <div className="rounded-2xl border border-slate-800 bg-slate-900/20 p-4 sm:col-span-2">
-                  <p className="text-sm font-semibold">
-                    Scope selection (next step)
-                  </p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    You selected <span className="font-medium">{form.scope}</span>.  
-                    In the next step we will connect category/product pickers from backend.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between gap-3 border-t border-slate-800/70 px-5 py-4">
-              <p className="text-xs text-slate-500">
-                Totals are calculated server-side at checkout for safety.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={closeModal}
-                  disabled={saving}
-                  className="rounded-xl border border-slate-800 bg-slate-900/30 px-4 py-2 text-sm text-slate-200 hover:bg-slate-900/50 disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={saveCoupon}
-                  disabled={saving}
-                  className="rounded-xl bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-200 ring-1 ring-emerald-500/25 hover:bg-emerald-500/20 disabled:opacity-60"
-                >
-                  {saving ? "Saving..." : form.id ? "Update" : "Create"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+    </AdminPageGuard>
   );
 }

@@ -9,8 +9,11 @@ import {
   updateCategory,
   deleteCategory,
 } from "../controllers/category.controller";
-
-import { adminAuthMiddleware, authorize } from "../../auth/middleware/auth.middleware";
+import {
+  adminAuthMiddleware,
+  authorize,
+} from "../../auth/middleware/auth.middleware";
+import { authorizePermission } from "../../auth/middleware/permission.middleware";
 
 const publicRouter = Router();
 const adminRouter = Router();
@@ -23,11 +26,11 @@ publicRouter.get("/:id", getPublicCategoryById);
 adminRouter.use(adminAuthMiddleware);
 adminRouter.use(authorize("admin", "superadmin"));
 
-adminRouter.get("/", getCategories);
-adminRouter.post("/", createCategory);
-adminRouter.get("/:id", getCategoryById);
-adminRouter.put("/:id", updateCategory);
-adminRouter.delete("/:id", deleteCategory);
+adminRouter.get("/", authorizePermission("categoryView"), getCategories);
+adminRouter.post("/", authorizePermission("categoryCreate"), createCategory);
+adminRouter.get("/:id", authorizePermission("categoryView"), getCategoryById);
+adminRouter.put("/:id", authorizePermission("categoryEdit"), updateCategory);
+adminRouter.delete("/:id", authorizePermission("categoryDelete"), deleteCategory);
 
 export default {
   publicRouter,

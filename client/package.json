@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@gradio/client": "^2.1.0",
     "@mediapipe/drawing_utils": "^0.3.1675466124",
     "@mediapipe/tasks-vision": "^0.10.32",
     "next": "16.0.3",

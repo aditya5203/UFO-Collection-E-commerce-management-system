@@ -1,3 +1,4 @@
+// server/src/modules/admin/services/dashboard.service.ts
 import { Order } from "../../../models/Order.model";
 import { User } from "../../../models/User.model";
 import { Product } from "../../../models/Product.model";
@@ -25,7 +26,7 @@ export const dashboardService = {
       await Promise.all([
         Order.countDocuments({}),
         User.countDocuments({ role: { $in: ["user", "customer", "buyer"] } }).catch(
-          async () => User.countDocuments({})
+          async () => User.countDocuments({ role: "customer" })
         ),
         Product.countDocuments({ status: "Active" }),
         Order.aggregate([{ $group: { _id: null, total: { $sum: "$totalPaisa" } } }]),

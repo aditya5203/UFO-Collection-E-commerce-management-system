@@ -1,10 +1,28 @@
+// client/app/admin/adminlogin/page.tsx
 "use client";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { AdminPermissions } from "../_components/adminPermissions";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"; // ✅ base only (no /api)
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+
+type AdminLoginResponse = {
+  success?: boolean;
+  message?: string;
+  token?: string;
+  user?: {
+    _id?: string;
+    name?: string;
+    email?: string;
+    role?: "admin" | "superadmin";
+    status?: "active" | "inactive" | "invited";
+    mustChangePassword?: boolean;
+    permissions?: Partial<AdminPermissions>;
+    avatar?: string;
+  };
+};
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -19,7 +37,10 @@ export default function AdminLoginPage() {
     const email = String(formData.get("email") || "").trim();
     const password = String(formData.get("password") || "").trim();
 
-    if (!email || !password) return;
+    if (!email || !password) {
+      setError("Email and password are required");
+      return;
+    }
 
     try {
       setLoading(true);
@@ -27,14 +48,34 @@ export default function AdminLoginPage() {
       const res = await fetch(`${API_BASE}/api/auth/admin/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // ✅ MUST so adminToken cookie stores
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      const data: AdminLoginResponse = await res.json();
 
       if (!res.ok) {
         setError(data?.message || "Invalid admin credentials");
+        return;
+      }
+
+      const user = data?.user;
+      const role = String(user?.role || "").toLowerCase();
+      const status = String(user?.status || "active").toLowerCase();
+      const mustChangePassword = !!user?.mustChangePassword;
+
+      if (role !== "admin" && role !== "superadmin") {
+        setError("Access denied. Admin only.");
+        return;
+      }
+
+      if (status === "inactive") {
+        setError("This admin account is inactive.");
+        return;
+      }
+
+      if (role === "admin" && mustChangePassword) {
+        router.push("/admin/settings?forcePasswordChange=1");
         return;
       }
 
@@ -56,19 +97,20 @@ export default function AdminLoginPage() {
           'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
-      {/* Topbar (same UI/colors) */}
       <header className="flex h-16 items-center border-b border-[#2a223b] bg-[#0b061b] px-[40px]">
         <div className="text-[18px] font-semibold">Admin Panel</div>
       </header>
 
-      {/* Main */}
       <main className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-[40px]">
         <div className="flex w-full max-w-[460px] flex-col items-center rounded-[16px]">
           <h1 className="mb-8 text-center text-[26px] font-semibold">
             Admin Login
           </h1>
 
-          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-[18px]">
+          <form
+            onSubmit={handleSubmit}
+            className="flex w-full flex-col gap-[18px]"
+          >
             <div className="flex flex-col">
               <input
                 className="w-full rounded-[10px] border border-[#3a2b58] bg-[#160d28] px-[16px] py-[14px] text-[14px] text-[#f5f3ff] outline-none placeholder:text-[#7f6caa] focus:border-[#a95cff] focus:shadow-[0_0_0_1px_rgba(169,92,255,0.4)]"

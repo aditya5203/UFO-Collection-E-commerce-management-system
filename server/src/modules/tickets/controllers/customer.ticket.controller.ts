@@ -1,7 +1,7 @@
+// server/src/modules/tickets/controllers/customer.ticket.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { ticketService } from "../services/ticket.service";
 
-// Assumes auth middleware sets req.user
 function getUser(req: Request) {
   return (req as any).user || null;
 }
@@ -16,10 +16,6 @@ function toDateOnly(d: any) {
 }
 
 export const customerTicketController = {
-  // ======================================
-  // CREATE TICKET (NEW - IMPORTANT FIX)
-  // POST /api/tickets/my
-  // ======================================
   create: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = getUser(req);
@@ -27,13 +23,7 @@ export const customerTicketController = {
         return res.status(401).json({ success: false, message: "Unauthorized" });
       }
 
-      const {
-        issueType,
-        subject,
-        message,
-        productId,
-        imageUrl,
-      } = req.body || {};
+      const { issueType, subject, message, productId, imageUrl } = req.body || {};
 
       if (!issueType || !subject || !message) {
         return res.status(400).json({
@@ -43,7 +33,7 @@ export const customerTicketController = {
       }
 
       const created = await ticketService.createTicket({
-        customerId: user.userId, // ✅ STORE OBJECT ID (CRITICAL FIX)
+        customerId: user.userId,
         issueType,
         subject,
         message,
@@ -62,10 +52,6 @@ export const customerTicketController = {
     }
   },
 
-  // ======================================
-  // GET MY TICKETS
-  // GET /api/tickets/my
-  // ======================================
   myList: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = getUser(req);
@@ -87,9 +73,8 @@ export const customerTicketController = {
           submittedAt: toDateOnly(t.createdAt),
           productId: t.productId || null,
           lastReplyAt:
-            (t.replies?.length
-              ? t.replies[t.replies.length - 1]?.createdAt
-              : t.createdAt) || t.createdAt,
+            (t.replies?.length ? t.replies[t.replies.length - 1]?.createdAt : t.createdAt) ||
+            t.createdAt,
         })),
       });
     } catch (e) {
@@ -97,10 +82,6 @@ export const customerTicketController = {
     }
   },
 
-  // ======================================
-  // GET ONE TICKET
-  // GET /api/tickets/my/:id
-  // ======================================
   myOne: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = getUser(req);
@@ -109,15 +90,10 @@ export const customerTicketController = {
       }
 
       const id = String(req.params.id || "");
-      const t: any = await ticketService.getCustomerTicketByIdAndEmail(
-        id,
-        user.email
-      );
+      const t: any = await ticketService.getCustomerTicketByIdAndEmail(id, user.email);
 
       if (!t) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Ticket not found" });
+        return res.status(404).json({ success: false, message: "Ticket not found" });
       }
 
       return res.json({
@@ -145,10 +121,6 @@ export const customerTicketController = {
     }
   },
 
-  // ======================================
-  // CUSTOMER REPLY
-  // POST /api/tickets/my/:id/reply
-  // ======================================
   reply: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = getUser(req);
@@ -160,21 +132,13 @@ export const customerTicketController = {
       const text = String(req.body.text || "").trim();
 
       if (!text) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Reply text required" });
+        return res.status(400).json({ success: false, message: "Reply text required" });
       }
 
-      const updated = await ticketService.addCustomerReply(
-        id,
-        user.email,
-        text
-      );
+      const updated = await ticketService.addCustomerReply(id, user.email, text);
 
       if (!updated) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Ticket not found" });
+        return res.status(404).json({ success: false, message: "Ticket not found" });
       }
 
       return res.json({ success: true, item: updated });

@@ -4,8 +4,6 @@ import React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
-
-// ✅ A) Import the modal at top
 import AITryOnModal from "./AITryOnModal";
 
 type Size = "S" | "M" | "L" | "XL" | "XXL";
@@ -15,27 +13,37 @@ type Product = {
   name: string;
   price: number;
   image: string;
-
   rating?: number;
   reviews?: number;
   shortDesc?: string;
   longDesc?: string;
   sizes?: Size[];
-
   colors?: string[];
 };
 
 type Review = {
-  _id: string;
-  product: string;
-  customer: string;
+  id?: string;
+  _id?: string;
+  product?:
+    | string
+    | {
+        id?: string;
+        _id?: string;
+        name?: string;
+        image?: string;
+      };
+  customer?:
+    | string
+    | {
+        id?: string;
+        _id?: string;
+        name?: string;
+        email?: string;
+      };
   orderCode: string;
-
   rating: number;
   title?: string;
   comment?: string;
-
-  // ✅ kept for DB but NOT shown to customer
   createdAt?: string;
 };
 
@@ -49,11 +57,11 @@ type CartItem = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-
 const DEFAULT_SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
+const PRODUCT_PLACEHOLDER = "/images/products/placeholder.png";
 
 const FIXED_DESCRIPTION =
-  "UFO Collection is an e-commerce website that allows customers to browse and purchase products online with ease. It functions as a digital marketplace where products are organized into well-defined collections, such as clothing and accessories, enabling users to explore items efficiently. Each collection displays product images, names, prices, and brief details to help customers compare options quickly. When a product is selected from a collection, the user is taken to a dedicated product page that provides complete information, including descriptions, available sizes, colors, and pricing. UFO Collection offers a convenient, accessible, and user-friendly shopping experience, allowing customers to shop anytime and from anywhere with global reach..";
+  "UFO Collection is an e-commerce website that allows customers to browse and purchase products online with ease. It functions as a digital marketplace where products are organized into well-defined collections, such as clothing and accessories, enabling users to explore items efficiently. Each collection displays product images, names, prices, and brief details to help customers compare options quickly. When a product is selected from a collection, the user is taken to a dedicated product page that provides complete information, including descriptions, available sizes, colors, and pricing. UFO Collection offers a convenient, accessible, and user-friendly shopping experience, allowing customers to shop anytime and from anywhere with global reach.";
 
 function toNumber(v: any, fallback = 0) {
   if (typeof v === "number") return Number.isFinite(v) ? v : fallback;
@@ -128,15 +136,37 @@ function normalizeColors(raw: any): string[] {
         .map((x) => x.trim())
         .filter(Boolean);
     }
+
     return [value.trim()].filter(Boolean);
   }
 
   return [];
 }
 
-/* ---------------------------
-   ✅ Cart helpers
---------------------------- */
+function getProductImageSrc(image: any): string {
+  const src = typeof image === "string" ? image.trim() : "";
+
+  if (!src) return PRODUCT_PLACEHOLDER;
+
+  if (src.startsWith("http://") || src.startsWith("https://")) {
+    return src;
+  }
+
+  if (src.startsWith("uploads/")) {
+    return `${API_BASE.replace(/\/api$/, "")}/${src}`;
+  }
+
+  if (src.startsWith("/uploads/")) {
+    return `${API_BASE.replace(/\/api$/, "")}${src}`;
+  }
+
+  if (src.startsWith("/images/")) {
+    return src;
+  }
+
+  return PRODUCT_PLACEHOLDER;
+}
+
 function readCart(): CartItem[] {
   try {
     const raw = localStorage.getItem("ufo_cart");
@@ -166,14 +196,10 @@ export default function ProductPage() {
     "description"
   );
 
-  // ✅ Added message + cart badge count
   const [addedMsg, setAddedMsg] = React.useState<string | null>(null);
   const [cartCount, setCartCount] = React.useState<number>(0);
-
-  // ✅ B) Add a state to open/close modal
   const [aiOpen, setAiOpen] = React.useState(false);
 
-  // Reviews state
   const [reviews, setReviews] = React.useState<Review[]>([]);
   const [reviewsLoading, setReviewsLoading] = React.useState(false);
   const [reviewsError, setReviewsError] = React.useState<string | null>(null);
@@ -182,15 +208,12 @@ export default function ProductPage() {
     avgRating: number;
   }>({ count: 0, avgRating: 0 });
 
-  // ✅ init cart count + listen updates
   React.useEffect(() => {
     const update = () => setCartCount(getCartCount());
     update();
 
-    // same tab updates
     window.addEventListener("ufo_cart_updated", update);
 
-    // other tab updates
     const onStorage = (e: StorageEvent) => {
       if (e.key === "ufo_cart") update();
     };
@@ -202,7 +225,6 @@ export default function ProductPage() {
     };
   }, []);
 
-  // -------- Fetch product by id --------
   React.useEffect(() => {
     const fetchProduct = async () => {
       try {
@@ -215,26 +237,26 @@ export default function ProductPage() {
           cache: "no-store",
         });
 
-        const raw = await res.json().catch(() => ({} as any));
+        const response = await res.json().catch(() => ({} as any));
+
         if (!res.ok) {
           throw new Error(
-            raw?.message || `Failed to load product (status ${res.status})`
+            response?.message || `Failed to load product (status ${res.status})`
           );
         }
+
+        const raw = response?.data ?? response;
 
         const mapped: Product = {
           id: String(raw.id || raw._id || id),
           name: toStr(raw.name, "Unnamed Product"),
           price: toNumber(raw.price, 0),
-          image: toStr(raw.image, "/product-boy-main.png"),
-
+          image: getProductImageSrc(raw.image),
           rating: toNumber(raw.rating, 4.8),
           reviews: toNumber(raw.reviews, 0),
-
           shortDesc: toStr(raw.shortDesc, toStr(raw.description, "")),
           longDesc: toStr(raw.longDesc, toStr(raw.description, "")),
           sizes: normalizeSizes(raw.sizes),
-
           colors: normalizeColors(raw),
         };
 
@@ -254,7 +276,6 @@ export default function ProductPage() {
     fetchProduct();
   }, [id]);
 
-  // -------- Fetch reviews when Reviews tab opens --------
   React.useEffect(() => {
     if (!product?.id) return;
     if (activeTab !== "reviews") return;
@@ -271,10 +292,28 @@ export default function ProductPage() {
         const data = await res.json().catch(() => ({} as any));
         if (!res.ok) throw new Error(data?.message || "Failed to load reviews");
 
-        setReviews(Array.isArray(data?.reviews) ? data.reviews : []);
+        const rawReviews = Array.isArray(data?.reviews) ? data.reviews : [];
+
+        const mapped: Review[] = rawReviews.map((r: any) => ({
+          id: r.id || r._id || "",
+          _id: r._id || r.id || "",
+          product: r.product ?? null,
+          customer: r.customer ?? null,
+          orderCode: r.orderCode || "",
+          rating: Number(r.rating || 0),
+          title: typeof r.title === "string" ? r.title : "",
+          comment: typeof r.comment === "string" ? r.comment : "",
+          createdAt: r.createdAt,
+        }));
+
+        setReviews(mapped);
+
         setReviewSummary(
           data?.summary && typeof data.summary === "object"
-            ? data.summary
+            ? {
+                count: Number(data.summary.count || 0),
+                avgRating: Number(data.summary.avgRating || 0),
+              }
             : { count: 0, avgRating: 0 }
         );
       } catch (e: any) {
@@ -287,7 +326,6 @@ export default function ProductPage() {
     })();
   }, [activeTab, product?.id]);
 
-  // -------- Add to cart (localStorage) --------
   const addToCart = () => {
     if (!product) return;
 
@@ -300,9 +338,9 @@ export default function ProductPage() {
       image: product.image,
     };
 
-    let cart: CartItem[] = readCart();
-
+    const cart = readCart();
     const idx = cart.findIndex((it) => it.id === item.id && it.size === item.size);
+
     if (idx !== -1) {
       cart[idx].qty = Math.min(99, (cart[idx].qty || 1) + 1);
     } else {
@@ -310,19 +348,15 @@ export default function ProductPage() {
     }
 
     localStorage.setItem("ufo_cart", JSON.stringify(cart));
-
-    // ✅ update badge instantly (same tab)
     window.dispatchEvent(new Event("ufo_cart_updated"));
 
-    // ✅ keep user on product page
     setAddedMsg("Added to cart!");
     window.setTimeout(() => setAddedMsg(null), 1200);
   };
 
-  // -------- UI states --------
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#050816] text-white flex items-center justify-center">
+      <main className="flex min-h-screen items-center justify-center bg-[#050816] text-white">
         Loading product…
       </main>
     );
@@ -330,8 +364,8 @@ export default function ProductPage() {
 
   if (error || !product) {
     return (
-      <main className="min-h-screen bg-[#050816] text-white flex flex-col items-center justify-center gap-4 px-4">
-        <div className="text-red-300 text-center">
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#050816] px-4 text-white">
+        <div className="text-center text-red-300">
           {error || "Product not found."}
         </div>
         <button
@@ -352,7 +386,6 @@ export default function ProductPage() {
 
   return (
     <>
-      {/* ================= HEADER ================= */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
           <div className="flex items-center gap-4">
@@ -417,7 +450,6 @@ export default function ProductPage() {
             </Link>
           </nav>
 
-          {/* ✅ Cart icon with badge count */}
           <button
             type="button"
             onClick={() => router.push("/cartpage")}
@@ -433,7 +465,7 @@ export default function ProductPage() {
               className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
             />
             {cartCount > 0 ? (
-              <span className="absolute -bottom-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black text-[11px] font-bold text-white px-[5px]">
+              <span className="absolute -bottom-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-[5px] text-[11px] font-bold text-white">
                 {cartCount}
               </span>
             ) : null}
@@ -470,7 +502,6 @@ export default function ProductPage() {
         </div>
       </header>
 
-      {/* ================= PAGE ================= */}
       <main className="min-h-[calc(100vh-80px)] bg-[#050816] text-[#e5e7eb]">
         <div className="mx-auto max-w-[1120px] px-4 pb-20 pt-8 md:px-8">
           <div className="mb-6 text-[13px] text-[#9ca3af]">
@@ -481,14 +512,15 @@ export default function ProductPage() {
           </div>
 
           <section className="grid grid-cols-1 gap-8 md:grid-cols-[1.05fr_1.4fr]">
-            <div className="flex justify-center rounded-[14px] border border-[#111827] bg-[#050816] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
-              <div className="relative w-full max-w-[360px] pb-[100%]">
+            <div className="rounded-[14px] border border-[#111827] bg-[#050816] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
+              <div className="relative h-[520px] w-full overflow-hidden rounded-[12px] bg-[#0b1020]">
                 <Image
                   src={product.image}
                   alt={product.name}
                   fill
-                  className="object-contain"
+                  className="object-cover object-center"
                   priority
+                  unoptimized={product.image.startsWith("http")}
                 />
               </div>
             </div>
@@ -518,7 +550,7 @@ export default function ProductPage() {
               </div>
 
               <div className="mt-1 text-[13px] text-[#9ca3af]">
-                {product.reviews ?? 0} reviews
+                {reviewSummary.count || product.reviews || 0} reviews
               </div>
 
               <div className="mt-3 text-[22px] font-semibold text-[#7dd3fc]">
@@ -590,7 +622,6 @@ export default function ProductPage() {
                 ADD TO CART
               </button>
 
-              {/* ✅ TRY ON */}
               <button
                 type="button"
                 onClick={() => setAiOpen(true)}
@@ -600,7 +631,7 @@ export default function ProductPage() {
               </button>
 
               {addedMsg ? (
-                <div className="mt-3 text-sm text-[#86efac] font-medium">
+                <div className="mt-3 text-sm font-medium text-[#86efac]">
                   {addedMsg}
                 </div>
               ) : null}
@@ -613,7 +644,6 @@ export default function ProductPage() {
             </div>
           </section>
 
-          {/* Tabs */}
           <section className="mt-10">
             <div className="flex gap-7 border-b border-[#111827] text-[14px]">
               <button
@@ -638,7 +668,9 @@ export default function ProductPage() {
                 }`}
               >
                 Reviews{" "}
-                <span className="text-[13px]">({reviewSummary.count || 0})</span>
+                <span className="text-[13px]">
+                  ({reviewSummary.count || product.reviews || 0})
+                </span>
               </button>
             </div>
 
@@ -647,13 +679,13 @@ export default function ProductPage() {
                 <p>{FIXED_DESCRIPTION}</p>
               ) : (
                 <div className="space-y-4">
-                  <div className="text-[#9ca3af] text-sm">
+                  <div className="text-sm text-[#9ca3af]">
                     Avg:{" "}
-                    <span className="text-white font-semibold">
-                      {reviewSummary.avgRating || 0}
+                    <span className="font-semibold text-white">
+                      {Number(reviewSummary.avgRating || 0).toFixed(1)}
                     </span>{" "}
                     •{" "}
-                    <span className="text-white font-semibold">
+                    <span className="font-semibold text-white">
                       {reviewSummary.count || 0}
                     </span>{" "}
                     reviews
@@ -672,25 +704,38 @@ export default function ProductPage() {
                       No reviews yet.
                     </div>
                   ) : (
-                    reviews.map((r) => (
+                    reviews.map((r, index) => (
                       <div
-                        key={r._id}
+                        key={r.id || r._id || `${r.orderCode}-${index}`}
                         className="rounded-xl border border-[#111827] bg-[#0b0f1a]/60 p-4"
                       >
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="text-white font-semibold">
-                            {r.title?.trim() ? r.title : "Review"}
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="font-semibold text-white">
+                              {r.title?.trim() ? r.title : "Review"}
+                            </div>
+
+                            {r.createdAt ? (
+                              <div className="mt-1 text-xs text-[#9ca3af]">
+                                {new Date(r.createdAt).toLocaleDateString()}
+                              </div>
+                            ) : null}
                           </div>
-                          <div className="text-[#7dd3fc] font-semibold">
+
+                          <div className="font-semibold text-[#7dd3fc]">
                             {Number(r.rating || 0).toFixed(1)} / 5
                           </div>
                         </div>
 
                         {r.comment?.trim() ? (
-                          <p className="mt-2 text-[#d1d5db] text-sm leading-relaxed">
+                          <p className="mt-2 text-sm leading-relaxed text-[#d1d5db]">
                             {r.comment}
                           </p>
-                        ) : null}
+                        ) : (
+                          <p className="mt-2 text-sm text-[#9ca3af]">
+                            No comment provided.
+                          </p>
+                        )}
                       </div>
                     ))
                   )}
@@ -701,7 +746,6 @@ export default function ProductPage() {
         </div>
       </main>
 
-      {/* ✅ Modal render (updated: removed productImageUrl) */}
       <AITryOnModal
         open={aiOpen}
         onClose={() => setAiOpen(false)}

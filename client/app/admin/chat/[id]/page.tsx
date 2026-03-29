@@ -3,6 +3,12 @@
 import * as React from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import AdminPageGuard from "../../_components/AdminPageGuard";
+import {
+  AdminSettingsResponse,
+  hasPermission,
+  normalizeAdminPermissions,
+} from "../../_components/adminPermissions";
 
 type Message = {
   _id: string;
@@ -25,6 +31,15 @@ function fmtTime(s?: string) {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleString();
+}
+
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
 }
 
 function Bubble({ m }: { m: Message }) {
@@ -63,7 +78,7 @@ function Bubble({ m }: { m: Message }) {
   );
 }
 
-export default function AdminChatDetailPage() {
+function ChatDetailInner() {
   const router = useRouter();
   const params = useParams();
   const id = String((params as any)?.id || "");
@@ -76,6 +91,7 @@ export default function AdminChatDetailPage() {
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [text, setText] = React.useState("");
   const [err, setErr] = React.useState("");
+  const [canReply, setCanReply] = React.useState(false);
 
   const listRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -84,12 +100,52 @@ export default function AdminChatDetailPage() {
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [messages.length]);
 
+  React.useEffect(() => {
+    let mounted = true;
+
+    const loadPermissions = async () => {
+      try {
+        const res = await fetch(`${API}/admin/settings`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          if (mounted) setCanReply(false);
+          return;
+        }
+
+        const json = (await safeJson(res)) as AdminSettingsResponse;
+        const role = String(json?.profile?.role || "admin");
+        const permissions = normalizeAdminPermissions(
+          role,
+          json?.profile?.permissions
+        );
+
+        if (mounted) {
+          setCanReply(hasPermission(role, permissions, "liveChatReply"));
+        }
+      } catch {
+        if (mounted) setCanReply(false);
+      }
+    };
+
+    loadPermissions();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const load = React.useCallback(async () => {
     setErr("");
     setLoading(true);
+
     try {
       const res = await fetch(`${API}/admin/chat/conversations/${id}/messages`, {
         credentials: "include",
+        cache: "no-store",
       });
 
       if (res.status === 401 || res.status === 403) {
@@ -100,8 +156,6 @@ export default function AdminChatDetailPage() {
       const data = await res.json().catch(() => ({} as any));
       const msgs: Message[] = data?.messages || [];
       setMessages(Array.isArray(msgs) ? msgs : []);
-
-      // minimal conversation object (optional improvement: backend endpoint to fetch conversation)
       setConv((p) => p ?? ({ _id: id, status: "OPEN" } as Conversation));
     } catch (e) {
       console.error(e);
@@ -118,11 +172,12 @@ export default function AdminChatDetailPage() {
 
   const send = async () => {
     const t = text.trim();
-    if (!t) return;
+    if (!t || !canReply) return;
     if (conv?.status === "ENDED") return;
 
     setSending(true);
     setErr("");
+
     try {
       const res = await fetch(`${API}/admin/chat/conversations/${id}/messages`, {
         method: "POST",
@@ -139,7 +194,6 @@ export default function AdminChatDetailPage() {
 
       setText("");
 
-      // optimistic append
       if (data?.message) {
         setMessages((p) => [...p, data.message]);
       } else {
@@ -154,9 +208,11 @@ export default function AdminChatDetailPage() {
   };
 
   const endChat = async () => {
-    if (ending) return;
+    if (!canReply || ending) return;
+
     setEnding(true);
     setErr("");
+
     try {
       const res = await fetch(`${API}/admin/chat/conversations/${id}/end`, {
         method: "PATCH",
@@ -204,17 +260,19 @@ export default function AdminChatDetailPage() {
             Refresh
           </button>
 
-          <button
-            onClick={endChat}
-            disabled={ending || conv?.status === "ENDED"}
-            className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-sm font-semibold text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
-          >
-            {conv?.status === "ENDED"
-              ? "Chat Ended"
-              : ending
-              ? "Ending..."
-              : "End Chat"}
-          </button>
+          {canReply ? (
+            <button
+              onClick={endChat}
+              disabled={ending || conv?.status === "ENDED"}
+              className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-sm font-semibold text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
+            >
+              {conv?.status === "ENDED"
+                ? "Chat Ended"
+                : ending
+                ? "Ending..."
+                : "End Chat"}
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -225,7 +283,6 @@ export default function AdminChatDetailPage() {
       ) : null}
 
       <div className="mt-6 rounded-2xl border border-slate-800/70 bg-slate-950/30">
-        {/* Messages */}
         <div ref={listRef} className="h-[520px] overflow-y-auto px-5 py-5">
           {loading ? (
             <div className="text-sm text-slate-300">Loading…</div>
@@ -242,18 +299,23 @@ export default function AdminChatDetailPage() {
 
         <div className="border-t border-slate-800/70" />
 
-        {/* Reply box */}
         <div className="px-5 py-5">
           <label className="text-sm font-semibold text-slate-200">Reply</label>
 
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            disabled={sending || conv?.status === "ENDED"}
-            placeholder={conv?.status === "ENDED" ? "Chat ended." : "Type your message..."}
+            disabled={sending || conv?.status === "ENDED" || !canReply}
+            placeholder={
+              !canReply
+                ? "You do not have reply permission."
+                : conv?.status === "ENDED"
+                ? "Chat ended."
+                : "Type your message..."
+            }
             className="mt-3 min-h-[120px] w-full resize-none rounded-xl border border-slate-700/60 bg-slate-950/40 px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none disabled:opacity-50"
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Enter" && !e.shiftKey && canReply) {
                 e.preventDefault();
                 send();
               }
@@ -261,13 +323,19 @@ export default function AdminChatDetailPage() {
           />
 
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <button
-              onClick={send}
-              disabled={sending || conv?.status === "ENDED" || !text.trim()}
-              className="rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
-            >
-              {sending ? "Sending..." : "Send"}
-            </button>
+            {canReply ? (
+              <button
+                onClick={send}
+                disabled={sending || conv?.status === "ENDED" || !text.trim()}
+                className="rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-50"
+              >
+                {sending ? "Sending..." : "Send"}
+              </button>
+            ) : (
+              <div className="text-sm text-amber-300">
+                You have view access only.
+              </div>
+            )}
 
             <span className="text-xs text-slate-500">
               Enter to send • Shift+Enter for new line
@@ -276,5 +344,13 @@ export default function AdminChatDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AdminChatDetailPage() {
+  return (
+    <AdminPageGuard permission="liveChatView">
+      <ChatDetailInner />
+    </AdminPageGuard>
   );
 }

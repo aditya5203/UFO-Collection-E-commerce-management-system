@@ -1,4 +1,4 @@
-//modules/auth/product/services/product.service.ts
+// modules/auth/product/services/product.service.ts
 import { Product } from "../../../models/Product.model";
 import {
   CreateProductDto,
@@ -9,7 +9,6 @@ import { generateProductSlug } from "../utils/slug.util";
 import cloudinary from "../../../config/cloudinary";
 
 export const productService = {
-  // For admin – can see all, with filters
   async getAllForAdmin(query: ProductQueryDto) {
     const filter: { [key: string]: any } = {};
 
@@ -24,13 +23,11 @@ export const productService = {
 
     if (query.gender) filter.gender = query.gender;
     if (query.size) filter.sizes = query.size;
-
     if (query.categoryId) filter.categoryId = query.categoryId;
 
     return Product.find(filter).sort({ createdAt: -1 }).lean().exec();
   },
 
-  // For public frontend – only Active products
   async getAllPublic(query: ProductQueryDto) {
     const filter: { [key: string]: any } = { status: "Active" };
 
@@ -52,6 +49,13 @@ export const productService = {
 
   async create(data: CreateProductDto) {
     const slug = data.slug ?? generateProductSlug(data.name);
+
+    const existing = await Product.findOne({ slug }).lean();
+    if (existing) {
+      const err: any = new Error(`Product '${data.name}' already exists`);
+      err.statusCode = 400;
+      throw err;
+    }
 
     const uploadIfNeeded = async (src?: string) => {
       if (!src) return src;
@@ -90,8 +94,22 @@ export const productService = {
 
   async update(id: string, data: UpdateProductDto) {
     const update: any = { ...data };
+
     if (data.name && !data.slug) {
       update.slug = generateProductSlug(data.name);
+    }
+
+    if (update.slug) {
+      const existing = await Product.findOne({
+        slug: update.slug,
+        _id: { $ne: id },
+      }).lean();
+
+      if (existing) {
+        const err: any = new Error("Another product already uses this slug");
+        err.statusCode = 400;
+        throw err;
+      }
     }
 
     return Product.findByIdAndUpdate(id, update, {

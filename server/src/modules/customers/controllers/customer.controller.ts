@@ -9,10 +9,14 @@ export const customerController = {
   async list(req: AuthRequest, res: Response) {
     try {
       const search = String(req.query.search || "");
-      const data = await customerService.listCustomers(search);
-      return res.json({ data });
+      const rawFilter = String(req.query.filter || "all");
+      const filter =
+        rawFilter === "blocked" || rawFilter === "deleted" ? rawFilter : "all";
+
+      const data = await customerService.listCustomers(search, filter);
+      return res.json({ success: true, data });
     } catch {
-      return res.status(500).json({ message: "Failed to fetch customers" });
+      return res.status(500).json({ success: false, message: "Failed to fetch customers" });
     }
   },
 
@@ -21,22 +25,81 @@ export const customerController = {
       const { id } = req.params;
       const data = await customerService.getCustomerById(id);
 
-      if (!data) return res.status(404).json({ message: "Customer not found" });
+      if (!data) {
+        return res.status(404).json({ success: false, message: "Customer not found" });
+      }
 
-      return res.json({ data });
+      return res.json({ success: true, data });
     } catch {
-      return res.status(500).json({ message: "Failed to fetch customer" });
+      return res.status(500).json({ success: false, message: "Failed to fetch customer" });
     }
   },
 
-  // ✅ NEW: GET /api/admin/customers/:id/addresses
+  async block(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const data = await customerService.blockCustomer(id);
+
+      if (!data) {
+        return res.status(404).json({ success: false, message: "Customer not found" });
+      }
+
+      return res.json({
+        success: true,
+        message: "Customer blocked successfully",
+        data,
+      });
+    } catch {
+      return res.status(500).json({ success: false, message: "Failed to block customer" });
+    }
+  },
+
+  async unblock(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const data = await customerService.unblockCustomer(id);
+
+      if (!data) {
+        return res.status(404).json({ success: false, message: "Customer not found" });
+      }
+
+      return res.json({
+        success: true,
+        message: "Customer unblocked successfully",
+        data,
+      });
+    } catch {
+      return res.status(500).json({ success: false, message: "Failed to unblock customer" });
+    }
+  },
+
+  async remove(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const data = await customerService.deleteCustomer(id);
+
+      if (!data) {
+        return res.status(404).json({ success: false, message: "Customer not found" });
+      }
+
+      return res.json({
+        success: true,
+        message: "Customer deleted successfully",
+        data,
+      });
+    } catch {
+      return res.status(500).json({ success: false, message: "Failed to delete customer" });
+    }
+  },
+
   async getAddresses(req: Request, res: Response) {
     try {
       const { id } = req.params;
 
-      // optional validation
       if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ success: false, message: "Invalid customer id" });
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid customer id" });
       }
 
       const items = await Address.find({ userId: id })

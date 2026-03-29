@@ -1,15 +1,10 @@
 // server/src/modules/orders/services/order.service.ts
-
 import mongoose from "mongoose";
 import { Order } from "../../../models/Order.model";
 import { User } from "../../../models/User.model";
 import { Product } from "../../../models/Product.model";
 import { Address } from "../../../models/Address.model";
-
-// ✅ NEW: discount service
 import discountService from "../../discounts/services/discount.service";
-
-// ✅ NEW: invoice workflow
 import { maybeSendInvoiceForOrder } from "../../../services/invoiceWorkflow.service";
 
 type ListInput = {
@@ -28,18 +23,13 @@ type CreateOrderBody = {
   paymentMethod: "COD" | "Khalti" | "eSewa";
   paymentRef?: string;
   shippingPaisa?: number;
-
-  // ✅ NEW
   couponCode?: string;
-
   items: Array<{
     productId: string;
     size?: string;
     qty: number;
   }>;
-
   addressId?: string;
-
   address?: {
     label?: "Home" | "Work" | "Other";
     fullName: string;
@@ -91,15 +81,11 @@ function computeEstimatedDeliveryRange() {
 }
 
 export const orderService = {
-  // =======================================================
-  // CREATE ORDER (Customer) ✅ + STOCK DECREASE + DISCOUNT ✅
-  // =======================================================
   async createOrder(userId: string, body: CreateOrderBody) {
     if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
     if (!body?.items?.length) throw new Error("Cart is empty");
     if (!body.paymentMethod) throw new Error("paymentMethod is required");
 
-    // Prevent duplicate order for same paymentRef
     if (body.paymentRef) {
       const existing = await Order.findOne({ paymentRef: body.paymentRef }).lean();
       if (existing) {
@@ -111,7 +97,6 @@ export const orderService = {
       }
     }
 
-    // ✅ Combine quantities per productId
     const qtyByProductId = new Map<string, number>();
     for (const it of body.items) {
       const id = String(it.productId);
@@ -121,7 +106,6 @@ export const orderService = {
 
     const productIds = Array.from(qtyByProductId.keys());
 
-    // ✅ Fetch products with stock + status + categoryId
     const products = await Product.find({ _id: { $in: productIds } })
       .select("_id name price stock status image images categoryId")
       .lean();
@@ -130,7 +114,6 @@ export const orderService = {
       products.map((p: any) => [String(p._id), p])
     );
 
-    // ✅ Validate products exist + Active + enough stock
     for (const [pid, qty] of qtyByProductId.entries()) {
       const p: any = productMap.get(pid);
       if (!p) throw new Error(`Product not found: ${pid}`);
@@ -146,7 +129,6 @@ export const orderService = {
       }
     }
 
-    // ✅ Build order items and compute subtotal FIRST
     let subtotalPaisa = 0;
 
     const orderItems = body.items.map((i) => {
@@ -174,7 +156,6 @@ export const orderService = {
 
     const shippingPaisa = Math.max(0, Number(body.shippingPaisa || 0));
 
-    // ✅ APPLY COUPON BEFORE STOCK DECREASE
     let discountPaisa = 0;
     let couponSnapshot: any = null;
     let userCouponId: string | null = null;
@@ -205,7 +186,6 @@ export const orderService = {
       }
     }
 
-    // ✅ Decrease stock atomically
     const bulkOps = Array.from(qtyByProductId.entries()).map(([pid, qty]) => ({
       updateOne: {
         filter: { _id: new mongoose.Types.ObjectId(pid), stock: { $gte: qty } },
@@ -219,12 +199,9 @@ export const orderService = {
       throw new Error("Stock update failed. Please try again.");
     }
 
-    // ✅ Final total after discount
     const totalPaisa = Math.max(0, subtotalPaisa + shippingPaisa - discountPaisa);
-
     const orderCode = await generateUniqueOrderCode();
 
-    // Address snapshot
     let orderAddress: any = null;
 
     if (body.addressId && mongoose.Types.ObjectId.isValid(body.addressId)) {
@@ -275,44 +252,33 @@ export const orderService = {
       orderCode,
       customer: new mongoose.Types.ObjectId(userId),
       items: orderItems,
-
       subtotalPaisa,
       shippingPaisa,
-
       discountPaisa,
       coupon: couponSnapshot || null,
-
       totalPaisa,
-
       paymentMethod: body.paymentMethod,
       paymentStatus: initialPaymentStatus,
       orderStatus: "Pending",
       paymentRef: body.paymentRef || null,
-
       address: orderAddress,
       shipping: {
         method: "Standard Shipping",
         estimatedDelivery,
       },
-
-      // ✅ tracking timestamps default
       shippedAt: null,
       inTransitAt: null,
       deliveredAt: null,
-
-      // ✅ invoice fields default
       invoiceNo: null,
       invoiceSentAt: null,
     };
 
     const doc: any = await Order.create(payload);
 
-    // ✅ Mark coupon used ONLY after order success
     if (userCouponId) {
       await discountService.markUsed(userCouponId, String(doc._id));
     }
 
-    // ✅ AUTO SEND INVOICE:
     try {
       await maybeSendInvoiceForOrder(String(doc._id));
     } catch (e: any) {
@@ -332,9 +298,6 @@ export const orderService = {
     };
   },
 
-  // =======================================================
-  // LIST ORDERS (Admin)
-  // =======================================================
   async listOrders(input: ListInput) {
     const { search = "", customerId, paymentStatus, orderStatus } = input;
     const filter: any = {};
@@ -387,9 +350,6 @@ export const orderService = {
     }));
   },
 
-  // =======================================================
-  // GET ORDER (Admin) by MongoId or OrderCode
-  // =======================================================
   async getOrderByIdOrCode(idOrCode: string) {
     const value = String(idOrCode || "").trim();
     if (!value) return null;
@@ -409,10 +369,6 @@ export const orderService = {
     return this.mapOrder(byCode);
   },
 
-  // =======================================================
-  // UPDATE ORDER (Admin) ✅ supports MongoId OR orderCode
-  // + auto set shippedAt/deliveredAt when status changes
-  // =======================================================
   async updateOrder(idOrCode: string, input: UpdateInput) {
     const raw = String(idOrCode || "").trim();
     if (!raw) return null;
@@ -431,15 +387,12 @@ export const orderService = {
 
     const nextStatus = String(input.orderStatus || "").trim();
 
-    // ✅ Set tracking timestamps
     if (nextStatus === "Shipped" && !found.shippedAt) {
       update.shippedAt = new Date();
     }
 
     if (nextStatus === "Delivered" && !found.deliveredAt) {
       update.deliveredAt = new Date();
-
-      // nice fallback: if delivered but never shipped
       if (!found.shippedAt) update.shippedAt = new Date();
     }
 
@@ -451,7 +404,6 @@ export const orderService = {
 
     if (!updated) return null;
 
-    // ✅ If paymentStatus is updated to Paid, send invoice (only once)
     try {
       if (input.paymentStatus === "Paid") {
         await maybeSendInvoiceForOrder(String(found._id));
@@ -463,9 +415,6 @@ export const orderService = {
     return this.mapOrder(updated);
   },
 
-  // =======================================================
-  // MAP ORDER (Admin response)
-  // =======================================================
   mapOrder(o: any) {
     return {
       id: String(o._id),
@@ -487,21 +436,14 @@ export const orderService = {
       items: Array.isArray(o.items) ? o.items : [],
       address: o.address || null,
       shipping: o.shipping || null,
-
-      // ✅ tracking timestamps
       shippedAt: o.shippedAt || null,
       inTransitAt: o.inTransitAt || null,
       deliveredAt: o.deliveredAt || null,
-
-      // ✅ invoice fields
       invoiceNo: o.invoiceNo || null,
       invoiceSentAt: o.invoiceSentAt || null,
     };
   },
 
-  // =======================================================
-  // CUSTOMER ORDER DETAILS (Customer only)
-  // =======================================================
   async getMyOrderDetails(userId: string, idOrCode: string) {
     if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
 
@@ -579,16 +521,11 @@ export const orderService = {
       shipping: { method: shipMethod, estimatedDelivery: estDelivery },
       summary: { subtotal, shipping, discount, taxes: 0, total },
       coupon: o.coupon || null,
-
-      // ✅ invoice info
       invoiceNo: o.invoiceNo || null,
       invoiceSentAt: o.invoiceSentAt || null,
     };
   },
 
-  // =======================================================
-  // TRACK ORDER (Public) ✅ returns dates needed by tracking page
-  // =======================================================
   async trackOrder(code: string) {
     const raw = String(code || "").trim();
     if (!raw) return null;

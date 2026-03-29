@@ -1,19 +1,13 @@
-// server/src/modules/chat/services/chat.service.ts
 import { Types } from "mongoose";
 import { ConversationModel } from "../../../models/Conversation.model";
 import { MessageModel } from "../../../models/Message.model";
 import { SendMessageDTO } from "../types/chat.types";
 import { noAiReply } from "../bot/no-ai";
-
-// OPTIONAL (if you already use RiveScript)
 import { botReply } from "../bot/rivescript";
-
-// OPTIONAL (if you added AI service earlier)
 import { aiReply } from "./ai.service";
 
-
 function cleanText(t: string) {
-  return (t || "").trim().slice(0, 2000);
+  return String(t || "").trim().slice(0, 2000);
 }
 
 function norm(s: string) {
@@ -23,7 +17,6 @@ function norm(s: string) {
     .replace(/\s+/g, " ");
 }
 
-// ✅ detect if customer wants human agent
 function wantsHumanAgent(text: string) {
   const t = norm(text);
   const keywords = [
@@ -44,17 +37,16 @@ export const chatService = {
   async openForCustomer(userId: string, orderId?: string) {
     const uid = new Types.ObjectId(userId);
 
-    // 1) If orderId -> keep one OPEN conversation per order
     if (orderId) {
       const existing = await ConversationModel.findOne({
         userId: uid,
         orderId,
         status: "OPEN",
       }).lean();
+
       if (existing) return existing;
     }
 
-    // 2) otherwise one OPEN per user (general support)
     const open = await ConversationModel.findOne({
       userId: uid,
       status: "OPEN",
@@ -67,7 +59,7 @@ export const chatService = {
       userId: uid,
       orderId: orderId || null,
       status: "OPEN",
-      aiDisabled: false, // ✅ default
+      aiDisabled: false,
     });
 
     await MessageModel.create({
@@ -83,13 +75,17 @@ export const chatService = {
   },
 
   async listCustomerConversations(userId: string) {
-    return ConversationModel.find({ userId: new Types.ObjectId(userId) })
+    return ConversationModel.find({
+      userId: new Types.ObjectId(userId),
+    })
       .sort({ updatedAt: -1 })
       .lean();
   },
 
   async listAdminConversations() {
-    return ConversationModel.find().sort({ updatedAt: -1 }).lean();
+    return ConversationModel.find()
+      .sort({ updatedAt: -1 })
+      .lean();
   },
 
   async getMessages(conversationId: string, limit = 50) {
@@ -101,8 +97,11 @@ export const chatService = {
       .lean();
   },
 
-  // ✅ CUSTOMER SEND + BOT/AI AUTO REPLY (only if no admin assigned yet AND aiDisabled is false)
-  async customerSend(userId: string, conversationId: string, dto: SendMessageDTO) {
+  async customerSend(
+    userId: string,
+    conversationId: string,
+    dto: SendMessageDTO
+  ) {
     const text = cleanText(dto.text);
     if (!text) throw new Error("Message is empty");
 
@@ -111,7 +110,6 @@ export const chatService = {
     if (String(conv.userId) !== String(userId)) throw new Error("Forbidden");
     if (conv.status !== "OPEN") throw new Error("Chat ended");
 
-    // 1) Save customer message
     const userMsg = await MessageModel.create({
       conversationId: conv._id,
       senderRole: "user",
@@ -125,9 +123,7 @@ export const chatService = {
     conv.lastMessageAt = new Date();
     await conv.save();
 
-    // ✅ 1.5) If customer wants human agent -> disable bot/AI and add system notice
     if (!conv.adminId && wantsHumanAgent(text)) {
-      // Disable bot/AI replies for this conversation
       conv.aiDisabled = true;
       await conv.save();
 
@@ -136,8 +132,7 @@ export const chatService = {
         senderRole: "system",
         senderId: null,
         text:
-          "🔔 Customer requested a human support agent. Please wait — an agent will reply as soon as available.\n" +
-          "Tip: If this is about an order, please share your Order ID.",
+          "🔔 Customer requested a human support agent. Please wait — an agent will reply as soon as available.\nTip: If this is about an order, please share your Order ID.",
         isReadByUser: true,
         isReadByAdmin: false,
       });
@@ -145,12 +140,12 @@ export const chatService = {
       return userMsg.toObject();
     }
 
-    // 2) Auto reply ONLY if no admin has joined yet AND bot/AI not disabled
     if (!conv.adminId && !conv.aiDisabled) {
       let replyText = "";
 
-      // Build recent history for AI context (exclude system logs)
-      const lastMsgs = await MessageModel.find({ conversationId: conv._id })
+      const lastMsgs = await MessageModel.find({
+        conversationId: conv._id,
+      })
         .sort({ createdAt: -1 })
         .limit(14)
         .lean();
@@ -163,14 +158,12 @@ export const chatService = {
           content: m.text,
         }));
 
-      // (A) Try AI first (English + Nepali system prompt inside ai.service.ts)
       try {
         replyText = await aiReply(history as any);
       } catch {
         replyText = "";
       }
 
-      // (B) If AI fails -> try RiveScript
       if (!replyText) {
         try {
           replyText = await botReply(text, String(userId));
@@ -179,14 +172,13 @@ export const chatService = {
         }
       }
 
-      // (C) If RiveScript fails -> fallback menu helper
       if (!replyText) {
         replyText = noAiReply(text);
       }
 
       await MessageModel.create({
         conversationId: conv._id,
-        senderRole: "bot", // ✅ IMPORTANT (bot bubble in UI)
+        senderRole: "bot",
         senderId: null,
         text: replyText,
         isReadByUser: true,
@@ -201,8 +193,11 @@ export const chatService = {
     return userMsg.toObject();
   },
 
-  // ✅ ADMIN SEND (first admin reply assigns the chat + adds a "human joined" system message)
-  async adminSend(adminId: string, conversationId: string, dto: SendMessageDTO) {
+  async adminSend(
+    adminId: string,
+    conversationId: string,
+    dto: SendMessageDTO
+  ) {
     const text = cleanText(dto.text);
     if (!text) throw new Error("Message is empty");
 
@@ -212,9 +207,9 @@ export const chatService = {
 
     const isFirstAdminReply = !conv.adminId;
 
-    // auto assign agent
     if (isFirstAdminReply) {
       conv.adminId = new Types.ObjectId(adminId);
+      conv.aiDisabled = true;
 
       await MessageModel.create({
         conversationId: conv._id,
@@ -242,18 +237,44 @@ export const chatService = {
     return msg.toObject();
   },
 
-  async endChat(conversationId: string, endedBy: "user" | "admin") {
+  async customerEnd(userId: string, conversationId: string) {
     const conv = await ConversationModel.findById(conversationId);
     if (!conv) throw new Error("Conversation not found");
+    if (String(conv.userId) !== String(userId)) throw new Error("Forbidden");
 
     conv.status = "ENDED";
+    conv.aiDisabled = true;
     await conv.save();
 
     await MessageModel.create({
       conversationId: conv._id,
       senderRole: "system",
       senderId: null,
-      text: endedBy === "admin" ? "Agent ended the chat." : "Customer ended the chat.",
+      text: "Customer ended the chat.",
+      isReadByUser: true,
+      isReadByAdmin: true,
+    });
+
+    return conv.toObject();
+  },
+
+  async adminEnd(adminId: string, conversationId: string) {
+    const conv = await ConversationModel.findById(conversationId);
+    if (!conv) throw new Error("Conversation not found");
+
+    if (!conv.adminId) {
+      conv.adminId = new Types.ObjectId(adminId);
+    }
+
+    conv.status = "ENDED";
+    conv.aiDisabled = true;
+    await conv.save();
+
+    await MessageModel.create({
+      conversationId: conv._id,
+      senderRole: "system",
+      senderId: null,
+      text: "Agent ended the chat.",
       isReadByUser: true,
       isReadByAdmin: true,
     });

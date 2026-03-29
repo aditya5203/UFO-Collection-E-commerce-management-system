@@ -1,3 +1,4 @@
+// server/src/modules/tickets/controllers/ticket.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { ticketService } from "../services/ticket.service";
 
@@ -6,7 +7,18 @@ function getUser(req: Request) {
 }
 
 export const ticketController = {
-  // POST /api/tickets (multipart/form-data)
+  /**
+   * @swagger
+   * /api/tickets:
+   *   post:
+   *     summary: Create support ticket
+   *     tags: [Tickets]
+   *     requestBody:
+   *       required: true
+   *     responses:
+   *       201:
+   *         description: Ticket created
+   */
   create: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { issueType, subject, message, name, email, productId } = req.body;
@@ -18,19 +30,17 @@ export const ticketController = {
         });
       }
 
-      // multer-storage-cloudinary adds url to req.file.path
       const imageUrl =
         (req.file as any)?.path ||
         (req.file as any)?.secure_url ||
         (req.file as any)?.url ||
         null;
 
-      // ✅ if user is logged in, store customerId for notifications
       const user = getUser(req);
       const customerId = user?.userId ? String(user.userId) : null;
 
       const doc = await ticketService.createTicket({
-        customerId, // ✅ important
+        customerId,
         issueType: String(issueType).trim(),
         subject: String(subject).trim(),
         message: String(message).trim(),

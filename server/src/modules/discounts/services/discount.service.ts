@@ -1,3 +1,4 @@
+// server/src/modules/discounts/services/discount.service.ts
 import mongoose from "mongoose";
 import { Coupon } from "../../../models/Coupon.model";
 import { UserCoupon } from "../../../models/UserCoupon.model";
@@ -21,7 +22,6 @@ export const discountService = {
     return Coupon.findOne({ code: c }).lean();
   },
 
-  // ✅ PUBLIC: list active coupons for homepage/discounts page
   async listAvailable() {
     const now = new Date();
 
@@ -62,7 +62,6 @@ export const discountService = {
     }));
   },
 
-  // ✅ CUSTOMER: collect all available coupons
   async collectAllAvailable(userId: string) {
     if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
 
@@ -121,11 +120,12 @@ export const discountService = {
 
     const coupon = await this.getCouponByCode(code);
     if (!coupon) throw new Error("Coupon not found");
-    if (coupon.status !== "ACTIVE") throw new Error("Coupon is not active");
+    if ((coupon as any).status !== "ACTIVE") throw new Error("Coupon is not active");
 
     const now = new Date();
-    if (!nowInRange(now, coupon.startAt, coupon.endAt))
+    if (!nowInRange(now, (coupon as any).startAt, (coupon as any).endAt)) {
       throw new Error("Coupon expired or not started");
+    }
 
     try {
       const doc = await UserCoupon.create({
@@ -137,11 +137,11 @@ export const discountService = {
 
       return {
         id: String(doc._id),
-        code: coupon.code,
-        title: coupon.title,
-        type: coupon.type,
-        scope: coupon.scope,
-        value: coupon.value,
+        code: (coupon as any).code,
+        title: (coupon as any).title,
+        type: (coupon as any).type,
+        scope: (coupon as any).scope,
+        value: (coupon as any).value,
       };
     } catch (e: any) {
       if (String(e?.code) === "11000") {
@@ -195,7 +195,8 @@ export const discountService = {
     subtotalPaisa: number;
     shippingPaisa: number;
   }) {
-    const { userId, couponCode, items, productMap, subtotalPaisa, shippingPaisa } = args;
+    const { userId, couponCode, items, productMap, subtotalPaisa, shippingPaisa } =
+      args;
 
     if (!couponCode?.trim()) {
       return { discountPaisa: 0, applied: null as any };
@@ -205,11 +206,12 @@ export const discountService = {
 
     const coupon = await this.getCouponByCode(couponCode);
     if (!coupon) throw new Error("Invalid coupon code");
-    if (coupon.status !== "ACTIVE") throw new Error("Coupon is not active");
+    if ((coupon as any).status !== "ACTIVE") throw new Error("Coupon is not active");
 
     const now = new Date();
-    if (!nowInRange(now, coupon.startAt, coupon.endAt))
+    if (!nowInRange(now, (coupon as any).startAt, (coupon as any).endAt)) {
       throw new Error("Coupon expired or not started");
+    }
 
     const userCoupon = await UserCoupon.findOne({
       userId: new mongoose.Types.ObjectId(userId),
@@ -219,35 +221,44 @@ export const discountService = {
     if (!userCoupon) throw new Error("You have not collected this coupon");
     if ((userCoupon as any).status === "USED") throw new Error("Coupon already used");
 
-    if (coupon.maxUsesPerUser && coupon.maxUsesPerUser > 0) {
+    if ((coupon as any).maxUsesPerUser && (coupon as any).maxUsesPerUser > 0) {
       const usedByUser = await UserCoupon.countDocuments({
         userId: new mongoose.Types.ObjectId(userId),
         couponId: new mongoose.Types.ObjectId(String((coupon as any)._id)),
         status: "USED",
       });
-      if (usedByUser >= coupon.maxUsesPerUser)
+      if (usedByUser >= (coupon as any).maxUsesPerUser) {
         throw new Error("Coupon limit reached for this user");
+      }
     }
 
-    if (coupon.globalUsageLimit && coupon.globalUsageLimit > 0) {
-      if (Number((coupon as any).usedCount || 0) >= coupon.globalUsageLimit) {
+    if ((coupon as any).globalUsageLimit && (coupon as any).globalUsageLimit > 0) {
+      if (
+        Number((coupon as any).usedCount || 0) >=
+        Number((coupon as any).globalUsageLimit || 0)
+      ) {
         throw new Error("Coupon usage limit reached");
       }
     }
 
-    if (coupon.minOrder != null) {
-      const minOrderPaisa = toPaisa(Number(coupon.minOrder || 0));
+    if ((coupon as any).minOrder != null) {
+      const minOrderPaisa = toPaisa(Number((coupon as any).minOrder || 0));
       if (subtotalPaisa < minOrderPaisa) {
-        throw new Error(`Minimum order is Rs. ${coupon.minOrder}`);
+        throw new Error(`Minimum order is Rs. ${(coupon as any).minOrder}`);
       }
     }
 
     let eligibleSubtotalPaisa = 0;
 
-    if (coupon.scope === "ALL") {
+    if ((coupon as any).scope === "ALL") {
       eligibleSubtotalPaisa = subtotalPaisa;
-    } else if (coupon.scope === "PRODUCT") {
-      const eligible = new Set(((coupon as any).eligibleProductIds || []).map((x: any) => String(x)));
+    } else if ((coupon as any).scope === "PRODUCT") {
+      const eligible = new Set(
+        (((coupon as any).eligibleProductIds || []) as any[]).map((x: any) =>
+          String(x)
+        )
+      );
+
       for (const it of items) {
         const p = productMap.get(String(it.productId));
         if (!p) continue;
@@ -256,8 +267,13 @@ export const discountService = {
           eligibleSubtotalPaisa += pricePaisa * Math.max(1, Number(it.qty || 1));
         }
       }
-    } else if (coupon.scope === "CATEGORY") {
-      const eligible = new Set(((coupon as any).eligibleCategoryIds || []).map((x: any) => String(x)));
+    } else if ((coupon as any).scope === "CATEGORY") {
+      const eligible = new Set(
+        (((coupon as any).eligibleCategoryIds || []) as any[]).map((x: any) =>
+          String(x)
+        )
+      );
+
       for (const it of items) {
         const p = productMap.get(String(it.productId));
         if (!p) continue;
@@ -268,38 +284,41 @@ export const discountService = {
       }
     }
 
-    if (eligibleSubtotalPaisa <= 0 && coupon.type !== "FREESHIP") {
+    if (eligibleSubtotalPaisa <= 0 && (coupon as any).type !== "FREESHIP") {
       throw new Error("Coupon not applicable to selected items");
     }
 
     let discountPaisa = 0;
 
-    if (coupon.type === "PERCENT") {
-      const pct = Math.max(0, Math.min(100, Number(coupon.value || 0)));
+    if ((coupon as any).type === "PERCENT") {
+      const pct = Math.max(0, Math.min(100, Number((coupon as any).value || 0)));
       discountPaisa = Math.floor((eligibleSubtotalPaisa * pct) / 100);
 
-      if (coupon.maxDiscountCap != null) {
-        const capPaisa = toPaisa(Number(coupon.maxDiscountCap || 0));
+      if ((coupon as any).maxDiscountCap != null) {
+        const capPaisa = toPaisa(Number((coupon as any).maxDiscountCap || 0));
         discountPaisa = Math.min(discountPaisa, capPaisa);
       }
-    } else if (coupon.type === "FLAT") {
-      const flatPaisa = toPaisa(Number(coupon.value || 0));
+    } else if ((coupon as any).type === "FLAT") {
+      const flatPaisa = toPaisa(Number((coupon as any).value || 0));
       discountPaisa = Math.min(flatPaisa, eligibleSubtotalPaisa);
-    } else if (coupon.type === "FREESHIP") {
+    } else if ((coupon as any).type === "FREESHIP") {
       discountPaisa = Math.min(shippingPaisa, shippingPaisa);
     }
 
-    discountPaisa = Math.max(0, Math.min(discountPaisa, subtotalPaisa + shippingPaisa));
+    discountPaisa = Math.max(
+      0,
+      Math.min(discountPaisa, subtotalPaisa + shippingPaisa)
+    );
 
     return {
       discountPaisa,
       applied: {
         couponId: String((coupon as any)._id),
-        code: coupon.code,
-        title: coupon.title,
-        type: coupon.type,
-        scope: coupon.scope,
-        value: coupon.value,
+        code: (coupon as any).code,
+        title: (coupon as any).title,
+        type: (coupon as any).type,
+        scope: (coupon as any).scope,
+        value: (coupon as any).value,
       },
       userCouponId: userCoupon ? String((userCoupon as any)._id) : null,
     };
@@ -313,9 +332,15 @@ export const discountService = {
       usedAt: new Date(),
       orderId: new mongoose.Types.ObjectId(orderId),
     });
+
+    const used = await UserCoupon.findById(userCouponId).select("couponId").lean();
+    if (used?.couponId) {
+      await Coupon.findByIdAndUpdate(used.couponId, {
+        $inc: { usedCount: 1 },
+      });
+    }
   },
 
-  // ---------- Admin ----------
   async adminList() {
     const rows = await Coupon.find().sort({ createdAt: -1 }).lean();
     return (rows as any[]).map((c: any) => ({
@@ -341,6 +366,9 @@ export const discountService = {
     const code = String(input?.code || "").trim().toUpperCase();
     if (!code) throw new Error("code is required");
 
+    const existing = await Coupon.findOne({ code }).lean();
+    if (existing) throw new Error("Coupon code already exists");
+
     const doc = await Coupon.create({
       code,
       title: String(input?.title || "Discount").trim(),
@@ -350,8 +378,12 @@ export const discountService = {
       value: Number(input?.value || 0),
       minOrder: input?.minOrder ?? null,
       maxDiscountCap: input?.maxDiscountCap ?? null,
-      eligibleCategoryIds: Array.isArray(input?.eligibleCategoryIds) ? input.eligibleCategoryIds : [],
-      eligibleProductIds: Array.isArray(input?.eligibleProductIds) ? input.eligibleProductIds : [],
+      eligibleCategoryIds: Array.isArray(input?.eligibleCategoryIds)
+        ? input.eligibleCategoryIds
+        : [],
+      eligibleProductIds: Array.isArray(input?.eligibleProductIds)
+        ? input.eligibleProductIds
+        : [],
       startAt: input?.startAt ? new Date(input.startAt) : null,
       endAt: input?.endAt ? new Date(input.endAt) : null,
       globalUsageLimit: input?.globalUsageLimit ?? null,
@@ -368,18 +400,34 @@ export const discountService = {
 
     const update: any = {};
     if (input?.title != null) update.title = String(input.title).trim();
-    if (input?.description != null) update.description = String(input.description).trim();
+    if (input?.description != null) {
+      update.description = String(input.description).trim();
+    }
     if (input?.type != null) update.type = input.type;
     if (input?.scope != null) update.scope = input.scope;
     if (input?.value != null) update.value = Number(input.value || 0);
     if (input?.minOrder !== undefined) update.minOrder = input.minOrder;
-    if (input?.maxDiscountCap !== undefined) update.maxDiscountCap = input.maxDiscountCap;
-    if (input?.eligibleCategoryIds !== undefined) update.eligibleCategoryIds = input.eligibleCategoryIds || [];
-    if (input?.eligibleProductIds !== undefined) update.eligibleProductIds = input.eligibleProductIds || [];
-    if (input?.startAt !== undefined) update.startAt = input.startAt ? new Date(input.startAt) : null;
-    if (input?.endAt !== undefined) update.endAt = input.endAt ? new Date(input.endAt) : null;
-    if (input?.globalUsageLimit !== undefined) update.globalUsageLimit = input.globalUsageLimit;
-    if (input?.maxUsesPerUser !== undefined) update.maxUsesPerUser = input.maxUsesPerUser;
+    if (input?.maxDiscountCap !== undefined) {
+      update.maxDiscountCap = input.maxDiscountCap;
+    }
+    if (input?.eligibleCategoryIds !== undefined) {
+      update.eligibleCategoryIds = input.eligibleCategoryIds || [];
+    }
+    if (input?.eligibleProductIds !== undefined) {
+      update.eligibleProductIds = input.eligibleProductIds || [];
+    }
+    if (input?.startAt !== undefined) {
+      update.startAt = input.startAt ? new Date(input.startAt) : null;
+    }
+    if (input?.endAt !== undefined) {
+      update.endAt = input.endAt ? new Date(input.endAt) : null;
+    }
+    if (input?.globalUsageLimit !== undefined) {
+      update.globalUsageLimit = input.globalUsageLimit;
+    }
+    if (input?.maxUsesPerUser !== undefined) {
+      update.maxUsesPerUser = input.maxUsesPerUser;
+    }
     if (input?.status != null) update.status = input.status;
 
     const doc = await Coupon.findByIdAndUpdate(id, update, { new: true }).lean();
@@ -407,10 +455,19 @@ export const discountService = {
       usedAt: r.usedAt || null,
       orderId: r.orderId ? String(r.orderId) : null,
       user: r.userId
-        ? { id: String(r.userId._id), name: r.userId.name || "", email: r.userId.email || "" }
+        ? {
+            id: String(r.userId._id),
+            name: r.userId.name || "",
+            email: r.userId.email || "",
+          }
         : { id: "", name: "", email: "" },
       coupon: r.couponId
-        ? { id: String(r.couponId._id), code: r.couponId.code, title: r.couponId.title, type: r.couponId.type }
+        ? {
+            id: String(r.couponId._id),
+            code: r.couponId.code,
+            title: r.couponId.title,
+            type: r.couponId.type,
+          }
         : { id: "", code: "", title: "", type: "" },
     }));
   },

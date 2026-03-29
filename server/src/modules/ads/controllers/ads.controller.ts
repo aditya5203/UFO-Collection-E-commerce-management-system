@@ -7,28 +7,23 @@ function getAdminEmail(req: Request) {
 }
 
 function pickUploaded(req: Request) {
-  // multer fields() => req.files is an object: { file?: [..], files?: [..] }
   const filesObj: any = (req as any).files || {};
   const single: Express.Multer.File | undefined = filesObj?.file?.[0];
-  const multi: Express.Multer.File[] = Array.isArray(filesObj?.files) ? filesObj.files : [];
+  const multi: Express.Multer.File[] = Array.isArray(filesObj?.files)
+    ? filesObj.files
+    : [];
   return { single, multi };
 }
 
-/**
- * PUBLIC:
- *  GET /api/ads?position=Home%20Top&status=Active
- */
 export const adsController = {
   publicList: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const items = await adService.publicList(req.query);
-      return res.json(items); // homepage supports array directly
+      return res.json(items);
     } catch (err) {
       return next(err);
     }
   },
-
-  /* ---------------- ADMIN ---------------- */
 
   adminList: async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -56,7 +51,14 @@ export const adsController = {
       const changedBy = getAdminEmail(req);
       const { single, multi } = pickUploaded(req);
 
-      const ad = await adService.update(req.params.id, req.body, single, multi, changedBy);
+      const ad = await adService.update(
+        req.params.id,
+        req.body,
+        single,
+        multi,
+        changedBy
+      );
+
       return res.json({ success: true, item: ad });
     } catch (err) {
       return next(err);
@@ -76,9 +78,14 @@ export const adsController = {
   toggle: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const changedBy = getAdminEmail(req);
-      const makeActive = String(req.body?.active) === "true" || req.body?.active === true;
+      const makeActive =
+        String(req.body?.active) === "true" || req.body?.active === true;
 
-      const ad = await adService.toggleActive(req.params.id, makeActive, changedBy);
+      const ad = await adService.toggleActive(
+        req.params.id,
+        makeActive,
+        changedBy
+      );
       return res.json({ success: true, item: ad });
     } catch (err) {
       return next(err);

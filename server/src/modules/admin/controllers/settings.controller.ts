@@ -1,10 +1,10 @@
+//server/src/modules/admin/routes/settings.controller.ts
 import { Response, NextFunction } from "express";
 import { AuthRequest } from "../../auth/middleware/auth.middleware";
 import { adminSettingsService } from "../services/settings.service";
 import { AppError } from "../../../middleware/error.middleware";
 
 export const adminSettingsController = {
-  // GET /api/admin/settings
   async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const userId = String(req.user?.userId || "");
@@ -15,7 +15,6 @@ export const adminSettingsController = {
     }
   },
 
-  // PUT /api/admin/settings
   async updateGeneral(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const general = await adminSettingsService.updateGeneral(req.body || {});
@@ -25,18 +24,19 @@ export const adminSettingsController = {
     }
   },
 
-  // PUT /api/admin/profile
   async updateProfile(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const userId = String(req.user?.userId || "");
-      const profile = await adminSettingsService.updateProfile(userId, req.body || {});
+      const profile = await adminSettingsService.updateProfile(
+        userId,
+        req.body || {}
+      );
       return res.json({ success: true, profile });
     } catch (e: any) {
       next(new AppError(e?.message || "Failed to update profile", 400));
     }
   },
 
-  // PUT /api/admin/change-password
   async changePassword(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const userId = String(req.user?.userId || "");
