@@ -27,6 +27,8 @@ type CreateOrderBody = {
   items: Array<{
     productId: string;
     size?: string;
+    color?: string;
+    colorLabel?: string;
     qty: number;
   }>;
   addressId?: string;
@@ -147,7 +149,9 @@ export const orderService = {
       return {
         productId: new mongoose.Types.ObjectId(i.productId),
         name: p.name,
-        size: i.size || "",
+        size: String(i.size || "").trim(),
+        color: String(i.color || "").trim(),
+        colorLabel: String(i.colorLabel || "").trim(),
         qty,
         pricePaisa,
         image,
@@ -433,7 +437,13 @@ export const orderService = {
             email: o.customer.email || "",
           }
         : { id: "", name: "", email: "" },
-      items: Array.isArray(o.items) ? o.items : [],
+      items: Array.isArray(o.items)
+        ? o.items.map((it: any) => ({
+            ...it,
+            color: it?.color || "",
+            colorLabel: it?.colorLabel || "",
+          }))
+        : [],
       address: o.address || null,
       shipping: o.shipping || null,
       shippedAt: o.shippedAt || null,
@@ -472,11 +482,14 @@ export const orderService = {
     const addr = o.address || null;
     const shippingAddress = addr
       ? [
-          (addr.fullName ||
+          (
+            addr.fullName ||
             `${addr.firstName || ""} ${addr.lastName || ""}`.trim()
           ).trim(),
           addr.phone || "",
-          `${addr.cityOrMunicipality || ""}${addr.district ? ", " + addr.district : ""}`,
+          `${addr.cityOrMunicipality || ""}${
+            addr.district ? ", " + addr.district : ""
+          }`,
           `${addr.addressLine || ""}${addr.street ? ", " + addr.street : ""}`,
           `${addr.provinceId || ""}${addr.postalCode ? " " + addr.postalCode : ""}`,
           addr.country || "Nepal",
@@ -490,6 +503,8 @@ export const orderService = {
         id: String(it.productId || idx),
         name: it.name || "",
         size: it.size || "",
+        color: it.color || "",
+        colorLabel: it.colorLabel || "",
         qty: Number(it.qty || 0),
         price: Math.round(Number(it.pricePaisa || 0) / 100),
         image: it.image || "",
@@ -505,7 +520,8 @@ export const orderService = {
 
     const shipMethod = o.shipping?.method || "Standard Shipping";
     const estDelivery =
-      (o.shipping?.estimatedDelivery && String(o.shipping.estimatedDelivery).trim()) ||
+      (o.shipping?.estimatedDelivery &&
+        String(o.shipping.estimatedDelivery).trim()) ||
       computeEstimatedDeliveryRange();
 
     return {

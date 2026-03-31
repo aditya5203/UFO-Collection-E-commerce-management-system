@@ -1,4 +1,3 @@
-// client/app/admin/orders/page.tsx
 "use client";
 
 import * as React from "react";
@@ -344,7 +343,7 @@ export default function OrdersPage() {
                             type="button"
                             onClick={() => downloadInvoice(o.id, o.orderCode)}
                             disabled={downloading}
-                            className="font-semibold text-slate-200 hover:text-slate-100 disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="font-semibold text-slate-200 hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {downloading ? "Downloading..." : "Invoice"}
                           </button>

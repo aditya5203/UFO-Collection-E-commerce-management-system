@@ -17,6 +17,10 @@ type TicketDetail = {
   message: string;
   imageUrl?: string | null;
 
+  orderId?: string | null;
+  size?: string | null;
+  color?: string | null;
+
   product: { id?: string | null; name: string };
 
   replies: Array<{
@@ -27,7 +31,8 @@ type TicketDetail = {
   }>;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
 
 function pillClass(s: TicketStatus) {
@@ -52,6 +57,7 @@ export default function MyTicketDetailsPage() {
     setLoading(true);
     setErr("");
     setOk("");
+
     try {
       const res = await fetch(`${API}/tickets/my/${id}`, {
         credentials: "include",
@@ -67,7 +73,19 @@ export default function MyTicketDetailsPage() {
         throw new Error(data?.message || "Failed to load ticket");
       }
 
-      setTicket(data.item);
+      const item = data?.item || null;
+
+      setTicket(
+        item
+          ? {
+              ...item,
+              product: item.product || {
+                id: item.productId || null,
+                name: item.productName || "-",
+              },
+            }
+          : null
+      );
     } catch (e: any) {
       setErr(e?.message || "Something went wrong");
     } finally {
@@ -87,14 +105,16 @@ export default function MyTicketDetailsPage() {
     setSaving(true);
     setErr("");
     setOk("");
+
     try {
-      const res = await fetch(`${API}/tickets/${id}/reply`, {
+      const res = await fetch(`${API}/tickets/my/${id}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ text }),
       });
       const data = await res.json().catch(() => null);
+
       if (!res.ok) throw new Error(data?.message || "Failed to send reply");
 
       setReply("");
@@ -121,7 +141,9 @@ export default function MyTicketDetailsPage() {
             </button>
 
             <div>
-              <div className="text-[14px] font-semibold text-white/90">Ticket Details</div>
+              <div className="text-[14px] font-semibold text-white/90">
+                Ticket Details
+              </div>
               <div className="text-xs text-[#9aa3cc]">My Tickets / View</div>
             </div>
           </div>
@@ -141,6 +163,7 @@ export default function MyTicketDetailsPage() {
             {err}
           </div>
         ) : null}
+
         {ok ? (
           <div className="mb-5 rounded-[10px] border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-200">
             {ok}
@@ -155,10 +178,19 @@ export default function MyTicketDetailsPage() {
           <>
             <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
               <div>
-                <div className="text-[34px] font-semibold tracking-tight">{ticket.ticketCode}</div>
+                <div className="text-[34px] font-semibold tracking-tight">
+                  {ticket.ticketCode}
+                </div>
                 <div className="mt-1 text-sm text-[#9aa3cc]">
-                  Submitted: {String(ticket.submittedAt).slice(0, 10)} • Issue: {ticket.issueType} • Product:{" "}
-                  {ticket.product?.name || "-"}
+                  Submitted: {String(ticket.submittedAt).slice(0, 10)} • Issue:{" "}
+                  {ticket.issueType}
+                </div>
+                <div className="mt-1 text-sm text-[#9aa3cc]">
+                  Product: {ticket.product?.name || "-"} • Order ID:{" "}
+                  {ticket.orderId || "-"}
+                </div>
+                <div className="mt-1 text-sm text-[#9aa3cc]">
+                  Size: {ticket.size || "-"} • Color: {ticket.color || "-"}
                 </div>
               </div>
 
@@ -173,32 +205,81 @@ export default function MyTicketDetailsPage() {
 
             <div className="grid gap-8 lg:grid-cols-[420px_1fr]">
               <section className="rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6">
-                <div className="text-xs uppercase tracking-[0.18em] text-[#9aa3cc]">Subject</div>
+                <div className="text-xs uppercase tracking-[0.18em] text-[#9aa3cc]">
+                  Subject
+                </div>
                 <div className="mt-2 text-white/95">{ticket.subject}</div>
 
                 <div className="mt-6 h-px bg-[#1b2034]" />
 
-                <div className="mt-6 text-xs uppercase tracking-[0.18em] text-[#9aa3cc]">Your Message</div>
+                <div className="mt-6 text-xs uppercase tracking-[0.18em] text-[#9aa3cc]">
+                  Your Message
+                </div>
                 <div className="mt-3 rounded-[12px] border border-[#1b2034] bg-[#0b1220] p-4 text-[#d7def3] leading-7">
                   {ticket.message}
+                </div>
+
+                <div className="mt-6 h-px bg-[#1b2034]" />
+
+                <div className="mt-6 space-y-4">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-[#9aa3cc]">
+                      Product
+                    </div>
+                    <div className="mt-1 text-white/95">
+                      {ticket.product?.name || "-"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-[#9aa3cc]">
+                      Order ID
+                    </div>
+                    <div className="mt-1 text-white/95">
+                      {ticket.orderId || "-"}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-[#9aa3cc]">
+                      Size
+                    </div>
+                    <div className="mt-1 text-white/95">{ticket.size || "-"}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-[#9aa3cc]">
+                      Color
+                    </div>
+                    <div className="mt-1 text-white/95">{ticket.color || "-"}</div>
+                  </div>
                 </div>
               </section>
 
               <section className="rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6">
-                <div className="text-xs uppercase tracking-[0.18em] text-[#9aa7c3]">Attachment</div>
+                <div className="text-xs uppercase tracking-[0.18em] text-[#9aa7c3]">
+                  Attachment
+                </div>
                 <div className="mt-3 rounded-[12px] border border-[#1b2034] bg-[#0b1220] p-4">
                   {ticket.imageUrl ? (
                     <div className="relative aspect-[16/9] w-full overflow-hidden rounded-[10px] border border-[#2b2f45]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={ticket.imageUrl} alt="Ticket attachment" className="h-full w-full object-cover" />
+                      <img
+                        src={ticket.imageUrl}
+                        alt="Ticket attachment"
+                        className="h-full w-full object-cover"
+                      />
                     </div>
                   ) : (
-                    <div className="py-10 text-center text-sm text-[#9aa3cc]">No image uploaded.</div>
+                    <div className="py-10 text-center text-sm text-[#9aa3cc]">
+                      No image uploaded.
+                    </div>
                   )}
                 </div>
 
                 <div className="mt-8">
-                  <div className="text-xs uppercase tracking-[0.18em] text-[#9aa7c3]">Conversation</div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-[#9aa7c3]">
+                    Conversation
+                  </div>
 
                   <div className="mt-3 space-y-3">
                     {ticket.replies.map((r) => (
@@ -214,9 +295,13 @@ export default function MyTicketDetailsPage() {
                           <div className="text-sm text-[#a9c1ff]">
                             {r.sender === "admin" ? "Admin" : "You"}
                           </div>
-                          <div className="text-xs text-[#7f8aa6]">{String(r.createdAt).slice(0, 19)}</div>
+                          <div className="text-xs text-[#7f8aa6]">
+                            {String(r.createdAt).slice(0, 19)}
+                          </div>
                         </div>
-                        <div className="mt-2 text-sm text-[#d7def3] leading-6">{r.text}</div>
+                        <div className="mt-2 text-sm text-[#d7def3] leading-6">
+                          {r.text}
+                        </div>
                       </div>
                     ))}
 
@@ -229,7 +314,9 @@ export default function MyTicketDetailsPage() {
                 </div>
 
                 <div className="mt-8">
-                  <div className="text-xs uppercase tracking-[0.18em] text-[#9aa7c3]">Reply</div>
+                  <div className="text-xs uppercase tracking-[0.18em] text-[#9aa7c3]">
+                    Reply
+                  </div>
                   <textarea
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}

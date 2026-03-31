@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type TicketType =
   | "Damaged Item"
@@ -18,6 +18,13 @@ const API = `${API_BASE}/api`;
 
 export default function SupportTicketPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const orderId = searchParams.get("orderId") || "";
+  const productId = searchParams.get("productId") || "";
+  const productName = searchParams.get("productName") || "";
+  const size = searchParams.get("size") || "";
+  const color = searchParams.get("color") || "";
 
   const [type, setType] = React.useState<TicketType | "">("");
   const [name, setName] = React.useState("");
@@ -31,19 +38,16 @@ export default function SupportTicketPage() {
   const [err, setErr] = React.useState<string>("");
   const [ok, setOk] = React.useState<string>("");
 
-  // ✅ Autofill name/email from BACKEND (with safe fallback)
   React.useEffect(() => {
     const loadMe = async () => {
       try {
         setErr("");
 
-        // Optional: if your auth uses token in localStorage
         const token =
           localStorage.getItem("accessToken") ||
           localStorage.getItem("token") ||
           "";
 
-        // Try common "me/profile" endpoints (use whichever exists in your backend)
         const candidates = [
           `${API}/auth/me`,
           `${API}/customers/me`,
@@ -56,7 +60,7 @@ export default function SupportTicketPage() {
         for (const url of candidates) {
           const res = await fetch(url, {
             method: "GET",
-            credentials: "include", // IMPORTANT if auth uses cookies
+            credentials: "include",
             headers: {
               ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
@@ -64,13 +68,11 @@ export default function SupportTicketPage() {
 
           if (res.ok) {
             const data = await res.json().catch(() => null);
-            // Supports {data:{...}} OR {user:{...}} OR {...}
             me = data?.data || data?.user || data;
             break;
           }
         }
 
-        // If backend didn't return, fallback to localStorage auth_user
         if (!me) {
           try {
             const raw = localStorage.getItem("auth_user");
@@ -84,7 +86,6 @@ export default function SupportTicketPage() {
         if (me?.email) setEmail(String(me.email));
       } catch (e: any) {
         console.log("Failed to autofill from backend:", e?.message);
-        // fallback to localStorage if backend fails
         try {
           const raw = localStorage.getItem("auth_user");
           if (!raw) return;
@@ -107,6 +108,12 @@ export default function SupportTicketPage() {
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+
+  React.useEffect(() => {
+    if (!subject.trim() && productName && orderId) {
+      setSubject(`Issue with ${productName} (${orderId})`);
+    }
+  }, [productName, orderId, subject]);
 
   const onPickFile = (f?: File | null) => {
     setErr("");
@@ -140,14 +147,20 @@ export default function SupportTicketPage() {
     setSubmitting(true);
     try {
       const fd = new FormData();
-      fd.append("issueType", type); // ✅ correct backend field
+      fd.append("issueType", type);
       fd.append("name", name.trim());
       fd.append("email", email.trim());
       fd.append("subject", subject.trim());
       fd.append("message", message.trim());
+
+      if (orderId) fd.append("orderId", orderId);
+      if (productId) fd.append("productId", productId);
+      if (productName) fd.append("productName", productName);
+      if (size) fd.append("size", size);
+      if (color) fd.append("color", color);
+
       if (file) fd.append("image", file);
 
-      // Optional: attach token if your backend expects Authorization header
       const token =
         localStorage.getItem("accessToken") ||
         localStorage.getItem("token") ||
@@ -259,6 +272,28 @@ export default function SupportTicketPage() {
           </h1>
           <div className="mt-6 h-px bg-[#2b2f45]" />
 
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/50 p-4 text-sm">
+              <div className="text-[#9aa3cc]">Order ID</div>
+              <div className="mt-1 font-medium text-white">{orderId || "—"}</div>
+            </div>
+
+            <div className="rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/50 p-4 text-sm">
+              <div className="text-[#9aa3cc]">Product Name</div>
+              <div className="mt-1 font-medium text-white">{productName || "—"}</div>
+            </div>
+
+            <div className="rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/50 p-4 text-sm">
+              <div className="text-[#9aa3cc]">Size</div>
+              <div className="mt-1 font-medium text-white">{size || "—"}</div>
+            </div>
+
+            <div className="rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/50 p-4 text-sm">
+              <div className="text-[#9aa3cc]">Color</div>
+              <div className="mt-1 font-medium text-white">{color || "—"}</div>
+            </div>
+          </div>
+
           <div className="mt-10 grid gap-10 md:grid-cols-[520px_1fr]">
             <section className="rounded-[14px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6">
               {err ? (
@@ -275,7 +310,7 @@ export default function SupportTicketPage() {
               <label className="block text-sm text-[#b8bfdc]">Select</label>
               <select
                 value={type}
-                onChange={(e) => setType(e.target.value as any)}
+                onChange={(e) => setType(e.target.value as TicketType)}
                 className="mt-2 w-full rounded-[12px] border border-[#2b2f45] bg-[#0f1626] px-4 py-3 text-white outline-none focus:border-[#1f7cff]"
               >
                 <option value="" className="bg-[#0f1626]">
@@ -298,21 +333,19 @@ export default function SupportTicketPage() {
                 </option>
               </select>
 
-              {/* ✅ Autofilled from backend */}
               <input
                 value={name}
                 readOnly
                 placeholder="Name"
-                className="mt-5 w-full rounded-[12px] border border-[#2b2f45] bg-[#0f1626] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none focus:border-[#1f7cff] opacity-90"
+                className="mt-5 w-full rounded-[12px] border border-[#2b2f45] bg-[#0f1626] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none opacity-90"
               />
 
-              {/* ✅ Autofilled from backend */}
               <input
                 value={email}
                 readOnly
                 placeholder="Email"
                 type="email"
-                className="mt-4 w-full rounded-[12px] border border-[#2b2f45] bg-[#0f1626] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none focus:border-[#1f7cff] opacity-90"
+                className="mt-4 w-full rounded-[12px] border border-[#2b2f45] bg-[#0f1626] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none opacity-90"
               />
 
               <label className="mt-5 block text-sm text-[#b8bfdc]">
@@ -383,7 +416,6 @@ export default function SupportTicketPage() {
               <div className="mt-4 rounded-[14px] border border-[#2b2f45] bg-[#0f1626] p-4">
                 {previewUrl ? (
                   <div className="relative aspect-[16/10] w-full overflow-hidden rounded-[12px] border border-[#2b2f45]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={previewUrl}
                       alt="Uploaded preview"
@@ -397,7 +429,7 @@ export default function SupportTicketPage() {
                 )}
               </div>
 
-              <div className="mt-6 text-sm text-[#9aa3cc] leading-6">
+              <div className="mt-6 text-sm leading-6 text-[#9aa3cc]">
                 Tip: Upload a clear photo of the product label / defect so the
                 admin can solve your issue faster.
               </div>

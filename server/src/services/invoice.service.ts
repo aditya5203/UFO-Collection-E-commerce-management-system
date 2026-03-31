@@ -6,6 +6,8 @@ import path from "path";
 export type InvoiceItem = {
   name: string;
   size?: string;
+  color?: string;
+  colorLabel?: string;
   qty: number;
   pricePaisa: number;
 };
@@ -40,18 +42,29 @@ function moneyFromPaisa(paisa: number) {
   return `NPR ${n.toFixed(2)}`;
 }
 
+function buildVariantText(item: InvoiceItem) {
+  const parts: string[] = [];
+
+  if (item.size) parts.push(`Size: ${item.size}`);
+  if (item.colorLabel) parts.push(`Color: ${item.colorLabel}`);
+  else if (item.color) parts.push(`Color: ${item.color}`);
+
+  return parts.length ? parts.join(" | ") : "-";
+}
+
 export async function generateInvoicePdf(data: InvoiceData) {
   const invoicesDir = path.join(process.cwd(), "tmp", "invoices");
   fs.mkdirSync(invoicesDir, { recursive: true });
 
-  const fileName = `${data.invoiceNo}.pdf`;
+  const safeInvoiceNo = String(data.invoiceNo || "invoice").replace(/[\\/:*?"<>|]/g, "-");
+  const fileName = `${safeInvoiceNo}.pdf`;
   const filePath = path.join(invoicesDir, fileName);
 
   const doc = new PDFDocument({ size: "A4", margin: 50 });
   const stream = fs.createWriteStream(filePath);
   doc.pipe(stream);
 
-  // ---------------- WATERMARK (FADED LOGO CENTER) ✅ ----------------
+  // ---------------- WATERMARK (FADED LOGO CENTER) ----------------
   const logoPath = path.join(process.cwd(), "public", "assets", "ufo-logo.png");
   if (fs.existsSync(logoPath)) {
     const wmSize = 380;
@@ -59,7 +72,7 @@ export async function generateInvoicePdf(data: InvoiceData) {
     const wmY = (doc.page.height - wmSize) / 2;
 
     doc.save();
-    doc.opacity(0.08); // fade strength
+    doc.opacity(0.08);
     doc.image(logoPath, wmX, wmY, { width: wmSize });
     doc.opacity(1);
     doc.restore();
@@ -75,9 +88,9 @@ export async function generateInvoicePdf(data: InvoiceData) {
   doc
     .fontSize(10)
     .fillColor("#444")
-    .text("Kathmandu, Nepal", 140, 75)
-    .text("Email: support@ufocollection.com", 140, 90)
-    .text("Phone: +977-98XXXXXXXX", 140, 105);
+    .text("Janakpurdham, Nepal", 140, 75)
+    .text("Email: ufocollection075@gmail.com", 140, 90)
+    .text("Phone: +977-9804880758", 140, 105);
 
   // ---------------- INVOICE (RIGHT) ----------------
   doc.fillColor("#000").fontSize(18).text("INVOICE", 350, 50, { align: "right" });
@@ -91,7 +104,6 @@ export async function generateInvoicePdf(data: InvoiceData) {
       align: "right",
     });
 
-  // line
   doc.moveDown(4);
   doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke();
   doc.moveDown();
@@ -117,7 +129,7 @@ export async function generateInvoicePdf(data: InvoiceData) {
 
   // ---------------- ITEMS TABLE ----------------
   const tableTop = doc.y;
-  const cols = { item: 50, variant: 280, price: 390, qty: 450, total: 500 };
+  const cols = { item: 50, variant: 260, price: 390, qty: 450, total: 500 };
 
   doc.fillColor("#000").fontSize(10);
   doc.text("Item", cols.item, tableTop);
@@ -131,16 +143,15 @@ export async function generateInvoicePdf(data: InvoiceData) {
   let y = tableTop + 25;
 
   for (const it of data.items) {
-    const variant = it.size ? `Size: ${it.size}` : "-";
+    const variant = buildVariantText(it);
     const lineTotalPaisa = (it.pricePaisa || 0) * (it.qty || 0);
 
     doc.fillColor("#111").fontSize(10);
-    doc.text(it.name, cols.item, y, { width: 220 });
+    doc.text(it.name, cols.item, y, { width: 190 });
 
     doc.fillColor("#333");
-    doc.text(variant, cols.variant, y, { width: 100 });
+    doc.text(variant, cols.variant, y, { width: 110 });
 
-    // ✅ wider widths so currency never wraps
     doc.text(moneyFromPaisa(it.pricePaisa), cols.price, y, {
       width: 80,
       align: "right",
@@ -159,7 +170,7 @@ export async function generateInvoicePdf(data: InvoiceData) {
       lineBreak: false,
     });
 
-    y += 18;
+    y += 20;
 
     if (y > 720) {
       doc.addPage();
@@ -169,7 +180,7 @@ export async function generateInvoicePdf(data: InvoiceData) {
 
   doc.moveTo(50, y + 5).lineTo(545, y + 5).stroke();
 
-  // ---------------- TOTALS (FIXED ALIGNMENT) ----------------
+  // ---------------- TOTALS ----------------
   const labelX = 340;
   const amountX = 445;
   const amountW = 100;
@@ -208,7 +219,7 @@ export async function generateInvoicePdf(data: InvoiceData) {
     lineBreak: false,
   });
 
-  // ---------------- PAYMENT DETAILS (RIGHT SIDE) ----------------
+  // ---------------- PAYMENT DETAILS ----------------
   const paymentY = ty + 70;
   doc.fillColor("#000").fontSize(11).text("Payment Details:", labelX, paymentY);
 
@@ -222,7 +233,6 @@ export async function generateInvoicePdf(data: InvoiceData) {
     doc.text(`Ref: ${data.paymentRef}`, labelX, paymentY + 50);
   }
 
-  // Footer note
   doc
     .fontSize(9)
     .fillColor("#666")

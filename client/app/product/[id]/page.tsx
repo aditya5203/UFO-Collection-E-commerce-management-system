@@ -13,12 +13,20 @@ type Product = {
   name: string;
   price: number;
   image: string;
+  images?: string[];
   rating?: number;
   reviews?: number;
   shortDesc?: string;
   longDesc?: string;
   sizes?: Size[];
   colors?: string[];
+};
+
+type RelatedProduct = {
+  id: string;
+  name: string;
+  price: number;
+  image: string;
 };
 
 type Review = {
@@ -51,6 +59,8 @@ type CartItem = {
   id: string;
   name: string;
   size: string;
+  color: string;
+  colorLabel: string;
   price: number;
   qty: number;
   image: string;
@@ -87,24 +97,47 @@ function isHexColor(v: string) {
 }
 
 const COLOR_NAME_TO_HEX: Record<string, string> = {
-  black: "#16191f",
+  black: "#000000",
   white: "#ffffff",
   red: "#ef4444",
   blue: "#3b82f6",
+  "navy blue": "#000080",
+  navy: "#000080",
   green: "#22c55e",
   yellow: "#eab308",
-  gray: "#9ca3af",
-  grey: "#9ca3af",
+  gray: "#808080",
+  grey: "#808080",
   pink: "#ec4899",
   purple: "#a855f7",
   orange: "#f97316",
 };
 
+const HEX_TO_COLOR_NAME: Record<string, string> = {
+  "#000000": "Black",
+  "#000080": "Navy Blue",
+  "#808080": "Grey",
+  "#ffffff": "White",
+  "#ef4444": "Red",
+  "#3b82f6": "Blue",
+  "#22c55e": "Green",
+  "#eab308": "Yellow",
+  "#9ca3af": "Gray",
+  "#ec4899": "Pink",
+  "#a855f7": "Purple",
+  "#f97316": "Orange",
+  "#16191f": "Black",
+};
+
 function toHex(color: string) {
   const c = (color || "").trim();
   if (!c) return "#16191f";
-  if (isHexColor(c)) return c;
+  if (isHexColor(c)) return c.toLowerCase();
   return COLOR_NAME_TO_HEX[c.toLowerCase()] || "#16191f";
+}
+
+function toColorLabel(color: string) {
+  const hex = toHex(color).toLowerCase();
+  return HEX_TO_COLOR_NAME[hex] || color;
 }
 
 function normalizeColors(raw: any): string[] {
@@ -167,6 +200,13 @@ function getProductImageSrc(image: any): string {
   return PRODUCT_PLACEHOLDER;
 }
 
+function normalizeImageList(rawImages: any): string[] {
+  if (!Array.isArray(rawImages)) return [];
+  return rawImages
+    .map((img) => getProductImageSrc(img))
+    .filter((img) => Boolean(img));
+}
+
 function readCart(): CartItem[] {
   try {
     const raw = localStorage.getItem("ufo_cart");
@@ -182,6 +222,15 @@ function getCartCount(): number {
   return cart.reduce((sum, it) => sum + (Number(it?.qty) || 0), 0);
 }
 
+function mapProductCard(raw: any): RelatedProduct {
+  return {
+    id: String(raw?.id || raw?._id || ""),
+    name: toStr(raw?.name, "Unnamed Product"),
+    price: toNumber(raw?.price, 0),
+    image: getProductImageSrc(raw?.image),
+  };
+}
+
 export default function ProductPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -192,6 +241,9 @@ export default function ProductPage() {
   const [error, setError] = React.useState<string | null>(null);
 
   const [selectedSize, setSelectedSize] = React.useState<Size>("M");
+  const [selectedImage, setSelectedImage] = React.useState<string>("");
+  const [selectedColor, setSelectedColor] = React.useState<string>("");
+
   const [activeTab, setActiveTab] = React.useState<"description" | "reviews">(
     "description"
   );
@@ -207,6 +259,10 @@ export default function ProductPage() {
     count: number;
     avgRating: number;
   }>({ count: 0, avgRating: 0 });
+
+  const [relatedProducts, setRelatedProducts] = React.useState<RelatedProduct[]>([]);
+  const [relatedLoading, setRelatedLoading] = React.useState(false);
+  const [relatedError, setRelatedError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const update = () => setCartCount(getCartCount());
@@ -252,6 +308,7 @@ export default function ProductPage() {
           name: toStr(raw.name, "Unnamed Product"),
           price: toNumber(raw.price, 0),
           image: getProductImageSrc(raw.image),
+          images: normalizeImageList(raw.images),
           rating: toNumber(raw.rating, 4.8),
           reviews: toNumber(raw.reviews, 0),
           shortDesc: toStr(raw.shortDesc, toStr(raw.description, "")),
@@ -264,6 +321,15 @@ export default function ProductPage() {
 
         const sizes = mapped.sizes?.length ? mapped.sizes : DEFAULT_SIZES;
         setSelectedSize(sizes.includes("M") ? "M" : sizes[0]);
+
+        const gallery = (mapped.images || []).filter(
+          (img) => img && img !== mapped.image
+        );
+        const allImages = [mapped.image, ...gallery];
+        setSelectedImage(allImages[0] || mapped.image);
+
+        const normalizedColors = (mapped.colors || []).map((c) => toHex(c));
+        setSelectedColor(normalizedColors[0] || "");
       } catch (e: any) {
         console.error(e);
         setError(e?.message || "Failed to load product.");
@@ -275,6 +341,46 @@ export default function ProductPage() {
 
     fetchProduct();
   }, [id]);
+
+  React.useEffect(() => {
+    if (!product?.id) return;
+
+    const fetchRelatedProducts = async () => {
+      try {
+        setRelatedLoading(true);
+        setRelatedError(null);
+
+        const res = await fetch(`${API_BASE}/products/${product.id}/related`, {
+          cache: "no-store",
+        });
+
+        const response = await res.json().catch(() => ({} as any));
+
+        if (!res.ok) {
+          throw new Error(
+            response?.message ||
+              `Failed to load related products (status ${res.status})`
+          );
+        }
+
+        const rawItems = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response)
+          ? response
+          : [];
+
+        setRelatedProducts(rawItems.map(mapProductCard));
+      } catch (e: any) {
+        console.error(e);
+        setRelatedError(e?.message || "Failed to load related products.");
+        setRelatedProducts([]);
+      } finally {
+        setRelatedLoading(false);
+      }
+    };
+
+    fetchRelatedProducts();
+  }, [product?.id]);
 
   React.useEffect(() => {
     if (!product?.id) return;
@@ -329,17 +435,28 @@ export default function ProductPage() {
   const addToCart = () => {
     if (!product) return;
 
+    const currentColorLabel =
+      product.colors?.find((c) => toHex(c) === selectedColor) ||
+      toColorLabel(selectedColor);
+
     const item: CartItem = {
       id: product.id,
       name: product.name,
       size: selectedSize,
+      color: selectedColor,
+      colorLabel: toColorLabel(currentColorLabel),
       price: product.price,
       qty: 1,
-      image: product.image,
+      image: selectedImage || product.image,
     };
 
     const cart = readCart();
-    const idx = cart.findIndex((it) => it.id === item.id && it.size === item.size);
+    const idx = cart.findIndex(
+      (it) =>
+        it.id === item.id &&
+        it.size === item.size &&
+        it.color === item.color
+    );
 
     if (idx !== -1) {
       cart[idx].qty = Math.min(99, (cart[idx].qty || 1) + 1);
@@ -382,7 +499,16 @@ export default function ProductPage() {
   }
 
   const sizes = product.sizes?.length ? product.sizes : DEFAULT_SIZES;
-  const colors = (product.colors ?? []).map((c) => toHex(c));
+
+  const colors = (product.colors ?? []).map((c) => ({
+    value: toHex(c),
+    label: toColorLabel(c),
+  }));
+
+  const galleryImages = (product.images || []).filter(
+    (img) => img && img !== product.image
+  );
+  const allImages = [product.image, ...galleryImages];
 
   return (
     <>
@@ -515,14 +641,41 @@ export default function ProductPage() {
             <div className="rounded-[14px] border border-[#111827] bg-[#050816] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
               <div className="relative h-[520px] w-full overflow-hidden rounded-[12px] bg-[#0b1020]">
                 <Image
-                  src={product.image}
+                  src={selectedImage || product.image}
                   alt={product.name}
                   fill
                   className="object-cover object-center"
                   priority
-                  unoptimized={product.image.startsWith("http")}
+                  unoptimized={(selectedImage || product.image).startsWith("http")}
                 />
               </div>
+
+              {allImages.length > 1 ? (
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {allImages.map((img, index) => {
+                    const active = (selectedImage || product.image) === img;
+
+                    return (
+                      <button
+                        key={`${img}-${index}`}
+                        type="button"
+                        onClick={() => setSelectedImage(img)}
+                        className={`relative h-[76px] w-[76px] overflow-hidden rounded-[10px] border ${
+                          active ? "border-[#1d9bf0]" : "border-[#1f2937]"
+                        }`}
+                      >
+                        <Image
+                          src={img}
+                          alt={`${product.name} ${index + 1}`}
+                          fill
+                          className="object-cover"
+                          unoptimized={img.startsWith("http")}
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
 
             <div>
@@ -593,23 +746,33 @@ export default function ProductPage() {
                     Color
                   </div>
 
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    {colors.map((hex) => (
-                      <div
-                        key={hex}
-                        className="flex items-center gap-2 rounded-full border border-[#2b2f45] bg-transparent px-4 py-2"
-                        title={hex}
-                        aria-label={`Color ${hex}`}
-                      >
-                        <span
-                          className="h-4 w-4 rounded-full border border-[#111827]"
-                          style={{ backgroundColor: hex }}
-                        />
-                        <span className="text-[13px] font-semibold text-white">
-                          {hex}
-                        </span>
-                      </div>
-                    ))}
+                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                    {colors.map((color) => {
+                      const active = selectedColor === color.value;
+
+                      return (
+                        <button
+                          key={`${color.value}-${color.label}`}
+                          type="button"
+                          onClick={() => setSelectedColor(color.value)}
+                          className={`flex items-center gap-2 rounded-full border px-4 py-2 ${
+                            active
+                              ? "border-[#1d9bf0] bg-[#0f172a]"
+                              : "border-[#2b2f45] bg-transparent"
+                          }`}
+                          title={color.label}
+                          aria-label={`Color ${color.label}`}
+                        >
+                          <span
+                            className="h-5 w-5 rounded-full border border-[#111827]"
+                            style={{ backgroundColor: color.value }}
+                          />
+                          <span className="text-[13px] font-semibold text-white">
+                            {color.label}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               ) : null}
@@ -742,6 +905,62 @@ export default function ProductPage() {
                 </div>
               )}
             </div>
+          </section>
+
+          <section className="mt-14">
+            <div className="mb-6 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-[24px] font-semibold text-white">
+                  Related Products
+                </h2>
+                <p className="mt-1 text-sm text-[#9ca3af]">
+                  Products you may also like
+                </p>
+              </div>
+            </div>
+
+            {relatedLoading ? (
+              <div className="rounded-2xl border border-[#111827] bg-[#0b0f1a]/60 p-5 text-[#9aa3cc]">
+                Loading related products...
+              </div>
+            ) : relatedError ? (
+              <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-5 text-red-200">
+                {relatedError}
+              </div>
+            ) : relatedProducts.length === 0 ? (
+              <div className="rounded-2xl border border-[#111827] bg-[#0b0f1a]/60 p-5 text-[#9aa3cc]">
+                No related products found.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                {relatedProducts.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={`/product/${item.id}`}
+                    className="group overflow-hidden rounded-2xl border border-[#111827] bg-[#0b0f1a]/70 transition duration-300 hover:-translate-y-1 hover:border-[#1d9bf0] hover:shadow-[0_20px_40px_rgba(0,0,0,0.45)]"
+                  >
+                    <div className="relative h-[260px] w-full overflow-hidden bg-[#0f172a]">
+                      <Image
+                        src={item.image}
+                        alt={item.name}
+                        fill
+                        className="object-cover transition duration-300 group-hover:scale-[1.03]"
+                        unoptimized={item.image.startsWith("http")}
+                      />
+                    </div>
+
+                    <div className="p-4">
+                      <h3 className="line-clamp-2 min-h-[48px] text-[15px] font-semibold text-white">
+                        {item.name}
+                      </h3>
+                      <div className="mt-2 text-[16px] font-semibold text-[#7dd3fc]">
+                        Rs. {item.price}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </section>
         </div>
       </main>

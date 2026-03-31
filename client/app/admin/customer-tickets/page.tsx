@@ -1,4 +1,3 @@
-// client/app/admin/customer-tickets/page.tsx
 "use client";
 
 import * as React from "react";
@@ -19,12 +18,16 @@ type TicketRow = {
   customerName: string;
   customerEmail: string;
   productName: string;
+  orderId?: string | null;
+  size?: string | null;
+  color?: string | null;
   issueType: string;
   submittedAt: string;
   status: TicketStatus;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
 
 function pillClass(s: TicketStatus) {
@@ -110,7 +113,9 @@ export default function AdminCustomerTicketsPage() {
       );
 
       const data = await safeJson(res);
-      if (!res.ok) throw new Error((data as any)?.message || "Failed to load tickets");
+      if (!res.ok) {
+        throw new Error((data as any)?.message || "Failed to load tickets");
+      }
 
       setRows(Array.isArray((data as any)?.items) ? (data as any).items : []);
     } catch (e: any) {
@@ -126,7 +131,7 @@ export default function AdminCustomerTicketsPage() {
 
   return (
     <AdminPageGuard permission="ticketView">
-      <div className="mx-auto max-w-[1200px]">
+      <div className="mx-auto max-w-[1280px]">
         <div className="mb-8 flex items-center justify-between gap-4 rounded-[12px] border border-[#1b2a40] bg-[#0f1a2b]/55 px-5 py-4">
           <div>
             <div className="text-[28px] font-semibold tracking-tight text-white">
@@ -144,7 +149,7 @@ export default function AdminCustomerTicketsPage() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Search"
-                className="w-[200px] bg-transparent text-sm text-white placeholder:text-[#7f8aa6] outline-none"
+                className="w-[220px] bg-transparent text-sm text-white placeholder:text-[#7f8aa6] outline-none"
               />
             </div>
 
@@ -163,21 +168,21 @@ export default function AdminCustomerTicketsPage() {
           </div>
         </div>
 
-        {err && (
+        {err ? (
           <div className="mb-5 rounded-[10px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {err}
           </div>
-        )}
+        ) : null}
 
         <section className="overflow-hidden rounded-[12px] border border-[#1b2a40] bg-[#0f1a2b]/55">
           <div className="overflow-x-auto">
-            <div className="min-w-[1200px] pb-4">
-              <div className="grid grid-cols-[140px_260px_180px_180px_160px_140px_120px] border-b border-[#1b2a40] px-6 py-4 text-[13px] font-medium text-white/90">
+            <div className="min-w-[1380px] pb-4">
+              <div className="grid grid-cols-[140px_250px_240px_170px_150px_140px_120px] border-b border-[#1b2a40] px-6 py-4 text-[13px] font-medium text-white/90">
                 <div>Ticket ID</div>
                 <div>Customer</div>
-                <div>Product</div>
+                <div>Product / Order</div>
                 <div>Issue Type</div>
-                <div>Submission Date</div>
+                <div>Submitted</div>
                 <div>Status</div>
                 <div className="text-right">Action</div>
               </div>
@@ -185,7 +190,7 @@ export default function AdminCustomerTicketsPage() {
               {rows.map((t) => (
                 <div
                   key={t.id}
-                  className="grid grid-cols-[140px_260px_180px_180px_160px_140px_120px] items-center border-b border-[#162338] px-6 py-5 last:border-0"
+                  className="grid grid-cols-[140px_250px_240px_170px_150px_140px_120px] items-center border-b border-[#162338] px-6 py-5 last:border-0"
                 >
                   <div className="whitespace-nowrap font-semibold text-white/95">
                     {showTicketId(t.ticketId)}
@@ -198,8 +203,16 @@ export default function AdminCustomerTicketsPage() {
                     </div>
                   </div>
 
-                  <div className="whitespace-nowrap text-[#9bb2dd]">
-                    {t.productName || "-"}
+                  <div className="min-w-0">
+                    <div className="truncate text-[#9bb2dd]">
+                      {t.productName || "-"}
+                    </div>
+                    <div className="mt-1 text-xs text-[#7f8aa6]">
+                      Order: {t.orderId || "-"}
+                    </div>
+                    <div className="mt-1 text-xs text-[#7f8aa6]">
+                      Size: {t.size || "-"} • Color: {t.color || "-"}
+                    </div>
                   </div>
 
                   <div className="whitespace-nowrap text-[#9bb2dd]">

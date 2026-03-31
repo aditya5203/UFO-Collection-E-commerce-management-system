@@ -1,4 +1,3 @@
-// server/src/modules/tickets/services/ticket.service.ts
 import mongoose from "mongoose";
 import { Ticket } from "../../../models/Ticket.model";
 
@@ -17,7 +16,11 @@ export const ticketService = {
     message: string;
     customerName: string;
     customerEmail: string;
+    orderId?: string | null;
     productId?: string | null;
+    productName?: string | null;
+    size?: string | null;
+    color?: string | null;
     imageUrl?: string | null;
   }) {
     let code = makeTicketCode();
@@ -47,7 +50,13 @@ export const ticketService = {
       customer: customerObjId,
       customerName: input.customerName,
       customerEmail: input.customerEmail,
+
+      orderId: input.orderId || null,
       productId: productObjId,
+      productName: input.productName || null,
+      size: input.size || null,
+      color: input.color || null,
+
       imageUrl: input.imageUrl || null,
       replies: [],
     });
@@ -67,6 +76,8 @@ export const ticketService = {
         { subject: new RegExp(s, "i") },
         { issueType: new RegExp(s, "i") },
         { status: new RegExp(s, "i") },
+        { productName: new RegExp(s, "i") },
+        { orderId: new RegExp(s, "i") },
       ];
     }
 

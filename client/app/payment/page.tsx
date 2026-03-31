@@ -10,6 +10,8 @@ type CartItem = {
   id: string;
   name: string;
   size: string;
+  color: string;
+  colorLabel: string;
   price: number; // Rs
   qty: number;
   image: string;
@@ -92,7 +94,8 @@ export default function PaymentPage() {
 
   const [summary, setSummary] = React.useState<OrderSummaryLS | null>(null);
 
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
   const apiBase = React.useMemo(() => joinUrl(API_BASE, "/api"), [API_BASE]);
 
   // ✅ Load cart
@@ -116,7 +119,10 @@ export default function PaymentPage() {
 
   // ✅ Use totals from summary (fallback to old calc if not found)
   const fallbackSubtotal = React.useMemo(() => {
-    return items.reduce((sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0), 0);
+    return items.reduce(
+      (sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0),
+      0
+    );
   }, [items]);
 
   const fallbackShipping = cartReady && items.length ? 100 : 0;
@@ -130,7 +136,10 @@ export default function PaymentPage() {
   const savePaymentMeta = (label: string) => {
     try {
       localStorage.setItem("ufo_payment_method", label);
-      localStorage.setItem("ufo_last_total_paisa", String(Math.round(total * 100)));
+      localStorage.setItem(
+        "ufo_last_total_paisa",
+        String(Math.round(total * 100))
+      );
     } catch {}
   };
 
@@ -144,7 +153,9 @@ export default function PaymentPage() {
 
       if (!raw) return undefined;
       const addr = JSON.parse(raw);
-      return addr && typeof addr === "object" ? (addr as CheckoutAddressLS) : undefined;
+      return addr && typeof addr === "object"
+        ? (addr as CheckoutAddressLS)
+        : undefined;
     } catch {
       return undefined;
     }
@@ -198,16 +209,15 @@ export default function PaymentPage() {
       paymentRef: paymentRef || undefined,
       paymentStatus: paymentStatus || undefined,
 
-      // ✅ totals from cart summary
       shippingPaisa: Math.round(shipping * 100),
-
-      // ✅ optional - include coupon info (if your backend supports)
       couponCode: summary?.couponCode || null,
       discountPaisa: Math.round(discount * 100),
 
       items: safeItems.map((it) => ({
         productId: it.id,
         size: it.size || "",
+        color: it.color || "",
+        colorLabel: it.colorLabel || "",
         qty: Math.max(1, Number(it.qty || 1)),
       })),
       address: mappedAddress,
@@ -225,12 +235,16 @@ export default function PaymentPage() {
     return json?.data as { id: string; orderCode: string; totalPaisa: number };
   };
 
-  const finishToThankYou = (data: { id: string; orderCode: string; totalPaisa: number }) => {
+  const finishToThankYou = (data: {
+    id: string;
+    orderCode: string;
+    totalPaisa: number;
+  }) => {
     localStorage.setItem("ufo_last_order_id", data.id);
     localStorage.setItem("ufo_last_order_number", data.orderCode);
     localStorage.setItem("ufo_last_total_paisa", String(data.totalPaisa));
     localStorage.removeItem("ufo_cart");
-    localStorage.removeItem("ufo_order_summary"); // ✅ clean
+    localStorage.removeItem("ufo_order_summary");
     router.replace("/ThankYou");
   };
 
@@ -238,8 +252,6 @@ export default function PaymentPage() {
     const status = searchParams.get("status");
     if (status === "failed") alert("Payment failed. Please try again.");
   }, [searchParams]);
-
-  // (Khalti/eSewa finalize logic kept same, only uses `total` now)
 
   React.useEffect(() => {
     if (!cartReady) return;
@@ -264,7 +276,11 @@ export default function PaymentPage() {
 
         const vj = await vr.json().catch(() => ({} as any));
         if (!vr.ok) throw new Error(vj?.message || "Khalti lookup failed");
-        if (!vj?.paid) throw new Error(`Khalti not completed (status: ${vj?.status || "Unknown"})`);
+        if (!vj?.paid) {
+          throw new Error(
+            `Khalti not completed (status: ${vj?.status || "Unknown"})`
+          );
+        }
 
         savePaymentMeta("Khalti");
 
@@ -308,7 +324,11 @@ export default function PaymentPage() {
         const vj = await vr.json().catch(() => ({} as any));
         if (!vr.ok) throw new Error(vj?.message || "eSewa verify failed");
 
-        const ref = String(vj?.transaction_uuid || vj?.payload?.transaction_uuid || "").trim() || "ESEWA_OK";
+        const ref =
+          String(
+            vj?.transaction_uuid || vj?.payload?.transaction_uuid || ""
+          ).trim() || "ESEWA_OK";
+
         savePaymentMeta("eSewa");
 
         const payStatus: "Paid" | "Pending" = vj?.statusOk ? "Paid" : "Pending";
@@ -331,7 +351,10 @@ export default function PaymentPage() {
     if (!cartReady) return;
     if (!items.length) return router.push("/collection");
     savePaymentMeta("eSewa");
-    window.location.href = joinUrl(apiBase, `/payments/esewa/initiate?amount=${encodeURIComponent(String(total))}`);
+    window.location.href = joinUrl(
+      apiBase,
+      `/payments/esewa/initiate?amount=${encodeURIComponent(String(total))}`
+    );
   };
 
   const handleKhaltiPay = async () => {
@@ -389,7 +412,6 @@ export default function PaymentPage() {
 
   return (
     <>
-      {/* HEADER */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
           <div className="flex items-center gap-4">
@@ -412,7 +434,14 @@ export default function PaymentPage() {
 
             <Link href="/homepage" className="flex items-center gap-[10px]">
               <div className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white sm:h-[48px] sm:w-[48px]">
-                <Image src="/images/logo.png" alt="UFO Collection logo" width={48} height={48} className="h-full w-full object-cover" priority />
+                <Image
+                  src="/images/logo.png"
+                  alt="UFO Collection logo"
+                  width={48}
+                  height={48}
+                  className="h-full w-full object-cover"
+                  priority
+                />
               </div>
               <div className="text-[22px] font-bold uppercase tracking-[0.18em] text-white sm:text-[26px]">
                 UFO Collection
@@ -421,19 +450,49 @@ export default function PaymentPage() {
           </div>
 
           <nav className="hidden items-center gap-[42px] md:flex">
-            <Link href="/homepage" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">HOME</Link>
-            <Link href="/collection" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">COLLECTION</Link>
-            <Link href="/about" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">ABOUT</Link>
-            <Link href="/contact" className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]">CONTACT</Link>
+            <Link
+              href="/homepage"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              HOME
+            </Link>
+            <Link
+              href="/collection"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              COLLECTION
+            </Link>
+            <Link
+              href="/about"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              ABOUT
+            </Link>
+            <Link
+              href="/contact"
+              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
+            >
+              CONTACT
+            </Link>
           </nav>
 
-          <button type="button" onClick={() => router.push("/cartpage")} aria-label="Wishlist" title="Wishlist">
-            <Image src="/images/wishlist.png" width={26} height={26} alt="" className="brightness-0 invert contrast-[2.8] saturate-[2.6]" />
+          <button
+            type="button"
+            onClick={() => router.push("/cartpage")}
+            aria-label="Wishlist"
+            title="Wishlist"
+          >
+            <Image
+              src="/images/wishlist.png"
+              width={26}
+              height={26}
+              alt=""
+              className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
+            />
           </button>
         </div>
       </header>
 
-      {/* BODY */}
       <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
         <div className="mx-auto max-w-[1160px] px-4 pb-20 pt-10">
           <div className="mb-10 text-[14px] text-[#9aa3cc]">
@@ -442,15 +501,26 @@ export default function PaymentPage() {
           </div>
 
           <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1fr_460px]">
-            {/* LEFT */}
             <section className="max-w-[520px]">
               <h2 className="mb-6 text-[22px] font-semibold">Payment Information</h2>
 
-              <input placeholder="Card Number" disabled={method !== "card"} className="input mb-4 disabled:opacity-50" />
+              <input
+                placeholder="Card Number"
+                disabled={method !== "card"}
+                className="input mb-4 disabled:opacity-50"
+              />
 
               <div className="grid grid-cols-2 gap-4">
-                <input placeholder="Expiry Date" disabled={method !== "card"} className="input disabled:opacity-50" />
-                <input placeholder="CVV" disabled={method !== "card"} className="input disabled:opacity-50" />
+                <input
+                  placeholder="Expiry Date"
+                  disabled={method !== "card"}
+                  className="input disabled:opacity-50"
+                />
+                <input
+                  placeholder="CVV"
+                  disabled={method !== "card"}
+                  className="input disabled:opacity-50"
+                />
               </div>
 
               <div className="mt-6 flex flex-wrap gap-3">
@@ -468,7 +538,9 @@ export default function PaymentPage() {
                       type="button"
                       onClick={() => setMethod(m.key as PayMethod)}
                       className={`rounded-[10px] border px-4 py-2 text-[14px] ${
-                        active ? "border-[#1f7cff] bg-[#0b0f1a] text-white" : "border-[#2b2f45] bg-transparent text-[#9aa3cc]"
+                        active
+                          ? "border-[#1f7cff] bg-[#0b0f1a] text-white"
+                          : "border-[#2b2f45] bg-transparent text-[#9aa3cc]"
                       }`}
                     >
                       {m.label}
@@ -478,7 +550,6 @@ export default function PaymentPage() {
               </div>
             </section>
 
-            {/* RIGHT */}
             <aside>
               <h2 className="mb-6 text-[20px] font-semibold">Order Summary</h2>
 
@@ -495,7 +566,9 @@ export default function PaymentPage() {
                   </div>
 
                   <div className="flex items-center justify-between text-[#9aa3cc]">
-                    <span>Discount {summary?.couponCode ? `(${summary.couponCode})` : ""}</span>
+                    <span>
+                      Discount {summary?.couponCode ? `(${summary.couponCode})` : ""}
+                    </span>
                     <span className="text-green-400">- Rs. {discount}</span>
                   </div>
 
@@ -520,14 +593,28 @@ export default function PaymentPage() {
           <div className="mt-24 flex flex-col items-center gap-6 text-center">
             <div className="flex items-center gap-6 opacity-90">
               <a href="#" aria-label="Instagram" className="hover:opacity-100">
-                <Image src="/images/instagram.png" width={18} height={18} alt="" className="brightness-0 invert" />
+                <Image
+                  src="/images/instagram.png"
+                  width={18}
+                  height={18}
+                  alt=""
+                  className="brightness-0 invert"
+                />
               </a>
               <a href="#" aria-label="Facebook" className="hover:opacity-100">
-                <Image src="/images/facebook.png" width={18} height={18} alt="" className="brightness-0 invert" />
+                <Image
+                  src="/images/facebook.png"
+                  width={18}
+                  height={18}
+                  alt=""
+                  className="brightness-0 invert"
+                />
               </a>
             </div>
 
-            <div className="text-[14px] text-[#93a0c8]">© 2025 UFO Collection — All Rights Reserved</div>
+            <div className="text-[14px] text-[#93a0c8]">
+              © 2025 UFO Collection — All Rights Reserved
+            </div>
           </div>
         </div>
       </main>

@@ -1,8 +1,8 @@
-// client/app/admin/orders/[id]/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import AdminPageGuard from "../../_components/AdminPageGuard";
 import {
@@ -163,8 +163,12 @@ export default function OrderDetailsPage() {
         }
 
         setOrder((json as any).data);
-        setPaymentStatus(((json as any).data?.paymentStatus || "Pending") as PaymentStatus);
-        setOrderStatus(((json as any).data?.orderStatus || "Pending") as OrderStatus);
+        setPaymentStatus(
+          (((json as any).data?.paymentStatus || "Pending") as PaymentStatus)
+        );
+        setOrderStatus(
+          (((json as any).data?.orderStatus || "Pending") as OrderStatus)
+        );
       } catch {
         setError("Failed to load order");
         setOrder(null);
@@ -344,24 +348,80 @@ export default function OrderDetailsPage() {
             <thead className="bg-slate-900/30 text-slate-200">
               <tr>
                 <th className="px-6 py-4 text-left">Product</th>
-                <th className="px-6 py-4">Qty</th>
+                <th className="px-6 py-4 text-left">Size</th>
+                <th className="px-6 py-4 text-left">Color</th>
+                <th className="px-6 py-4 text-center">Qty</th>
                 <th className="px-6 py-4 text-right">Price</th>
+                <th className="px-6 py-4 text-right">Total</th>
               </tr>
             </thead>
+
             <tbody>
               {Array.isArray(order.items) && order.items.length ? (
-                order.items.map((it: any, i: number) => (
-                  <tr key={i} className="border-t border-slate-700/40">
-                    <td className="px-6 py-4">{it?.name || "-"}</td>
-                    <td className="px-6 py-4 text-center">{it?.qty ?? "-"}</td>
-                    <td className="px-6 py-4 text-right">
-                      {formatNPR(Number(it?.pricePaisa || 0))}
-                    </td>
-                  </tr>
-                ))
+                order.items.map((it: any, i: number) => {
+                  const colorValue = safeStr(it?.color);
+                  const colorLabel = safeStr(it?.colorLabel);
+                  const qty = Number(it?.qty || 0);
+                  const pricePaisa = Number(it?.pricePaisa || 0);
+                  const lineTotalPaisa = qty * pricePaisa;
+
+                  return (
+                    <tr key={i} className="border-t border-slate-700/40">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-4">
+                          <div className="relative h-12 w-12 overflow-hidden rounded-full border border-slate-700/50 bg-slate-900/30">
+                            {it?.image ? (
+                              <Image
+                                src={it.image}
+                                alt={it?.name || "Product"}
+                                fill
+                                className="object-cover"
+                              />
+                            ) : null}
+                          </div>
+                          <div>
+                            <div className="font-medium text-slate-100">
+                              {it?.name || "-"}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-6 py-4 text-slate-300">
+                        {safeStr(it?.size) || "-"}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        {colorValue || colorLabel ? (
+                          <div className="flex items-center gap-2 text-slate-300">
+                            <span
+                              className="h-4 w-4 rounded-full border border-slate-600"
+                              style={{ backgroundColor: colorValue || "#16191f" }}
+                            />
+                            <span>{colorLabel || colorValue}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-300">-</span>
+                        )}
+                      </td>
+
+                      <td className="px-6 py-4 text-center text-slate-300">
+                        {qty || "-"}
+                      </td>
+
+                      <td className="px-6 py-4 text-right text-slate-300">
+                        {formatNPR(pricePaisa)}
+                      </td>
+
+                      <td className="px-6 py-4 text-right text-slate-100">
+                        {formatNPR(lineTotalPaisa)}
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr className="border-t border-slate-700/40">
-                  <td colSpan={3} className="px-6 py-6 text-slate-400">
+                  <td colSpan={6} className="px-6 py-6 text-slate-400">
                     No items found.
                   </td>
                 </tr>

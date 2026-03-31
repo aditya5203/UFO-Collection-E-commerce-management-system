@@ -1,4 +1,3 @@
-// server/src/modules/tickets/controllers/admin.ticket.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { ticketService, TicketStatus } from "../services/ticket.service";
 import { notificationService } from "../../notifications/services/notification.service";
@@ -27,23 +26,6 @@ async function resolveCustomerIdFromTicket(ticket: any) {
 }
 
 export const adminTicketController = {
-  /**
-   * @swagger
-   * /api/admin/tickets:
-   *   get:
-   *     summary: List admin tickets
-   *     tags: [Tickets - Admin]
-   *     security:
-   *       - cookieAuth: []
-   *     parameters:
-   *       - in: query
-   *         name: q
-   *         schema:
-   *           type: string
-   *     responses:
-   *       200:
-   *         description: Tickets list
-   */
   list: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const q = String(req.query.q || "");
@@ -70,7 +52,14 @@ export const adminTicketController = {
           ticketId: t.ticketCode,
           customerName: t.customerName,
           customerEmail: t.customerEmail,
-          productName: t.productId ? productMap.get(String(t.productId)) || "Product" : "-",
+          productName:
+            t.productName ||
+            (t.productId
+              ? productMap.get(String(t.productId)) || "Product"
+              : "-"),
+          orderId: t.orderId || null,
+          size: t.size || null,
+          color: t.color || null,
           issueType: t.issueType,
           submittedAt: toDateOnly(t.createdAt),
           status: t.status,
@@ -81,37 +70,29 @@ export const adminTicketController = {
     }
   },
 
-  /**
-   * @swagger
-   * /api/admin/tickets/{id}:
-   *   get:
-   *     summary: Get ticket details
-   *     tags: [Tickets - Admin]
-   *     security:
-   *       - cookieAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: id
-   *         required: true
-   *         schema:
-   *           type: string
-   *     responses:
-   *       200:
-   *         description: Ticket detail
-   */
   getOne: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = String(req.params.id || "");
       const t: any = await ticketService.getAdminTicketById(id);
 
       if (!t) {
-        return res.status(404).json({ success: false, message: "Ticket not found" });
+        return res.status(404).json({
+          success: false,
+          message: "Ticket not found",
+        });
       }
 
-      let productName = "-";
-      if (t.productId) {
-        const p: any = await Product.findById(t.productId).select("_id name").lean();
-        productName = p?.name || "Product";
+      let productName = t.productName || "-";
+      let productId = t.productId || null;
+
+      if (!productName || productName === "-") {
+        if (t.productId) {
+          const p: any = await Product.findById(t.productId)
+            .select("_id name")
+            .lean();
+          productName = p?.name || "Product";
+          productId = p?._id || t.productId || null;
+        }
       }
 
       return res.json({
@@ -125,8 +106,17 @@ export const adminTicketController = {
           subject: t.subject,
           message: t.message,
           imageUrl: t.imageUrl || null,
-          customer: { name: t.customerName, email: t.customerEmail },
-          product: { name: productName, id: t.productId || null },
+          orderId: t.orderId || null,
+          size: t.size || null,
+          color: t.color || null,
+          customer: {
+            name: t.customerName,
+            email: t.customerEmail,
+          },
+          product: {
+            name: productName,
+            id: productId || null,
+          },
           replies: (t.replies || []).map((r: any) => ({
             id: r._id,
             sender: r.sender,
@@ -140,25 +130,16 @@ export const adminTicketController = {
     }
   },
 
-  /**
-   * @swagger
-   * /api/admin/tickets/{id}/status:
-   *   patch:
-   *     summary: Update ticket status
-   *     tags: [Tickets - Admin]
-   *     security:
-   *       - cookieAuth: []
-   *     responses:
-   *       200:
-   *         description: Status updated
-   */
   updateStatus: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = String(req.params.id || "");
       const status = String(req.body.status || "") as TicketStatus;
 
       if (!["Open", "Pending", "Closed"].includes(status)) {
-        return res.status(400).json({ success: false, message: "Invalid status" });
+        return res.status(400).json({
+          success: false,
+          message: "Invalid status",
+        });
       }
 
       const before: any = await Ticket.findById(id)
@@ -166,12 +147,18 @@ export const adminTicketController = {
         .lean();
 
       if (!before) {
-        return res.status(404).json({ success: false, message: "Ticket not found" });
+        return res.status(404).json({
+          success: false,
+          message: "Ticket not found",
+        });
       }
 
       const updated = await ticketService.updateStatus(id, status);
       if (!updated) {
-        return res.status(404).json({ success: false, message: "Ticket not found" });
+        return res.status(404).json({
+          success: false,
+          message: "Ticket not found",
+        });
       }
 
       if (String(before.status) !== String(status)) {
@@ -197,30 +184,24 @@ export const adminTicketController = {
     }
   },
 
-  /**
-   * @swagger
-   * /api/admin/tickets/{id}/reply:
-   *   post:
-   *     summary: Reply to ticket
-   *     tags: [Tickets - Admin]
-   *     security:
-   *       - cookieAuth: []
-   *     responses:
-   *       200:
-   *         description: Reply added
-   */
   reply: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = String(req.params.id || "");
       const text = String(req.body.text || "").trim();
 
       if (!text) {
-        return res.status(400).json({ success: false, message: "Reply text required" });
+        return res.status(400).json({
+          success: false,
+          message: "Reply text required",
+        });
       }
 
       const updated: any = await ticketService.addAdminReply(id, text);
       if (!updated) {
-        return res.status(404).json({ success: false, message: "Ticket not found" });
+        return res.status(404).json({
+          success: false,
+          message: "Ticket not found",
+        });
       }
 
       const fresh: any = await Ticket.findById(id)

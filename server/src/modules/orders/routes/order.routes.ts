@@ -60,6 +60,12 @@ const adminRouter = Router();
  *                       type: string
  *                     size:
  *                       type: string
+ *                     color:
+ *                       type: string
+ *                       example: "#000000"
+ *                     colorLabel:
+ *                       type: string
+ *                       example: "Black"
  *                     qty:
  *                       type: number
  *     responses:

@@ -1,4 +1,3 @@
-// client/app/admin/customer-tickets/[id]/page.tsx
 "use client";
 
 import * as React from "react";
@@ -22,6 +21,9 @@ type TicketDetail = {
   submittedAt: string;
   customer: { name: string; email: string };
   product: { name: string; id?: string | null };
+  orderId?: string | null;
+  size?: string | null;
+  color?: string | null;
   issueType: string;
   subject: string;
   message: string;
@@ -329,7 +331,7 @@ export default function AdminTicketDetailsPage() {
                 <div className="mt-6 text-xs uppercase tracking-[0.18em] text-[#9aa7c3]">
                   Product
                 </div>
-                <div className="mt-3 text-white/95">{ticket.product.name}</div>
+                <div className="mt-3 text-white/95">{ticket.product.name || "-"}</div>
 
                 {ticket.product.id ? (
                   <Link
@@ -339,6 +341,29 @@ export default function AdminTicketDetailsPage() {
                     View Product →
                   </Link>
                 ) : null}
+
+                <div className="mt-6 space-y-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-[#9aa7c3]">
+                      Order ID
+                    </div>
+                    <div className="mt-1 text-white/95">{ticket.orderId || "-"}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-[#9aa7c3]">
+                      Size
+                    </div>
+                    <div className="mt-1 text-white/95">{ticket.size || "-"}</div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.18em] text-[#9aa7c3]">
+                      Color
+                    </div>
+                    <div className="mt-1 text-white/95">{ticket.color || "-"}</div>
+                  </div>
+                </div>
 
                 <div className="mt-6 h-px bg-[#162338]" />
 
@@ -365,7 +390,6 @@ export default function AdminTicketDetailsPage() {
                   <div className="mt-3 rounded-[12px] border border-[#162338] bg-[#0b1220] p-4">
                     {ticket.imageUrl ? (
                       <div className="relative aspect-[16/9] w-full overflow-hidden rounded-[10px] border border-[#1b2a40]">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={ticket.imageUrl}
                           alt="Ticket attachment"

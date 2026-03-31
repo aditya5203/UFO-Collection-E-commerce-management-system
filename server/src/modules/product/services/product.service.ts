@@ -1,4 +1,5 @@
 // modules/auth/product/services/product.service.ts
+import mongoose from "mongoose";
 import { Product } from "../../../models/Product.model";
 import {
   CreateProductDto,
@@ -44,7 +45,52 @@ export const productService = {
   },
 
   async getById(id: string) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
     return Product.findById(id).lean().exec();
+  },
+
+  async getRelatedProducts(productId: string, limit = 4) {
+    if (!mongoose.Types.ObjectId.isValid(productId)) return [];
+
+    const currentProduct = await Product.findById(productId).lean().exec();
+    if (!currentProduct) return [];
+
+    const excludeId = new mongoose.Types.ObjectId(productId);
+    const related: any[] = [];
+
+    if (currentProduct.categoryId) {
+      const categoryMatched = await Product.find({
+        _id: { $ne: excludeId },
+        status: "Active",
+        categoryId: currentProduct.categoryId,
+      })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean()
+        .exec();
+
+      related.push(...categoryMatched);
+    }
+
+    if (related.length < limit && currentProduct.gender) {
+      const existingIds = related.map((p) => p._id);
+
+      const genderMatched = await Product.find({
+        _id: {
+          $nin: [excludeId, ...existingIds],
+        },
+        status: "Active",
+        gender: currentProduct.gender,
+      })
+        .sort({ createdAt: -1 })
+        .limit(limit - related.length)
+        .lean()
+        .exec();
+
+      related.push(...genderMatched);
+    }
+
+    return related.slice(0, limit);
   },
 
   async create(data: CreateProductDto) {
@@ -93,6 +139,8 @@ export const productService = {
   },
 
   async update(id: string, data: UpdateProductDto) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
+
     const update: any = { ...data };
 
     if (data.name && !data.slug) {
@@ -121,6 +169,7 @@ export const productService = {
   },
 
   async remove(id: string) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
     return Product.findByIdAndDelete(id).lean().exec();
   },
 };

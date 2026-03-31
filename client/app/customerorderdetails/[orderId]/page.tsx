@@ -9,6 +9,8 @@ type OrderItem = {
   id: string;
   name: string;
   size: string;
+  color: string;
+  colorLabel: string;
   qty: number;
   price: number;
   image: string;
@@ -59,7 +61,8 @@ type ReviewDraft = {
   comment: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
 
 function StatusBadge({ status }: { status: OrderStatus }) {
@@ -80,11 +83,8 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   );
 }
 
-// ✅ NEW: extract filename from Content-Disposition header
 function getFilenameFromDisposition(disposition: string | null) {
   if (!disposition) return "";
-  // examples:
-  // attachment; filename="INV-2026-#123456.pdf"
   const m = disposition.match(/filename\*?=(?:UTF-8''|")?([^";\n]+)"?/i);
   if (!m?.[1]) return "";
   return decodeURIComponent(m[1]);
@@ -99,11 +99,9 @@ export default function CustomerOrderDetailsPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  // ✅ NEW: invoice download state
   const [invoiceLoading, setInvoiceLoading] = React.useState(false);
   const [invoiceError, setInvoiceError] = React.useState<string | null>(null);
 
-  // Review modal state
   const [reviewOpen, setReviewOpen] = React.useState(false);
   const [reviewSaving, setReviewSaving] = React.useState(false);
   const [reviewError, setReviewError] = React.useState<string | null>(null);
@@ -172,6 +170,7 @@ export default function CustomerOrderDetailsPage() {
       productId: item.id,
       productName: item.name,
       size: item.size || "",
+      color: item.colorLabel || item.color || "",
     });
 
     router.push(`/support-ticket?${params.toString()}`);
@@ -234,7 +233,6 @@ export default function CustomerOrderDetailsPage() {
     }
   };
 
-  // ✅ NEW: download invoice (PDF)
   const downloadInvoice = async () => {
     try {
       setInvoiceLoading(true);
@@ -279,7 +277,6 @@ export default function CustomerOrderDetailsPage() {
 
   return (
     <>
-      {/* HEADER */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
           <div className="flex items-center gap-4">
@@ -347,7 +344,6 @@ export default function CustomerOrderDetailsPage() {
         </div>
       </header>
 
-      {/* PAGE */}
       <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
         <div className="mx-auto max-w-[1280px] px-6 py-10">
           <h1 className="text-[36px] font-semibold">Order Details</h1>
@@ -375,35 +371,32 @@ export default function CustomerOrderDetailsPage() {
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <span className="rounded-full border border-[#2b2f45] bg-[#0b0f1a]/60 px-4 py-2 text-[13px] text-[#dfe3ff]">
                   Order ID:{" "}
-                  <span className="text-white font-semibold">
+                  <span className="font-semibold text-white">
                     {order.orderId}
                   </span>
                 </span>
 
                 <StatusBadge status={order.status} />
 
-                {/* ✅ NEW: Download Invoice button */}
                 <button
                   type="button"
                   onClick={downloadInvoice}
                   disabled={invoiceLoading}
-                  className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#2b2f45] bg-[#0b0f1a]/60 px-4 py-2 text-[12px] font-semibold text-white hover:bg-white hover:text-[#050611] disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#2b2f45] bg-[#0b0f1a]/60 px-4 py-2 text-[12px] font-semibold text-white hover:bg-white hover:text-[#050611] disabled:cursor-not-allowed disabled:opacity-60"
                   title="Download Invoice PDF"
                 >
                   {invoiceLoading ? "Downloading..." : "Download Invoice (PDF)"}
                 </button>
               </div>
 
-              {/* ✅ NEW: Invoice error UI */}
               {invoiceError ? (
-                <div className="mt-4 rounded-[12px] border border-red-500/40 bg-red-500/10 p-4 text-red-200 text-sm">
+                <div className="mt-4 rounded-[12px] border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
                   {invoiceError}
                 </div>
               ) : null}
 
               <div className="mt-6 h-px bg-[#2b2f45]" />
 
-              {/* CUSTOMER INFO */}
               <section className="mt-10">
                 <h2 className="text-[18px] font-semibold">
                   Customer Information
@@ -411,40 +404,40 @@ export default function CustomerOrderDetailsPage() {
 
                 <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-2">
                   <div className="grid grid-cols-12 gap-4 py-4 text-sm">
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
                       Name
                     </div>
-                    <div className="col-span-12 md:col-span-9 text-white">
+                    <div className="col-span-12 text-white md:col-span-9">
                       {order.customer.name}
                     </div>
                     <div className="col-span-12 h-px bg-[#2b2f45]" />
 
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
                       Email
                     </div>
-                    <div className="col-span-12 md:col-span-9 text-white">
+                    <div className="col-span-12 text-white md:col-span-9">
                       {order.customer.email}
                     </div>
                     <div className="col-span-12 h-px bg-[#2b2f45]" />
 
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
                       Shipping Address
                     </div>
-                    <div className="col-span-12 md:col-span-9 text-white whitespace-pre-line">
+                    <div className="col-span-12 whitespace-pre-line text-white md:col-span-9">
                       {order.customer.shippingAddress}
                     </div>
                   </div>
                 </div>
               </section>
 
-              {/* ITEMS */}
               <section className="mt-12">
                 <h2 className="text-[18px] font-semibold">Items Purchased</h2>
 
-                <div className="mt-5 rounded-[10px] border border-[#2b2f45] bg-[#0b0f1a]/60 overflow-hidden">
-                  <div className="hidden md:grid grid-cols-[1.2fr_0.6fr_0.9fr_0.6fr_0.6fr] px-6 py-4 border-b border-[#2b2f45] text-[#dfe3ff]">
+                <div className="mt-5 overflow-hidden rounded-[10px] border border-[#2b2f45] bg-[#0b0f1a]/60">
+                  <div className="hidden grid-cols-[1.2fr_0.6fr_0.8fr_0.9fr_0.6fr_0.6fr] border-b border-[#2b2f45] px-6 py-4 text-[#dfe3ff] md:grid">
                     <div>Product</div>
                     <div>Size</div>
+                    <div>Color</div>
                     <div className="text-center">Quantity</div>
                     <div>Price</div>
                     <div>Total</div>
@@ -452,11 +445,10 @@ export default function CustomerOrderDetailsPage() {
 
                   {order.items.map((it) => (
                     <div
-                      key={`${it.id}-${it.size}`}
+                      key={`${it.id}-${it.size}-${it.color}`}
                       className="border-b border-[#1b2034] px-6 py-6 last:border-0"
                     >
-                      {/* DESKTOP */}
-                      <div className="hidden md:grid grid-cols-[1.2fr_0.6fr_0.9fr_0.6fr_0.6fr] items-center gap-4">
+                      <div className="hidden grid-cols-[1.2fr_0.6fr_0.8fr_0.9fr_0.6fr_0.6fr] items-center gap-4 md:grid">
                         <div className="flex items-center gap-4">
                           <div className="relative h-[46px] w-[46px] overflow-hidden rounded-full border border-[#2b2f45]">
                             <Image
@@ -474,7 +466,7 @@ export default function CustomerOrderDetailsPage() {
                                 type="button"
                                 onClick={() => raiseTicket(it)}
                                 disabled={order.status === "Cancelled"}
-                                className="w-fit rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#c9b9ff] hover:bg-[#1f7cff] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-fit rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#c9b9ff] hover:bg-[#1f7cff] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Need Help?
                               </button>
@@ -483,7 +475,7 @@ export default function CustomerOrderDetailsPage() {
                                 type="button"
                                 onClick={() => openReviewModal(it)}
                                 disabled={order.status !== "Delivered"}
-                                className="w-fit rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#7dd3fc] hover:bg-[#1d9bf0] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="w-fit rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#7dd3fc] hover:bg-[#1d9bf0] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Write Review
                               </button>
@@ -492,16 +484,23 @@ export default function CustomerOrderDetailsPage() {
                         </div>
 
                         <span className="text-[#9aa3cc]">
-                          {it.size ? `Size: ${it.size}` : "-"}
+                          {it.size ? it.size : "-"}
                         </span>
+
+                        <div className="flex items-center gap-2 text-[#9aa3cc]">
+                          <span
+                            className="h-4 w-4 rounded-full border border-[#3a3f58]"
+                            style={{ backgroundColor: it.color || "#16191f" }}
+                          />
+                          <span>{it.colorLabel || "-"}</span>
+                        </div>
 
                         <div className="text-center text-[#9aa3cc]">{it.qty}</div>
                         <span className="text-[#9aa3cc]">Rs. {it.price}</span>
                         <span className="text-white">Rs. {it.price * it.qty}</span>
                       </div>
 
-                      {/* MOBILE */}
-                      <div className="md:hidden flex gap-4">
+                      <div className="flex gap-4 md:hidden">
                         <div className="relative h-[62px] w-[62px] overflow-hidden rounded-[12px] border border-[#2b2f45]">
                           <Image
                             src={it.image}
@@ -513,16 +512,26 @@ export default function CustomerOrderDetailsPage() {
 
                         <div className="flex-1">
                           <div className="font-medium">{it.name}</div>
-                          <div className="mt-1 text-[#9aa3cc] text-sm">
+                          <div className="mt-1 text-sm text-[#9aa3cc]">
                             Size: {it.size || "-"}
                           </div>
-                          <div className="mt-1 text-[#9aa3cc] text-sm">
+
+                          <div className="mt-1 flex items-center gap-2 text-sm text-[#9aa3cc]">
+                            <span>Color:</span>
+                            <span
+                              className="h-4 w-4 rounded-full border border-[#3a3f58]"
+                              style={{ backgroundColor: it.color || "#16191f" }}
+                            />
+                            <span>{it.colorLabel || "-"}</span>
+                          </div>
+
+                          <div className="mt-1 text-sm text-[#9aa3cc]">
                             Qty: {it.qty}
                           </div>
-                          <div className="mt-1 text-[#9aa3cc] text-sm">
+                          <div className="mt-1 text-sm text-[#9aa3cc]">
                             Price: Rs. {it.price}
                           </div>
-                          <div className="mt-1 text-white text-sm">
+                          <div className="mt-1 text-sm text-white">
                             Total: Rs. {it.price * it.qty}
                           </div>
 
@@ -531,7 +540,7 @@ export default function CustomerOrderDetailsPage() {
                               type="button"
                               onClick={() => raiseTicket(it)}
                               disabled={order.status === "Cancelled"}
-                              className="rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#c9b9ff] hover:bg-[#1f7cff] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#c9b9ff] hover:bg-[#1f7cff] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               Need Help?
                             </button>
@@ -540,7 +549,7 @@ export default function CustomerOrderDetailsPage() {
                               type="button"
                               onClick={() => openReviewModal(it)}
                               disabled={order.status !== "Delivered"}
-                              className="rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#7dd3fc] hover:bg-[#1d9bf0] hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#7dd3fc] hover:bg-[#1d9bf0] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               Write Review
                             </button>
@@ -552,7 +561,6 @@ export default function CustomerOrderDetailsPage() {
                 </div>
               </section>
 
-              {/* PAYMENT */}
               <section className="mt-12">
                 <h2 className="text-[18px] font-semibold">
                   Payment Information
@@ -560,17 +568,16 @@ export default function CustomerOrderDetailsPage() {
 
                 <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-4">
                   <div className="grid grid-cols-12 gap-4 py-2 text-sm">
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
                       Method
                     </div>
-                    <div className="col-span-12 md:col-span-9 text-white">
+                    <div className="col-span-12 text-white md:col-span-9">
                       {order.payment.method}
                     </div>
                   </div>
                 </div>
               </section>
 
-              {/* SHIPPING */}
               <section className="mt-12">
                 <h2 className="text-[18px] font-semibold">
                   Shipping Information
@@ -578,23 +585,23 @@ export default function CustomerOrderDetailsPage() {
 
                 <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-2">
                   <div className="grid grid-cols-12 gap-4 py-4 text-sm">
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
                       Method
                     </div>
-                    <div className="col-span-12 md:col-span-9 text-white">
+                    <div className="col-span-12 text-white md:col-span-9">
                       {order.shipping.method}
                     </div>
                     <div className="col-span-12 h-px bg-[#2b2f45]" />
 
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
                       Estimated Delivery
                     </div>
-                    <div className="col-span-12 md:col-span-9 text-white">
+                    <div className="col-span-12 text-white md:col-span-9">
                       {order.shipping.estimatedDelivery || "—"}
                     </div>
                     <div className="col-span-12 h-px bg-[#2b2f45]" />
 
-                    <div className="col-span-12 md:col-span-3 text-[#9aa3cc]">
+                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
                       Track Order
                     </div>
                     <div className="col-span-12 md:col-span-9">
@@ -611,8 +618,7 @@ export default function CustomerOrderDetailsPage() {
                 </div>
               </section>
 
-              {/* SUMMARY */}
-              <section className="mt-12 max-w-[460px] ml-auto">
+              <section className="ml-auto mt-12 max-w-[460px]">
                 <h2 className="text-[22px] font-semibold">Summary</h2>
 
                 <div className="mt-6 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6">
@@ -635,7 +641,7 @@ export default function CustomerOrderDetailsPage() {
                     </div>
                     <div className="flex justify-between">
                       <span>Total</span>
-                      <span className="text-white font-semibold">
+                      <span className="font-semibold text-white">
                         Rs. {order.summary.total}
                       </span>
                     </div>
@@ -643,7 +649,7 @@ export default function CustomerOrderDetailsPage() {
                 </div>
               </section>
 
-              <div className="mt-16 text-center text-[#8b90ad] text-sm">
+              <div className="mt-16 text-center text-sm text-[#8b90ad]">
                 © 2025 UFO Collection — All Rights Reserved
               </div>
             </>
@@ -651,7 +657,6 @@ export default function CustomerOrderDetailsPage() {
         </div>
       </main>
 
-      {/* REVIEW MODAL */}
       {reviewOpen && draft ? (
         <div
           className="fixed inset-0 z-[999] flex items-center justify-center px-4"
@@ -659,7 +664,6 @@ export default function CustomerOrderDetailsPage() {
           aria-modal="true"
           aria-label="Write a review modal"
         >
-          {/* Backdrop */}
           <button
             type="button"
             onClick={closeReviewModal}
@@ -668,7 +672,6 @@ export default function CustomerOrderDetailsPage() {
             title="Close"
           />
 
-          {/* Modal box */}
           <div className="relative w-full max-w-[560px] rounded-[16px] border border-[#2b2f45] bg-[#0b0f1a] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.8)]">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -677,7 +680,7 @@ export default function CustomerOrderDetailsPage() {
                 </div>
                 <div className="mt-1 text-sm text-[#9aa3cc]">
                   Product:{" "}
-                  <span className="text-white font-medium">
+                  <span className="font-medium text-white">
                     {draft.productName}
                   </span>
                 </div>
@@ -698,7 +701,6 @@ export default function CustomerOrderDetailsPage() {
             </div>
 
             <div className="mt-6 space-y-4">
-              {/* Rating */}
               <div>
                 <div className="text-[13px] uppercase tracking-[0.12em] text-[#cbd5f5]">
                   Rating
@@ -724,7 +726,6 @@ export default function CustomerOrderDetailsPage() {
                 </div>
               </div>
 
-              {/* Title */}
               <div>
                 <div className="text-[13px] uppercase tracking-[0.12em] text-[#cbd5f5]">
                   Title
@@ -737,7 +738,6 @@ export default function CustomerOrderDetailsPage() {
                 />
               </div>
 
-              {/* Comment */}
               <div>
                 <div className="text-[13px] uppercase tracking-[0.12em] text-[#cbd5f5]">
                   Comment
@@ -778,7 +778,7 @@ export default function CustomerOrderDetailsPage() {
                   type="button"
                   onClick={submitReview}
                   disabled={reviewSaving}
-                  className="rounded-xl bg-[#1d9bf0] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1580c5] disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="rounded-xl bg-[#1d9bf0] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1580c5] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {reviewSaving ? "Submitting..." : "Submit Review"}
                 </button>

@@ -1,4 +1,4 @@
-//modules/auth/product/controllers/product.controller.ts
+// modules/auth/product/controllers/product.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { productService } from "../services/product.service";
 import {
@@ -69,7 +69,11 @@ const mapToFrontend = (p: any) => ({
  *       200:
  *         description: List of products
  */
-const getAllForAdmin = async (req: Request, res: Response, next: NextFunction) => {
+const getAllForAdmin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const products = await productService.getAllForAdmin({
       search: req.query.search as string | undefined,
@@ -115,7 +119,11 @@ const getAllForAdmin = async (req: Request, res: Response, next: NextFunction) =
  *       200:
  *         description: List of active products
  */
-const getAllPublic = async (req: Request, res: Response, next: NextFunction) => {
+const getAllPublic = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const products = await productService.getAllPublic({
       search: req.query.search as string | undefined,
@@ -147,6 +155,7 @@ const getAllPublic = async (req: Request, res: Response, next: NextFunction) => 
  *         description: Product found
  *       404:
  *         description: Product not found
+ *
  * /api/admin/products/{id}:
  *   get:
  *     security:
@@ -172,6 +181,41 @@ const getById = async (req: Request, res: Response, next: NextFunction) => {
     if (!product) throw new AppError("Product not found", 404);
 
     res.json(mapToFrontend(product));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * @swagger
+ * /api/products/{id}/related:
+ *   get:
+ *     tags: [Products]
+ *     summary: Get related products
+ *     description: Returns up to 4 related products. First matches by categoryId, then falls back to gender if needed. Excludes the current product.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Product ID
+ *     responses:
+ *       200:
+ *         description: Related products fetched successfully
+ *       404:
+ *         description: Product not found
+ */
+const getRelated = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const relatedProducts = await productService.getRelatedProducts(
+      req.params.id,
+      4
+    );
+
+    res.json({
+      data: relatedProducts.map(mapToFrontend),
+    });
   } catch (err) {
     next(err);
   }
@@ -209,6 +253,8 @@ const getById = async (req: Request, res: Response, next: NextFunction) => {
  *     responses:
  *       201:
  *         description: Product created
+ *       400:
+ *         description: Validation error
  */
 const create = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -323,6 +369,7 @@ export const productController = {
   getAllForAdmin,
   getAllPublic,
   getById,
+  getRelated,
   create,
   update,
   remove,

@@ -31,7 +31,6 @@ function resolveCustomerName(order: any) {
 }
 
 export async function maybeSendInvoiceForOrder(orderIdOrCode: string) {
-  // 1) find order by _id or orderCode
   const isObjId = mongoose.Types.ObjectId.isValid(orderIdOrCode);
 
   const order: any = isObjId
@@ -40,14 +39,10 @@ export async function maybeSendInvoiceForOrder(orderIdOrCode: string) {
 
   if (!order) return { sent: false, reason: "Order not found" };
 
-  // 2) prevent duplicate sending
   if (order.invoiceSentAt) {
     return { sent: false, reason: "Already sent" };
   }
 
-  // 3) decide when to send
-  // COD -> send immediately
-  // Online -> send only when Paid
   const shouldSend =
     order.paymentMethod === "COD" ? true : order.paymentStatus === "Paid";
 
@@ -55,7 +50,6 @@ export async function maybeSendInvoiceForOrder(orderIdOrCode: string) {
     return { sent: false, reason: "Not eligible yet (Payment not Paid)" };
   }
 
-  // 4) customer info (prefer address snapshot, fallback to User)
   let customerEmail = String(order.address?.email || "").trim();
   let customerPhone = String(order.address?.phone || "").trim();
   let customerName = resolveCustomerName(order);
@@ -66,19 +60,19 @@ export async function maybeSendInvoiceForOrder(orderIdOrCode: string) {
       .lean();
 
     if (u?.email) customerEmail = String(u.email).trim();
-    if (u?.name && customerName === "Customer") customerName = String(u.name).trim();
+    if (u?.name && customerName === "Customer") {
+      customerName = String(u.name).trim();
+    }
   }
 
   if (!customerEmail) {
     return { sent: false, reason: "No customer email found" };
   }
 
-  // 5) invoice no
-  const invoiceNo = `INV-${new Date().getFullYear()}-${String(
-    order.orderCode
-  ).toUpperCase()}`;
+  const invoiceNo =
+    order.invoiceNo ||
+    `INV-${new Date(order.createdAt).getFullYear()}-${String(order.orderCode).replace("#", "")}`;
 
-  // 6) generate pdf
   const { filePath, fileName } = await generateInvoicePdf({
     invoiceNo,
     orderCode: order.orderCode,
@@ -95,6 +89,8 @@ export async function maybeSendInvoiceForOrder(orderIdOrCode: string) {
     items: (order.items || []).map((it: any) => ({
       name: it.name,
       size: it.size || "",
+      color: it.color || "",
+      colorLabel: it.colorLabel || "",
       qty: Number(it.qty || 0),
       pricePaisa: Number(it.pricePaisa || 0),
     })),
@@ -109,7 +105,6 @@ export async function maybeSendInvoiceForOrder(orderIdOrCode: string) {
     paymentRef: order.paymentRef || null,
   });
 
-  // 7) send email (PDF attachment)
   await emailService.sendInvoiceEmail({
     to: customerEmail,
     customerName,
@@ -118,10 +113,14 @@ export async function maybeSendInvoiceForOrder(orderIdOrCode: string) {
     pdfFileName: fileName,
   });
 
-  // 8) mark as sent
   await Order.updateOne(
     { _id: order._id },
-    { $set: { invoiceNo, invoiceSentAt: new Date() } }
+    {
+      $set: {
+        invoiceNo,
+        invoiceSentAt: new Date(),
+      },
+    }
   );
 
   return { sent: true, invoiceNo };

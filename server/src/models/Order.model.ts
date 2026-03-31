@@ -10,6 +10,11 @@ const orderItemSchema = new Schema(
     productId: { type: Schema.Types.ObjectId, ref: "Product", required: false },
     name: { type: String, required: true, trim: true },
     size: { type: String, required: false, default: "" },
+
+    // ✅ NEW
+    color: { type: String, required: false, default: "" },
+    colorLabel: { type: String, required: false, default: "" },
+
     image: { type: String, required: false, default: "" },
     qty: { type: Number, required: true, min: 1 },
     pricePaisa: { type: Number, required: true, min: 0 },
@@ -110,9 +115,9 @@ const orderSchema = new Schema(
     shipping: { type: shippingSchema, required: false, default: null },
     address: { type: addressSchema, required: false, default: null },
 
-    // ✅ Tracking timestamps (NEW)
+    // ✅ Tracking timestamps
     shippedAt: { type: Date, default: null },
-    inTransitAt: { type: Date, default: null }, // optional future
+    inTransitAt: { type: Date, default: null },
     deliveredAt: { type: Date, default: null },
 
     // ✅ Invoice fields

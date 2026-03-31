@@ -1,4 +1,3 @@
-// server/src/modules/tickets/controllers/ticket.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { ticketService } from "../services/ticket.service";
 
@@ -7,21 +6,20 @@ function getUser(req: Request) {
 }
 
 export const ticketController = {
-  /**
-   * @swagger
-   * /api/tickets:
-   *   post:
-   *     summary: Create support ticket
-   *     tags: [Tickets]
-   *     requestBody:
-   *       required: true
-   *     responses:
-   *       201:
-   *         description: Ticket created
-   */
   create: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { issueType, subject, message, name, email, productId } = req.body;
+      const {
+        issueType,
+        subject,
+        message,
+        name,
+        email,
+        orderId,
+        productId,
+        productName,
+        size,
+        color,
+      } = req.body;
 
       if (!issueType || !subject || !message || !name || !email) {
         return res.status(400).json({
@@ -46,7 +44,13 @@ export const ticketController = {
         message: String(message).trim(),
         customerName: String(name).trim(),
         customerEmail: String(email).trim(),
-        productId: productId ? String(productId) : null,
+
+        orderId: orderId ? String(orderId).trim() : null,
+        productId: productId ? String(productId).trim() : null,
+        productName: productName ? String(productName).trim() : null,
+        size: size ? String(size).trim() : null,
+        color: color ? String(color).trim() : null,
+
         imageUrl,
       });
 
@@ -56,6 +60,11 @@ export const ticketController = {
           id: doc._id,
           ticketCode: doc.ticketCode,
           status: doc.status,
+          orderId: doc.orderId || null,
+          productId: doc.productId || null,
+          productName: doc.productName || null,
+          size: doc.size || null,
+          color: doc.color || null,
           imageUrl: doc.imageUrl,
           createdAt: doc.createdAt,
         },

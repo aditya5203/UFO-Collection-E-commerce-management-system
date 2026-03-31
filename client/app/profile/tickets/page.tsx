@@ -13,6 +13,9 @@ type MyTicketRow = {
   issueType: string;
   subject: string;
   productName: string;
+  orderId?: string | null;
+  size?: string | null;
+  color?: string | null;
   submittedAt: string;
   status: TicketStatus;
 };
@@ -28,6 +31,10 @@ type TicketDetail = {
   message: string;
   imageUrl?: string | null;
 
+  orderId?: string | null;
+  size?: string | null;
+  color?: string | null;
+
   product: { id?: string | null; name: string };
 
   replies: Array<{
@@ -38,10 +45,10 @@ type TicketDetail = {
   }>;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
 
-// ✅ show "Pending" as "In Progress" (like screenshot)
 function displayStatus(s: TicketStatus) {
   if (s === "Pending") return "In Progress";
   return s;
@@ -50,23 +57,20 @@ function displayStatus(s: TicketStatus) {
 function pillClass(s: TicketStatus) {
   const ds = displayStatus(s);
 
-  // keep your dark pill palette (no theme change)
   if (ds === "Open") return "bg-[#1d2a3b] text-white border-[#2b3a52]";
   if (ds === "In Progress") return "bg-[#2a2a1d] text-white border-[#3a3a2b]";
   if (ds === "Resolved") return "bg-[#202a2a] text-white border-[#2b3a3a]";
-  return "bg-[#202024] text-white border-[#2b2f45]"; // Closed
+  return "bg-[#202024] text-white border-[#2b2f45]";
 }
 
 export default function ProfileTicketsPage() {
   const router = useRouter();
 
-  // list state
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<MyTicketRow[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState("");
 
-  // modal state
   const [modalOpen, setModalOpen] = React.useState(false);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [ticket, setTicket] = React.useState<TicketDetail | null>(null);
@@ -109,12 +113,12 @@ export default function ProfileTicketsPage() {
     load();
   }, [load]);
 
-  // load one ticket (for modal)
   const loadTicket = React.useCallback(
     async (id: string) => {
       setTicketLoading(true);
       setModalErr("");
       setModalOk("");
+
       try {
         const res = await fetch(`${API}/tickets/my/${id}`, {
           credentials: "include",
@@ -130,7 +134,19 @@ export default function ProfileTicketsPage() {
           throw new Error(data?.message || "Failed to load ticket");
         }
 
-        setTicket(data?.item || null);
+        const item = data?.item || null;
+
+        setTicket(
+          item
+            ? {
+                ...item,
+                product: item.product || {
+                  id: item.productId || null,
+                  name: item.productName || "-",
+                },
+              }
+            : null
+        );
       } catch (e: any) {
         setTicket(null);
         setModalErr(e?.message || "Failed to load ticket");
@@ -160,7 +176,6 @@ export default function ProfileTicketsPage() {
     setModalOk("");
   };
 
-  // close modal outside click + ESC
   React.useEffect(() => {
     if (!modalOpen) return;
 
@@ -179,7 +194,6 @@ export default function ProfileTicketsPage() {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modalOpen]);
 
   const sendReply = async () => {
@@ -189,8 +203,9 @@ export default function ProfileTicketsPage() {
     setSending(true);
     setModalErr("");
     setModalOk("");
+
     try {
-      const res = await fetch(`${API}/tickets/${activeId}/reply`, {
+      const res = await fetch(`${API}/tickets/my/${activeId}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -209,6 +224,7 @@ export default function ProfileTicketsPage() {
       setReply("");
       setModalOk("Message sent.");
       await loadTicket(activeId);
+      await load();
     } catch (e: any) {
       setModalErr(e?.message || "Failed to send reply");
     } finally {
@@ -218,7 +234,6 @@ export default function ProfileTicketsPage() {
 
   return (
     <div className="min-h-screen bg-[#050611] text-white">
-      {/* HEADER (unchanged theme, but removed wishlist/profile/3-dots like you asked) */}
       <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
         <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
           <div className="flex items-center gap-4">
@@ -280,12 +295,10 @@ export default function ProfileTicketsPage() {
             </Link>
           </nav>
 
-          {/* keep spacing so header stays aligned */}
           <div className="w-[44px]" />
         </div>
       </header>
 
-      {/* ✅ MAIN (design like 2nd screenshot) */}
       <main className="mx-auto w-full max-w-[1160px] px-4 py-10">
         {err ? (
           <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
@@ -300,7 +313,6 @@ export default function ProfileTicketsPage() {
             </h1>
           </div>
 
-          {/* search + refresh (compact; keep if you want) */}
           <div className="hidden sm:flex items-center gap-3">
             <div className="flex items-center rounded-[10px] border border-[#2b2f45] bg-[#101223] px-3 py-2">
               <span className="mr-2 text-[#9aa3cc]">🔎</span>
@@ -325,11 +337,12 @@ export default function ProfileTicketsPage() {
 
         <section className="mt-6 rounded-[10px] border border-[#2b2f45] bg-[#0f1116]">
           <div className="w-full overflow-x-auto">
-            <div className="min-w-[860px]">
-              <div className="grid grid-cols-[170px_1fr_190px_170px_150px] items-center border-b border-[#2b2f45] bg-[#1a1d22] px-6 py-4 text-[13px] font-semibold text-white/90">
+            <div className="min-w-[1040px]">
+              <div className="grid grid-cols-[170px_1fr_200px_190px_170px_150px] items-center border-b border-[#2b2f45] bg-[#1a1d22] px-6 py-4 text-[13px] font-semibold text-white/90">
                 <div>Ticket ID</div>
                 <div>Subject</div>
-                <div>Submission Date</div>
+                <div>Product</div>
+                <div>Order ID</div>
                 <div className="text-center">Status</div>
                 <div className="text-right text-white/60">Action</div>
               </div>
@@ -344,13 +357,12 @@ export default function ProfileTicketsPage() {
                 {rows.map((t) => (
                   <div
                     key={t.id}
-                    className="grid grid-cols-[170px_1fr_190px_170px_150px] items-center px-6 py-5"
+                    className="grid grid-cols-[170px_1fr_200px_190px_170px_150px] items-center px-6 py-5"
                   >
                     <div className="text-white/95">{t.ticketId || "-"}</div>
                     <div className="text-[#9aa3cc]">{t.subject || "-"}</div>
-                    <div className="text-[#9aa3cc]">
-                      {String(t.submittedAt).slice(0, 10)}
-                    </div>
+                    <div className="text-[#9aa3cc]">{t.productName || "-"}</div>
+                    <div className="text-[#9aa3cc]">{t.orderId || "-"}</div>
 
                     <div className="flex justify-center">
                       <span
@@ -381,7 +393,6 @@ export default function ProfileTicketsPage() {
         </section>
       </main>
 
-      {/* MODAL (unchanged) */}
       {modalOpen ? (
         <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
           <div
@@ -421,15 +432,33 @@ export default function ProfileTicketsPage() {
                 <>
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="text-[22px] font-bold">{ticket.ticketCode}</div>
+                      <div className="text-[22px] font-bold">
+                        {ticket.ticketCode}
+                      </div>
                       <div className="mt-1 text-[13px] text-[#8b90ad]">
-                        Submitted: {String(ticket.submittedAt).slice(0, 10)} • Issue:{" "}
-                        {ticket.issueType}
+                        Submitted: {String(ticket.submittedAt).slice(0, 10)} •
+                        Issue: {ticket.issueType}
                       </div>
                       <div className="mt-1 text-[13px] text-[#8b90ad]">
                         Product:{" "}
                         <span className="text-white/90">
                           {ticket.product?.name || "-"}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[13px] text-[#8b90ad]">
+                        Order ID:{" "}
+                        <span className="text-white/90">
+                          {ticket.orderId || "-"}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[13px] text-[#8b90ad]">
+                        Size:{" "}
+                        <span className="text-white/90">
+                          {ticket.size || "-"}
+                        </span>{" "}
+                        • Color:{" "}
+                        <span className="text-white/90">
+                          {ticket.color || "-"}
                         </span>
                       </div>
                     </div>
@@ -463,7 +492,6 @@ export default function ProfileTicketsPage() {
                       <div className="mt-2 rounded-[12px] border border-[#23253a] bg-[#0b1220] p-4">
                         {ticket.imageUrl ? (
                           <div className="relative aspect-[16/9] w-full overflow-hidden rounded-[10px] border border-[#2b2f45]">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={ticket.imageUrl}
                               alt="Attachment"

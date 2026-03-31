@@ -85,7 +85,9 @@ export const orderController = {
 
       return res.status(201).json({ data });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to create order" });
+      return res.status(500).json({
+        message: err?.message || "Failed to create order",
+      });
     }
   },
 
@@ -102,7 +104,9 @@ export const orderController = {
 
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to fetch orders" });
+      return res.status(500).json({
+        message: err?.message || "Failed to fetch orders",
+      });
     }
   },
 
@@ -115,7 +119,9 @@ export const orderController = {
 
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to fetch order" });
+      return res.status(500).json({
+        message: err?.message || "Failed to fetch order",
+      });
     }
   },
 
@@ -223,7 +229,9 @@ export const orderController = {
 
       return res.status(200).json({ data });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to update order" });
+      return res.status(500).json({
+        message: err?.message || "Failed to update order",
+      });
     }
   },
 
@@ -239,7 +247,9 @@ export const orderController = {
 
       return res.status(200).json({ order });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to fetch order details" });
+      return res.status(500).json({
+        message: err?.message || "Failed to fetch order details",
+      });
     }
   },
 
@@ -266,7 +276,9 @@ export const orderController = {
 
       return res.status(200).json({ orders: result });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to fetch order history" });
+      return res.status(500).json({
+        message: err?.message || "Failed to fetch order history",
+      });
     }
   },
 
@@ -279,7 +291,9 @@ export const orderController = {
 
       return res.status(200).json({ order });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to track order" });
+      return res.status(500).json({
+        message: err?.message || "Failed to track order",
+      });
     }
   },
 
@@ -332,7 +346,9 @@ export const orderController = {
         },
         addressText: buildAddressText(order.address),
         items: (order.items || []).map((it: any) => ({
-          name: it.name,
+          name: it.colorLabel
+            ? `${it.name} (${it.colorLabel}${it.size ? `, ${it.size}` : ""})`
+            : it.name,
           size: it.size || "",
           qty: Number(it.qty || 0),
           pricePaisa: Number(it.pricePaisa || 0),
@@ -358,7 +374,9 @@ export const orderController = {
         } catch {}
       });
     } catch (err: any) {
-      return res.status(500).json({ message: err?.message || "Failed to download invoice" });
+      return res.status(500).json({
+        message: err?.message || "Failed to download invoice",
+      });
     }
   },
 };

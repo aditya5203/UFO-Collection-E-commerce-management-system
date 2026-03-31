@@ -13,17 +13,13 @@ const adminRouter = Router();
 
 /* ---------- Public ---------- */
 publicRouter.get("/", productController.getAllPublic);
+publicRouter.get("/:id/related", productController.getRelated);
 publicRouter.get("/:id", productController.getById);
 
 /* ---------- Admin ---------- */
 adminRouter.use(adminAuthMiddleware);
 adminRouter.use(authorize("admin", "superadmin"));
 
-/**
- * Upload endpoints
- * Current page uses these for product create flow.
- * For now protect them with productCreate permission.
- */
 adminRouter.post(
   "/upload-image",
   authorizePermission("productCreate"),
@@ -53,10 +49,30 @@ adminRouter.post(
 );
 
 /* CRUD */
-adminRouter.get("/", authorizePermission("productView"), productController.getAllForAdmin);
-adminRouter.post("/", authorizePermission("productCreate"), productController.create);
-adminRouter.get("/:id", authorizePermission("productView"), productController.getById);
-adminRouter.patch("/:id", authorizePermission("productEdit"), productController.update);
-adminRouter.delete("/:id", authorizePermission("productDelete"), productController.remove);
+adminRouter.get(
+  "/",
+  authorizePermission("productView"),
+  productController.getAllForAdmin
+);
+adminRouter.post(
+  "/",
+  authorizePermission("productCreate"),
+  productController.create
+);
+adminRouter.get(
+  "/:id",
+  authorizePermission("productView"),
+  productController.getById
+);
+adminRouter.patch(
+  "/:id",
+  authorizePermission("productEdit"),
+  productController.update
+);
+adminRouter.delete(
+  "/:id",
+  authorizePermission("productDelete"),
+  productController.remove
+);
 
 export default { publicRouter, adminRouter };

@@ -36,7 +36,6 @@ export async function generateInvoicePdfForOrder(orderIdOrCode: string) {
 
   if (!order) throw new Error("Order not found");
 
-  // customer info
   let customerEmail = String(order.address?.email || "").trim();
   let customerPhone = String(order.address?.phone || "").trim();
   let customerName = resolveCustomerName(order);
@@ -47,10 +46,9 @@ export async function generateInvoicePdfForOrder(orderIdOrCode: string) {
     if (u?.name && customerName === "Customer") customerName = String(u.name).trim();
   }
 
-  // invoice number (reuse if exists)
   const invoiceNo =
     order.invoiceNo ||
-    `INV-${new Date(order.createdAt).getFullYear()}-${String(order.orderCode).toUpperCase()}`;
+    `INV-${new Date(order.createdAt).getFullYear()}-${String(order.orderCode).replace("#", "")}`;
 
   const { filePath, fileName } = await generateInvoicePdf({
     invoiceNo,
@@ -68,6 +66,8 @@ export async function generateInvoicePdfForOrder(orderIdOrCode: string) {
     items: (order.items || []).map((it: any) => ({
       name: it.name,
       size: it.size || "",
+      color: it.color || "",
+      colorLabel: it.colorLabel || "",
       qty: Number(it.qty || 0),
       pricePaisa: Number(it.pricePaisa || 0),
     })),
@@ -82,10 +82,15 @@ export async function generateInvoicePdfForOrder(orderIdOrCode: string) {
     paymentRef: order.paymentRef || null,
   });
 
-  // store invoiceNo if missing (optional)
   if (!order.invoiceNo) {
     await Order.updateOne({ _id: order._id }, { $set: { invoiceNo } });
   }
 
-  return { filePath, fileName, invoiceNo, orderId: String(order._id), orderCode: order.orderCode };
+  return {
+    filePath,
+    fileName,
+    invoiceNo,
+    orderId: String(order._id),
+    orderCode: order.orderCode,
+  };
 }

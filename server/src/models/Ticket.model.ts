@@ -22,11 +22,20 @@ const TicketSchema = new Schema(
     subject: { type: String, required: true, trim: true },
     message: { type: String, required: true, trim: true },
 
-    // ✅ IMPORTANT: link ticket to real user (for notifications)
-    customer: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true },
+    // link ticket to logged in user
+    customer: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
 
-    // optional references
+    // optional references / order linkage
+    orderId: { type: String, default: null, trim: true, index: true },
     productId: { type: Schema.Types.ObjectId, ref: "Product", default: null },
+    productName: { type: String, default: null, trim: true },
+    size: { type: String, default: null, trim: true },
+    color: { type: String, default: null, trim: true },
 
     customerName: { type: String, required: true, trim: true },
     customerEmail: { type: String, required: true, trim: true, index: true },

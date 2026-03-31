@@ -1,4 +1,3 @@
-// server/src/modules/tickets/controllers/customer.ticket.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { ticketService } from "../services/ticket.service";
 
@@ -23,7 +22,17 @@ export const customerTicketController = {
         return res.status(401).json({ success: false, message: "Unauthorized" });
       }
 
-      const { issueType, subject, message, productId, imageUrl } = req.body || {};
+      const {
+        issueType,
+        subject,
+        message,
+        orderId,
+        productId,
+        productName,
+        size,
+        color,
+        imageUrl,
+      } = req.body || {};
 
       if (!issueType || !subject || !message) {
         return res.status(400).json({
@@ -34,12 +43,18 @@ export const customerTicketController = {
 
       const created = await ticketService.createTicket({
         customerId: user.userId,
-        issueType,
-        subject,
-        message,
+        issueType: String(issueType).trim(),
+        subject: String(subject).trim(),
+        message: String(message).trim(),
         customerName: user.name || "Customer",
         customerEmail: user.email,
-        productId: productId || null,
+
+        orderId: orderId ? String(orderId).trim() : null,
+        productId: productId ? String(productId).trim() : null,
+        productName: productName ? String(productName).trim() : null,
+        size: size ? String(size).trim() : null,
+        color: color ? String(color).trim() : null,
+
         imageUrl: imageUrl || null,
       });
 
@@ -71,10 +86,15 @@ export const customerTicketController = {
           issueType: t.issueType,
           subject: t.subject,
           submittedAt: toDateOnly(t.createdAt),
+          orderId: t.orderId || null,
           productId: t.productId || null,
+          productName: t.productName || null,
+          size: t.size || null,
+          color: t.color || null,
           lastReplyAt:
-            (t.replies?.length ? t.replies[t.replies.length - 1]?.createdAt : t.createdAt) ||
-            t.createdAt,
+            (t.replies?.length
+              ? t.replies[t.replies.length - 1]?.createdAt
+              : t.createdAt) || t.createdAt,
         })),
       });
     } catch (e) {
@@ -106,8 +126,12 @@ export const customerTicketController = {
           issueType: t.issueType,
           subject: t.subject,
           message: t.message,
-          imageUrl: t.imageUrl || null,
+          orderId: t.orderId || null,
           productId: t.productId || null,
+          productName: t.productName || null,
+          size: t.size || null,
+          color: t.color || null,
+          imageUrl: t.imageUrl || null,
           replies: (t.replies || []).map((r: any) => ({
             id: r._id,
             sender: r.sender,
