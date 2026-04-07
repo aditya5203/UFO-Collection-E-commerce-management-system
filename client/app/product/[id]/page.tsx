@@ -660,6 +660,8 @@ export default function ProductPage() {
                         key={`${img}-${index}`}
                         type="button"
                         onClick={() => setSelectedImage(img)}
+                        aria-label={`Select product image ${index + 1}`}
+                        title={`Select product image ${index + 1}`}
                         className={`relative h-[76px] w-[76px] overflow-hidden rounded-[10px] border ${
                           active ? "border-[#1d9bf0]" : "border-[#1f2937]"
                         }`}
@@ -728,6 +730,8 @@ export default function ProductPage() {
                       key={s}
                       type="button"
                       onClick={() => setSelectedSize(s)}
+                      aria-label={`Select size ${s}`}
+                      title={`Select size ${s}`}
                       className={`min-w-[40px] rounded-[6px] border px-3 py-[6px] text-[13px] ${
                         active
                           ? "border-[#1d9bf0] bg-[#1d9bf0] text-white"
@@ -764,6 +768,7 @@ export default function ProductPage() {
                           aria-label={`Color ${color.label}`}
                         >
                           <span
+                            aria-hidden="true"
                             className="h-5 w-5 rounded-full border border-[#111827]"
                             style={{ backgroundColor: color.value }}
                           />
@@ -781,6 +786,8 @@ export default function ProductPage() {
                 type="button"
                 onClick={addToCart}
                 className="mt-5 rounded-[4px] bg-[#1d9bf0] px-6 py-[10px] text-[14px] font-semibold text-white hover:bg-[#1580c5]"
+                aria-label="Add product to cart"
+                title="Add product to cart"
               >
                 ADD TO CART
               </button>
@@ -789,6 +796,8 @@ export default function ProductPage() {
                 type="button"
                 onClick={() => setAiOpen(true)}
                 className="mt-3 rounded-[4px] border border-[#2b2f45] bg-transparent px-6 py-[10px] text-[14px] font-semibold text-white hover:bg-white hover:text-[#050611]"
+                aria-label="Try on with AI"
+                title="Try on with AI"
               >
                 TRY ON WITH AI
               </button>
@@ -817,6 +826,8 @@ export default function ProductPage() {
                     ? "border-b-2 border-white text-white"
                     : "text-[#9ca3af]"
                 }`}
+                aria-label="Show description tab"
+                title="Show description tab"
               >
                 Description
               </button>
@@ -829,6 +840,8 @@ export default function ProductPage() {
                     ? "border-b-2 border-white text-white"
                     : "text-[#9ca3af]"
                 }`}
+                aria-label="Show reviews tab"
+                title="Show reviews tab"
               >
                 Reviews{" "}
                 <span className="text-[13px]">

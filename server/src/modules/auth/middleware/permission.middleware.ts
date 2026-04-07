@@ -12,58 +12,79 @@ export type AdminPermissionKey = keyof IAdminPermissions;
 
 export const authorizePermission =
   (...requiredPermissions: AdminPermissionKey[]) =>
-  async (req: AuthRequest, _res: Response, next: NextFunction) => {
+  async (
+    req: AuthRequest,
+    _res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = String(req.user?.userId || "");
+      const email = String(req.user?.email || "");
       const role = String(req.user?.role || "").toLowerCase();
 
       if (!userId) {
-        return next(new AppError("User not authenticated", 401));
+        next(new AppError("User not authenticated", 401));
+        return;
       }
 
       if (role === "superadmin") {
         req.user = {
-          ...req.user,
+          userId,
+          email,
+          role,
           permissions: fullSuperadminPermissions(),
         };
-        return next();
+        next();
+        return;
       }
 
       if (role !== "admin") {
-        return next(new AppError("Admin access only", 403));
+        next(new AppError("Admin access only", 403));
+        return;
       }
 
       const dbUser = await User.findById(userId)
-        .select("role status isBlocked permissions")
+        .select("role status isBlocked permissions email")
         .lean();
 
       if (!dbUser) {
-        return next(new AppError("Admin not found", 404));
+        next(new AppError("Admin not found", 404));
+        return;
       }
 
       if ((dbUser as any).isBlocked) {
-        return next(new AppError("This admin account has been blocked.", 403));
+        next(new AppError("This admin account has been blocked.", 403));
+        return;
       }
 
       if (String((dbUser as any).status || "").toLowerCase() === "inactive") {
-        return next(new AppError("This admin account is inactive.", 403));
+        next(new AppError("This admin account is inactive.", 403));
+        return;
       }
 
-      const permissions = ((dbUser as any).permissions || {}) as Partial<IAdminPermissions>;
+      const permissions = (((dbUser as any).permissions || {}) ??
+        {}) as Partial<IAdminPermissions>;
 
-      const hasAll = requiredPermissions.every((key) => Boolean(permissions[key]));
+      const hasAll = requiredPermissions.every((key) =>
+        Boolean(permissions[key])
+      );
 
       if (!hasAll) {
-        return next(new AppError("Access denied. Insufficient permissions", 403));
+        next(new AppError("Access denied. Insufficient permissions", 403));
+        return;
       }
 
       req.user = {
-        ...req.user,
+        userId,
+        email: String((dbUser as any).email || email || ""),
+        role,
         permissions,
       };
 
-      return next();
+      next();
+      return;
     } catch (error) {
-      return next(error);
+      next(error);
+      return;
     }
   };

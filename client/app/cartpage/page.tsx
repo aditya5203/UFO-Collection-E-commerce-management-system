@@ -57,6 +57,56 @@ function fmtCoupon(c: {
   return "";
 }
 
+function normalizeColorKey(color: string) {
+  return String(color || "").trim().toLowerCase();
+}
+
+function getColorSwatchClass(color: string) {
+  const c = normalizeColorKey(color);
+
+  const map: Record<string, string> = {
+    black: "bg-black",
+    "#000000": "bg-black",
+    "#16191f": "bg-black",
+    "#111827": "bg-black",
+
+    white: "bg-white",
+    "#ffffff": "bg-white",
+
+    red: "bg-red-500",
+    "#ef4444": "bg-red-500",
+
+    blue: "bg-blue-500",
+    "#3b82f6": "bg-blue-500",
+
+    navy: "bg-blue-900",
+    "navy blue": "bg-blue-900",
+    "#000080": "bg-blue-900",
+
+    green: "bg-green-500",
+    "#22c55e": "bg-green-500",
+
+    yellow: "bg-yellow-400",
+    "#eab308": "bg-yellow-400",
+
+    gray: "bg-gray-500",
+    grey: "bg-gray-500",
+    "#808080": "bg-gray-500",
+    "#9ca3af": "bg-gray-400",
+
+    pink: "bg-pink-500",
+    "#ec4899": "bg-pink-500",
+
+    purple: "bg-purple-500",
+    "#a855f7": "bg-purple-500",
+
+    orange: "bg-orange-500",
+    "#f97316": "bg-orange-500",
+  };
+
+  return map[c] || "bg-neutral-800";
+}
+
 export default function CartPage() {
   const router = useRouter();
 
@@ -146,13 +196,12 @@ export default function CartPage() {
       const json = await safeJson(res);
 
       const discountPaisa = Number(json?.data?.discountPaisa || 0);
-      const appliedCode =
-        String(
-          json?.data?.couponCode ||
-            json?.data?.appliedCouponCode ||
-            couponCode ||
-            ""
-        ).trim();
+      const appliedCode = String(
+        json?.data?.couponCode ||
+          json?.data?.appliedCouponCode ||
+          couponCode ||
+          ""
+      ).trim();
 
       return {
         ok: res.ok,
@@ -218,10 +267,7 @@ export default function CartPage() {
       );
 
       const orderedCodes = preferredCode
-        ? [
-            preferredCode,
-            ...uniqueCodes.filter((code) => code !== preferredCode),
-          ]
+        ? [preferredCode, ...uniqueCodes.filter((code) => code !== preferredCode)]
         : uniqueCodes;
 
       let bestDiscountRs = 0;
@@ -269,7 +315,7 @@ export default function CartPage() {
         setDiscountAmount(bestDiscountRs);
         setAppliedCouponCode(bestCode);
         setAppliedCouponLabel(bestLabel);
-        setCouponMessage(`Best available coupon applied automatically.`);
+        setCouponMessage("Best available coupon applied automatically.");
         localStorage.setItem("ufo_coupon_selected", bestCode);
       } else {
         clearAppliedCoupon();
@@ -323,13 +369,23 @@ export default function CartPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
-        <div className="mx-auto flex min-h-[80px] w-full max-w-[1280px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+      <style jsx global>{`
+        @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
+        html,
+        body {
+          font-family: Poppins, system-ui, -apple-system, BlinkMacSystemFont,
+            "Segoe UI", sans-serif;
+          background: #0a0a0f;
+        }
+      `}</style>
+
+      <header className="sticky top-0 z-40 border-b border-[#1b1e2b] bg-[rgba(10,10,15,0.92)] backdrop-blur-xl">
+        <div className="mx-auto flex min-h-[76px] w-full max-w-[1280px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <button
               type="button"
               onClick={() => router.push("/collection")}
-              className="group flex shrink-0 items-center gap-2 rounded-full border border-[#2b2f45] px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white transition hover:bg-white hover:text-[#050611]"
+              className="group flex shrink-0 items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white transition hover:bg-white hover:text-[#090a12]"
               aria-label="Back to collection"
               title="Back to collection"
             >
@@ -347,7 +403,7 @@ export default function CartPage() {
               href="/homepage"
               className="flex min-w-0 items-center gap-2 sm:gap-3"
             >
-              <div className="h-[42px] w-[42px] overflow-hidden rounded-full border-2 border-white sm:h-[48px] sm:w-[48px]">
+              <div className="h-[42px] w-[42px] overflow-hidden rounded-full border border-white/15 bg-white/5 sm:h-[48px] sm:w-[48px]">
                 <Image
                   src="/images/logo.png"
                   alt="UFO Collection logo"
@@ -365,27 +421,27 @@ export default function CartPage() {
           <nav className="hidden items-center gap-6 lg:flex xl:gap-10">
             <Link
               href="/homepage"
-              className="text-[14px] uppercase tracking-[0.16em] text-[#8b90ad] transition hover:text-[#c9b9ff]"
+              className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
             >
-              HOME
+              Home
             </Link>
             <Link
               href="/collection"
-              className="text-[14px] uppercase tracking-[0.16em] text-[#8b90ad] transition hover:text-[#c9b9ff]"
+              className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
             >
-              COLLECTION
+              Collection
             </Link>
             <Link
               href="/about"
-              className="text-[14px] uppercase tracking-[0.16em] text-[#8b90ad] transition hover:text-[#c9b9ff]"
+              className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
             >
-              ABOUT
+              About
             </Link>
             <Link
               href="/contact"
-              className="text-[14px] uppercase tracking-[0.16em] text-[#8b90ad] transition hover:text-[#c9b9ff]"
+              className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
             >
-              CONTACT
+              Contact
             </Link>
           </nav>
 
@@ -393,12 +449,12 @@ export default function CartPage() {
             href="/wishlist"
             aria-label="Wishlist"
             title="Wishlist"
-            className="shrink-0"
+            className="shrink-0 rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
           >
             <Image
               src="/images/wishlist.png"
-              width={26}
-              height={26}
+              width={18}
+              height={18}
               alt="Wishlist icon"
               className="brightness-0 invert"
             />
@@ -406,7 +462,7 @@ export default function CartPage() {
         </div>
       </header>
 
-      <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
+      <main className="min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-white">
         <div className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
           <h1 className="text-[28px] font-semibold sm:text-[32px] lg:text-[36px]">
             Shopping Cart
@@ -414,13 +470,13 @@ export default function CartPage() {
           <div className="mt-5 h-px bg-[#2b2f45]" />
 
           {items.length === 0 ? (
-            <div className="mt-8 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6 text-[#9aa3cc] sm:mt-10 sm:p-8">
+            <div className="mt-8 rounded-[18px] border border-[#26293a] bg-[#11121a] p-6 text-[#a7aec4] sm:mt-10 sm:p-8">
               <p className="text-sm sm:text-base">Your cart is empty.</p>
               <div className="mt-4">
                 <button
                   type="button"
                   onClick={() => router.push("/collection")}
-                  className="rounded bg-white px-4 py-2 text-sm font-medium text-[#050611] sm:text-base"
+                  className="rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#090a12] sm:text-base"
                   aria-label="Go to collection"
                   title="Go to collection"
                 >
@@ -430,8 +486,8 @@ export default function CartPage() {
             </div>
           ) : (
             <div className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-start">
-              <section className="overflow-hidden rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60">
-                <div className="hidden grid-cols-[1.5fr_0.7fr_0.9fr_0.9fr_0.6fr_0.25fr] gap-4 border-b border-[#2b2f45] px-6 py-4 text-sm text-[#dfe3ff] md:grid">
+              <section className="overflow-hidden rounded-[18px] border border-[#26293a] bg-[#11121a]">
+                <div className="hidden grid-cols-[1.5fr_0.7fr_0.9fr_0.9fr_0.6fr_0.25fr] gap-4 border-b border-[#26293a] px-6 py-4 text-sm text-[#dfe3ff] md:grid">
                   <div>Product</div>
                   <div>Size</div>
                   <div>Color</div>
@@ -462,8 +518,9 @@ export default function CartPage() {
 
                       <div className="flex items-center gap-2">
                         <span
-                          className="h-4 w-4 rounded-full border border-[#3a3f58]"
-                          style={{ backgroundColor: it.color || "#16191f" }}
+                          className={`h-4 w-4 rounded-full border border-[#3a3f58] ${getColorSwatchClass(
+                            it.color
+                          )}`}
                         />
                         <span className="truncate">
                           {it.colorLabel || "Color"}
@@ -491,7 +548,7 @@ export default function CartPage() {
                               Number(e.target.value)
                             )
                           }
-                          className="w-[82px] rounded border border-[#3a3f58] bg-transparent px-3 py-2 text-white outline-none transition focus:border-[#c9b9ff]"
+                          className="w-[82px] rounded-[10px] border border-[#3a3f58] bg-transparent px-3 py-2 text-white outline-none transition focus:border-[#d6c7ff]"
                         />
                       </div>
 
@@ -506,8 +563,8 @@ export default function CartPage() {
                       >
                         <Image
                           src="/images/delete.png"
-                          width={28}
-                          height={28}
+                          width={24}
+                          height={24}
                           alt="Remove icon"
                           className="brightness-0 invert"
                         />
@@ -529,14 +586,15 @@ export default function CartPage() {
                           {it.name}
                         </div>
 
-                        <div className="mt-2 grid gap-1 text-sm text-[#9aa3cc]">
+                        <div className="mt-2 grid gap-1 text-sm text-[#a7aec4]">
                           <div>Size: {it.size}</div>
 
                           <div className="flex items-center gap-2">
                             <span>Color:</span>
                             <span
-                              className="h-4 w-4 rounded-full border border-[#3a3f58]"
-                              style={{ backgroundColor: it.color || "#16191f" }}
+                              className={`h-4 w-4 rounded-full border border-[#3a3f58] ${getColorSwatchClass(
+                                it.color
+                              )}`}
                             />
                             <span className="truncate">
                               {it.colorLabel || "Color"}
@@ -567,13 +625,13 @@ export default function CartPage() {
                                 Number(e.target.value)
                               )
                             }
-                            className="w-[92px] rounded border border-[#3a3f58] bg-transparent px-3 py-2 text-white outline-none transition focus:border-[#c9b9ff]"
+                            className="w-[92px] rounded-[10px] border border-[#3a3f58] bg-transparent px-3 py-2 text-white outline-none transition focus:border-[#d6c7ff]"
                           />
 
                           <button
                             type="button"
                             onClick={() => removeItem(it.id, it.size, it.color)}
-                            className="rounded border border-[#2b2f45] px-3 py-2 text-sm text-white transition hover:bg-white/5"
+                            className="rounded-[10px] border border-[#2b2f45] px-3 py-2 text-sm text-white transition hover:bg-white/5"
                             aria-label={`Remove ${it.name} from cart`}
                             title={`Remove ${it.name}`}
                           >
@@ -589,7 +647,7 @@ export default function CartPage() {
               <aside className="xl:sticky xl:top-[104px]">
                 <h2 className="text-[22px] font-semibold">Order Summary</h2>
 
-                <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-5 sm:p-6">
+                <div className="mt-5 rounded-[18px] border border-[#26293a] bg-[#11121a] p-5 sm:p-6">
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <label htmlFor="discount-code" className="sr-only">
                       Discount code
@@ -599,28 +657,28 @@ export default function CartPage() {
                       value={discount}
                       onChange={(e) => setDiscount(e.target.value.toUpperCase())}
                       placeholder="Discount code (optional)"
-                      className="w-full rounded-[10px] border border-[#2b2f45] bg-[#070a12] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none transition focus:border-[#c9b9ff]"
+                      className="w-full rounded-[12px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none transition focus:border-[#d6c7ff]"
                     />
                     <button
                       type="button"
                       onClick={applyManualCoupon}
                       disabled={isApplyingCoupon}
-                      className="rounded-[10px] border border-[#2b2f45] bg-white/5 px-4 py-3 text-sm transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[96px]"
+                      className="rounded-[12px] border border-[#26293a] bg-white/5 px-4 py-3 text-sm transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[96px]"
                     >
                       {isApplyingCoupon ? "Applying..." : "Apply"}
                     </button>
                   </div>
 
-                  <div className="mt-3 text-[12px] leading-5 text-[#9aa3cc]">
+                  <div className="mt-3 text-[12px] leading-5 text-[#a7aec4]">
                     Tip: Collect coupons from{" "}
-                    <Link href="/discounts" className="underline text-white">
+                    <Link href="/discounts" className="text-white underline">
                       Discounts
                     </Link>{" "}
                     and the best valid coupon will auto-apply here.
                   </div>
 
                   {appliedCouponCode ? (
-                    <div className="mt-4 rounded-[10px] border border-green-500/20 bg-green-500/10 px-4 py-3">
+                    <div className="mt-4 rounded-[12px] border border-green-500/20 bg-green-500/10 px-4 py-3">
                       <div className="text-[12px] uppercase tracking-[0.14em] text-green-300">
                         Applied Coupon
                       </div>
@@ -636,17 +694,15 @@ export default function CartPage() {
                   ) : null}
 
                   {couponMessage ? (
-                    <div className="mt-4 text-[12px] text-[#9aa3cc]">
+                    <div className="mt-4 text-[12px] text-[#a7aec4]">
                       {couponMessage}
                     </div>
                   ) : null}
 
-                  <div className="mt-8 space-y-4 text-sm text-[#9aa3cc] sm:text-[15px]">
+                  <div className="mt-8 space-y-4 text-sm text-[#a7aec4] sm:text-[15px]">
                     <div className="flex items-center justify-between gap-4">
                       <span>Subtotal</span>
-                      <span className="text-right text-white">
-                        Rs. {subtotal}
-                      </span>
+                      <span className="text-right text-white">Rs. {subtotal}</span>
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
@@ -691,7 +747,7 @@ export default function CartPage() {
 
                       router.push("/checkout");
                     }}
-                    className="mt-8 w-full rounded-[10px] bg-[#1f7cff] py-3 text-sm font-semibold text-white transition hover:opacity-90 sm:text-base"
+                    className="mt-8 w-full rounded-[12px] bg-[#1f7cff] py-3 text-sm font-semibold text-white transition hover:opacity-90 sm:text-base"
                   >
                     Proceed to Checkout
                   </button>

@@ -9,7 +9,11 @@ function pickUserId(req: Request) {
 }
 
 export const notificationController = {
-  async list(req: Request, res: Response, next: NextFunction) {
+  async list(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const userId = pickUserId(req);
       if (!userId) throw new AppError("Unauthorized", 401);
@@ -18,31 +22,42 @@ export const notificationController = {
 
       const items = await notificationService.listForUser(String(userId), limit);
 
-      // ✅ Return both `data` and `items` so frontend parsing never fails
-      return res.json({
+      res.json({
         success: true,
         data: items,
         items,
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  async unreadCount(req: Request, res: Response, next: NextFunction) {
+  async unreadCount(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const userId = pickUserId(req);
       if (!userId) throw new AppError("Unauthorized", 401);
 
       const count = await notificationService.unreadCount(String(userId));
 
-      return res.json({ success: true, count });
+      res.json({ success: true, count });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  async markRead(req: Request, res: Response, next: NextFunction) {
+  async markRead(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const userId = pickUserId(req);
       if (!userId) throw new AppError("Unauthorized", 401);
@@ -52,22 +67,30 @@ export const notificationController = {
 
       const updated = await notificationService.markRead(String(userId), id);
 
-      return res.json({ success: true, data: updated });
+      res.json({ success: true, data: updated });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  async markAllRead(req: Request, res: Response, next: NextFunction) {
+  async markAllRead(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const userId = pickUserId(req);
       if (!userId) throw new AppError("Unauthorized", 401);
 
       await notificationService.markAllRead(String(userId));
 
-      return res.json({ success: true });
+      res.json({ success: true });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 };

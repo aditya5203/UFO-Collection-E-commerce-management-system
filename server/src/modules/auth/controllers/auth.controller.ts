@@ -22,32 +22,23 @@ type AuthRequest = Request & {
     | Profile;
 };
 
-// ✅ Cookie names
+// Cookie names
 const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
 const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
 
-/**
- * ✅ Cookie settings that work reliably:
- * - Localhost dev (http): secure=false, sameSite="lax"
- * - Production cross-domain (https): secure=true, sameSite="none"
- *
- * This avoids the common "No token provided" issue caused by secure cookies on http localhost.
- */
 function getCookieOptions() {
   const isProd = config.nodeEnv === "production";
 
-  // ✅ DEV: always safe for http://localhost
   if (!isProd) {
     return {
       httpOnly: true,
       secure: false,
       sameSite: "lax" as const,
-      path: "/", // ✅ important for /api/orders and /api/admin/*
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     };
   }
 
-  // ✅ PROD: allow cross-site cookies (requires https)
   return {
     httpOnly: true,
     secure: true,
@@ -62,7 +53,6 @@ function setCookie(res: Response, cookieName: string, token: string) {
 }
 
 function clearCookie(res: Response, cookieName: string) {
-  // Must match cookie options (secure/samesite/path) to clear properly
   res.clearCookie(cookieName, {
     ...getCookieOptions(),
     maxAge: undefined,
@@ -73,13 +63,11 @@ function sha256(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
 }
 
-// ✅ helper for soft-delete anonymized email
 function makeDeletedEmail(oldEmail: string, userId: string) {
   const safe = (oldEmail || "user").replace(/[^a-zA-Z0-9]/g, "");
   return `deleted_${safe}_${userId}@deleted.local`;
 }
 
-/** ✅ Welcome email template */
 function buildWelcomeEmailHtml(name: string) {
   return `
     <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
@@ -120,8 +108,11 @@ function buildWelcomeEmailHtml(name: string) {
 }
 
 export const authController = {
-  // ---------- Register user ----------
-  register: async (req: Request, res: Response, next: NextFunction) => {
+  register: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userData: RegisterDto = req.body;
 
@@ -131,10 +122,8 @@ export const authController = {
 
       const result = await authService.registerUser(userData);
 
-      // ✅ CUSTOMER cookie
       setCookie(res, CUSTOMER_COOKIE, result.token);
 
-      // ✅ Send Welcome Email (non-blocking)
       emailService
         .sendMail({
           to: result.user.email,
@@ -152,13 +141,18 @@ export const authController = {
         token: result.token,
         user: result.user,
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ---------- Normal user login ----------
-  login: async (req: Request, res: Response, next: NextFunction) => {
+  login: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const credentials: LoginDto = req.body;
 
@@ -168,7 +162,6 @@ export const authController = {
 
       const result = await authService.loginUser(credentials);
 
-      // ✅ CUSTOMER cookie
       setCookie(res, CUSTOMER_COOKIE, result.token);
 
       res.status(200).json({
@@ -177,32 +170,37 @@ export const authController = {
         token: result.token,
         user: result.user,
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ---------- Forgot Password ----------
-  forgotPassword: async (req: Request, res: Response, next: NextFunction) => {
+  forgotPassword: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const { email } = req.body as { email?: string };
       if (!email) throw new AppError("Email is required", 400);
 
       const user = await User.findOne({ email: email.toLowerCase().trim() });
 
-      // ✅ Always return success to avoid user enumeration
       if (!user) {
-        return res.status(200).json({
+        res.status(200).json({
           success: true,
           message: "If your email exists, we sent a password reset link.",
         });
+        return;
       }
 
       const rawToken = crypto.randomBytes(32).toString("hex");
       const tokenHash = sha256(rawToken);
 
       (user as any).resetPasswordTokenHash = tokenHash;
-      (user as any).resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      (user as any).resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
       await user.save();
 
       const clientBase = process.env.CLIENT_BASE_URL || "http://localhost:3000";
@@ -227,27 +225,34 @@ export const authController = {
         `,
       });
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         message: "If your email exists, we sent a password reset link.",
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ---------- Reset Password ----------
-  resetPassword: async (req: Request, res: Response, next: NextFunction) => {
+  resetPassword: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const { token, password } = req.body as {
         token?: string;
         password?: string;
       };
 
-      if (!token || !password)
+      if (!token || !password) {
         throw new AppError("Token and password are required", 400);
-      if (password.length < 6)
+      }
+      if (password.length < 6) {
         throw new AppError("Password must be at least 6 characters", 400);
+      }
 
       const tokenHash = sha256(token);
 
@@ -265,94 +270,108 @@ export const authController = {
 
       await user.save();
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         message: "Password reset successful. Please login.",
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ---------- ADMIN LOGIN ----------
-  adminLogin: async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const credentials: LoginDto = req.body;
+  adminLogin: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const credentials: LoginDto = req.body;
 
-    if (!credentials.email || !credentials.password) {
-      throw new AppError("Email and password are required", 400);
+      if (!credentials.email || !credentials.password) {
+        throw new AppError("Email and password are required", 400);
+      }
+
+      const result = await authService.adminLogin(credentials);
+
+      const role = String(result.user.role || "").toLowerCase();
+      if (role !== "admin" && role !== "superadmin") {
+        throw new AppError("Access denied. Admin only.", 403);
+      }
+
+      setCookie(res, ADMIN_COOKIE, result.token);
+
+      res.status(200).json({
+        success: true,
+        message: "Admin login successful",
+        token: result.token,
+        user: {
+          _id: result.user._id,
+          name: result.user.name,
+          email: result.user.email,
+          role: result.user.role,
+          status: result.user.status,
+          mustChangePassword: result.user.mustChangePassword,
+          permissions: result.user.permissions || {},
+          avatar: result.user.avatar,
+        },
+      });
+      return;
+    } catch (error) {
+      next(error);
+      return;
     }
+  },
 
-    const result = await authService.adminLogin(credentials);
-
-    const role = String(result.user.role || "").toLowerCase();
-    if (role !== "admin" && role !== "superadmin") {
-      throw new AppError("Access denied. Admin only.", 403);
-    }
-
-    setCookie(res, ADMIN_COOKIE, result.token);
-
-    res.status(200).json({
-      success: true,
-      message: "Admin login successful",
-      token: result.token,
-      user: {
-        _id: result.user._id,
-        name: result.user.name,
-        email: result.user.email,
-        role: result.user.role,
-        status: result.user.status,
-        mustChangePassword: result.user.mustChangePassword,
-        permissions: result.user.permissions || {},
-        avatar: result.user.avatar,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-},
-
-  // ✅ NEW: CUSTOMER Logout (clears ONLY customer cookie)
-  logout: async (req: AuthRequest, res: Response, next: NextFunction) => {
+  logout: async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = (req.user as any)?.userId;
       if (!userId) throw new AppError("User not authenticated", 401);
 
       await authService.logoutUser(userId);
 
-      // ✅ clear ONLY customer cookie
       clearCookie(res, CUSTOMER_COOKIE);
 
       res.status(200).json({
         success: true,
         message: "Logout successful",
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ✅ NEW: ADMIN Logout (clears ONLY admin cookie)
-  adminLogout: async (req: AuthRequest, res: Response, next: NextFunction) => {
+  adminLogout: async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = (req.user as any)?.userId;
       if (!userId) throw new AppError("User not authenticated", 401);
 
       await authService.logoutUser(userId);
 
-      // ✅ clear ONLY admin cookie
       clearCookie(res, ADMIN_COOKIE);
 
       res.status(200).json({
         success: true,
         message: "Admin logout successful",
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ---------- Get current user (CUSTOMER SESSION) ----------
   getMe: async (
     req: AuthRequest,
     res: Response,
@@ -373,7 +392,6 @@ export const authController = {
 
       if (!user) {
         clearCookie(res, CUSTOMER_COOKIE);
-
         res.status(401).json({
           success: false,
           message: "User not found",
@@ -385,13 +403,18 @@ export const authController = {
         success: true,
         user,
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ---------- Init superadmin ----------
-  initSuperAdmin: async (req: Request, res: Response, next: NextFunction) => {
+  initSuperAdmin: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const { email, password, name } = req.body;
 
@@ -405,7 +428,6 @@ export const authController = {
         name,
       });
 
-      // ✅ ADMIN cookie
       setCookie(res, ADMIN_COOKIE, result.token);
 
       res.status(201).json({
@@ -414,13 +436,18 @@ export const authController = {
         token: result.token,
         user: result.user,
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ---------- Update profile ----------
-  updateProfile: async (req: AuthRequest, res: Response, next: NextFunction) => {
+  updateProfile: async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = (req.user as any)?.userId;
       if (!userId) throw new AppError("User not authenticated", 401);
@@ -438,13 +465,18 @@ export const authController = {
         success: true,
         user: updatedUser,
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ✅ DELETE ACCOUNT (Soft delete) - FIXED ✅
-  deleteMyAccount: async (req: AuthRequest, res: Response, next: NextFunction) => {
+  deleteMyAccount: async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = (req.user as any)?.userId;
       if (!userId) throw new AppError("User not authenticated", 401);
@@ -452,20 +484,23 @@ export const authController = {
       const user = await User.findById(userId);
       if (!user) {
         clearCookie(res, CUSTOMER_COOKIE);
-        return res.status(404).json({ success: false, message: "User not found" });
+        res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+        return;
       }
 
-      // ✅ Optional safety: stop admin/superadmin deleting from customer portal
       const role = String((user as any).role || "").toLowerCase();
       if (role === "admin" || role === "superadmin") {
-        throw new AppError("Admins cannot delete account from customer portal.", 403);
+        throw new AppError(
+          "Admins cannot delete account from customer portal.",
+          403
+        );
       }
 
       const oldEmail = user.email;
 
-      // ✅ IMPORTANT FIX:
-      // - DO NOT set password = undefined
-      // - DO NOT call user.save()
       await User.updateOne(
         { _id: userId },
         {
@@ -482,20 +517,24 @@ export const authController = {
         }
       );
 
-      // ✅ clear ONLY customer cookie
       clearCookie(res, CUSTOMER_COOKIE);
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         message: "Account deleted successfully",
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ---------- Google OAuth redirect callback ----------
-  googleCallback: async (req: AuthRequest, res: Response, next: NextFunction) => {
+  googleCallback: async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const profile = req.user as Profile;
 
@@ -517,18 +556,22 @@ export const authController = {
         avatar,
       });
 
-      // ✅ CUSTOMER cookie
       setCookie(res, CUSTOMER_COOKIE, result.token);
 
       const base = process.env.CLIENT_BASE_URL || "http://localhost:3000";
-      return res.redirect(`${base}/homepage`);
+      res.redirect(`${base}/homepage`);
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 
-  // ---------- Google login via POST ----------
-  googleLogin: async (req: Request, res: Response, next: NextFunction) => {
+  googleLogin: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const { email, name, providerId, avatar } = req.body;
 
@@ -543,7 +586,6 @@ export const authController = {
         avatar,
       });
 
-      // ✅ CUSTOMER cookie
       setCookie(res, CUSTOMER_COOKIE, result.token);
 
       res.status(200).json({
@@ -552,8 +594,10 @@ export const authController = {
         token: result.token,
         user: result.user,
       });
+      return;
     } catch (error) {
       next(error);
+      return;
     }
   },
 };

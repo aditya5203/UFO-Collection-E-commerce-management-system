@@ -6,7 +6,11 @@ function getUser(req: Request) {
 }
 
 export const ticketController = {
-  create: async (req: Request, res: Response, next: NextFunction) => {
+  create: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const {
         issueType,
@@ -22,10 +26,11 @@ export const ticketController = {
       } = req.body;
 
       if (!issueType || !subject || !message || !name || !email) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           message: "issueType, subject, message, name, email are required",
         });
+        return;
       }
 
       const imageUrl =
@@ -54,7 +59,7 @@ export const ticketController = {
         imageUrl,
       });
 
-      return res.status(201).json({
+      res.status(201).json({
         success: true,
         item: {
           id: doc._id,
@@ -69,8 +74,10 @@ export const ticketController = {
           createdAt: doc.createdAt,
         },
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 };

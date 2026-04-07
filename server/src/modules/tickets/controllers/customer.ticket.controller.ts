@@ -15,11 +15,16 @@ function toDateOnly(d: any) {
 }
 
 export const customerTicketController = {
-  create: async (req: Request, res: Response, next: NextFunction) => {
+  create: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const user = getUser(req);
       if (!user?.email || !user?.userId) {
-        return res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({ success: false, message: "Unauthorized" });
+        return;
       }
 
       const {
@@ -35,10 +40,11 @@ export const customerTicketController = {
       } = req.body || {};
 
       if (!issueType || !subject || !message) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           message: "Issue type, subject and message are required",
         });
+        return;
       }
 
       const created = await ticketService.createTicket({
@@ -58,25 +64,32 @@ export const customerTicketController = {
         imageUrl: imageUrl || null,
       });
 
-      return res.status(201).json({
+      res.status(201).json({
         success: true,
         item: created,
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  myList: async (req: Request, res: Response, next: NextFunction) => {
+  myList: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const user = getUser(req);
       if (!user?.email) {
-        return res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({ success: false, message: "Unauthorized" });
+        return;
       }
 
       const items = await ticketService.listCustomerTicketsByEmail(user.email);
 
-      return res.json({
+      res.json({
         success: true,
         items: items.map((t: any) => ({
           id: t._id,
@@ -97,26 +110,39 @@ export const customerTicketController = {
               : t.createdAt) || t.createdAt,
         })),
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  myOne: async (req: Request, res: Response, next: NextFunction) => {
+  myOne: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const user = getUser(req);
       if (!user?.email) {
-        return res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({ success: false, message: "Unauthorized" });
+        return;
       }
 
       const id = String(req.params.id || "");
-      const t: any = await ticketService.getCustomerTicketByIdAndEmail(id, user.email);
+      const t: any = await ticketService.getCustomerTicketByIdAndEmail(
+        id,
+        user.email
+      );
 
       if (!t) {
-        return res.status(404).json({ success: false, message: "Ticket not found" });
+        res
+          .status(404)
+          .json({ success: false, message: "Ticket not found" });
+        return;
       }
 
-      return res.json({
+      res.json({
         success: true,
         item: {
           id: t._id,
@@ -140,34 +166,49 @@ export const customerTicketController = {
           })),
         },
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  reply: async (req: Request, res: Response, next: NextFunction) => {
+  reply: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const user = getUser(req);
       if (!user?.email) {
-        return res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({ success: false, message: "Unauthorized" });
+        return;
       }
 
       const id = String(req.params.id || "");
       const text = String(req.body.text || "").trim();
 
       if (!text) {
-        return res.status(400).json({ success: false, message: "Reply text required" });
+        res
+          .status(400)
+          .json({ success: false, message: "Reply text required" });
+        return;
       }
 
       const updated = await ticketService.addCustomerReply(id, user.email, text);
 
       if (!updated) {
-        return res.status(404).json({ success: false, message: "Ticket not found" });
+        res
+          .status(404)
+          .json({ success: false, message: "Ticket not found" });
+        return;
       }
 
-      return res.json({ success: true, item: updated });
+      res.json({ success: true, item: updated });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 };

@@ -26,7 +26,11 @@ async function resolveCustomerIdFromTicket(ticket: any) {
 }
 
 export const adminTicketController = {
-  list: async (req: Request, res: Response, next: NextFunction) => {
+  list: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const q = String(req.query.q || "");
       const items = await ticketService.listAdminTickets(q);
@@ -45,7 +49,7 @@ export const adminTicketController = {
         (products as any[]).map((p) => [String(p._id), p.name || "Product"])
       );
 
-      return res.json({
+      res.json({
         success: true,
         items: items.map((t: any) => ({
           id: t._id,
@@ -65,21 +69,28 @@ export const adminTicketController = {
           status: t.status,
         })),
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  getOne: async (req: Request, res: Response, next: NextFunction) => {
+  getOne: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const id = String(req.params.id || "");
       const t: any = await ticketService.getAdminTicketById(id);
 
       if (!t) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           message: "Ticket not found",
         });
+        return;
       }
 
       let productName = t.productName || "-";
@@ -95,7 +106,7 @@ export const adminTicketController = {
         }
       }
 
-      return res.json({
+      res.json({
         success: true,
         item: {
           id: t._id,
@@ -125,21 +136,28 @@ export const adminTicketController = {
           })),
         },
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  updateStatus: async (req: Request, res: Response, next: NextFunction) => {
+  updateStatus: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const id = String(req.params.id || "");
       const status = String(req.body.status || "") as TicketStatus;
 
       if (!["Open", "Pending", "Closed"].includes(status)) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           message: "Invalid status",
         });
+        return;
       }
 
       const before: any = await Ticket.findById(id)
@@ -147,18 +165,20 @@ export const adminTicketController = {
         .lean();
 
       if (!before) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           message: "Ticket not found",
         });
+        return;
       }
 
       const updated = await ticketService.updateStatus(id, status);
       if (!updated) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           message: "Ticket not found",
         });
+        return;
       }
 
       if (String(before.status) !== String(status)) {
@@ -178,30 +198,38 @@ export const adminTicketController = {
         }
       }
 
-      return res.json({ success: true, item: updated });
+      res.json({ success: true, item: updated });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  reply: async (req: Request, res: Response, next: NextFunction) => {
+  reply: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const id = String(req.params.id || "");
       const text = String(req.body.text || "").trim();
 
       if (!text) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           message: "Reply text required",
         });
+        return;
       }
 
       const updated: any = await ticketService.addAdminReply(id, text);
       if (!updated) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           message: "Ticket not found",
         });
+        return;
       }
 
       const fresh: any = await Ticket.findById(id)
@@ -222,9 +250,11 @@ export const adminTicketController = {
         } catch {}
       }
 
-      return res.json({ success: true, item: updated });
+      res.json({ success: true, item: updated });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 };

@@ -1,3 +1,4 @@
+// server/src/modules/admin/controllers/admin.controller.ts
 import { Response, NextFunction } from "express";
 import { AuthRequest } from "../../auth/middleware/auth.middleware";
 import { AppError } from "../../../middleware/error.middleware";
@@ -73,7 +74,11 @@ function sanitizePermissions(input: any): IAdminPermissions {
 }
 
 export const adminsController = {
-  async list(_req: AuthRequest, res: Response, next: NextFunction) {
+  async list(
+    _req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const items = await User.find({
         role: { $in: ["admin", "superadmin"] },
@@ -101,13 +106,19 @@ export const adminsController = {
         };
       });
 
-      return res.json({ success: true, items: out });
+      res.json({ success: true, items: out });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  async create(req: AuthRequest, res: Response, next: NextFunction) {
+  async create(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const currentRole = String(req.user?.role || "").toLowerCase();
       if (currentRole !== "superadmin") {
@@ -147,7 +158,7 @@ export const adminsController = {
         provider: "credentials",
       });
 
-      return res.status(201).json({
+      res.status(201).json({
         success: true,
         item: {
           _id: String(user._id),
@@ -162,12 +173,18 @@ export const adminsController = {
               : sanitizePermissions(user.permissions),
         },
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  async update(req: AuthRequest, res: Response, next: NextFunction) {
+  async update(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const currentRole = String(req.user?.role || "").toLowerCase();
       if (currentRole !== "superadmin") {
@@ -217,7 +234,7 @@ export const adminsController = {
 
       await target.save();
 
-      return res.json({
+      res.json({
         success: true,
         item: {
           _id: String(target._id),
@@ -229,12 +246,18 @@ export const adminsController = {
           permissions: sanitizePermissions(target.permissions),
         },
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  async toggleStatus(req: AuthRequest, res: Response, next: NextFunction) {
+  async toggleStatus(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const currentRole = String(req.user?.role || "").toLowerCase();
       if (currentRole !== "superadmin") {
@@ -254,7 +277,7 @@ export const adminsController = {
       target.status = target.status === "inactive" ? "active" : "inactive";
       await target.save();
 
-      return res.json({
+      res.json({
         success: true,
         message:
           target.status === "inactive"
@@ -265,12 +288,18 @@ export const adminsController = {
           status: target.status,
         },
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  async resetPassword(req: AuthRequest, res: Response, next: NextFunction) {
+  async resetPassword(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const currentRole = String(req.user?.role || "").toLowerCase();
       if (currentRole !== "superadmin") {
@@ -296,16 +325,22 @@ export const adminsController = {
       target.mustChangePassword = true;
       await target.save();
 
-      return res.json({
+      res.json({
         success: true,
         message: "Admin password reset successfully",
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
-  async remove(req: AuthRequest, res: Response, next: NextFunction) {
+  async remove(
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const currentRole = String(req.user?.role || "").toLowerCase();
       if (currentRole !== "superadmin") {
@@ -336,12 +371,14 @@ export const adminsController = {
       targetUser.deletedAt = new Date();
       await targetUser.save();
 
-      return res.json({
+      res.json({
         success: true,
         message: "Admin deleted successfully",
       });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 };

@@ -10,14 +10,20 @@ export const paymentController = {
   // ======================================================
   // eSewa INITIATE (HTML auto-submit)
   // ======================================================
-  esewaInitiate: async (req: Request, res: Response, next: NextFunction) => {
+  esewaInitiate: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const amount = Number(req.query.amount);
 
       if (!amount || Number.isNaN(amount) || amount <= 0) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid amount" });
+        res.status(400).json({
+          success: false,
+          message: "Invalid amount",
+        });
+        return;
       }
 
       const transactionUuid = esewaService.makeOrderId("ESEWA");
@@ -29,23 +35,31 @@ export const paymentController = {
 
       const html = esewaService.buildAutoSubmitHtml(formUrl, fields);
       res.setHeader("Content-Type", "text/html");
-      return res.status(200).send(html);
+      res.status(200).send(html);
+      return;
     } catch (err) {
       next(err);
+      return;
     }
   },
 
   // ======================================================
   // eSewa INITIATE (JSON – Swagger/debug)
   // ======================================================
-  esewaInitiateJson: async (req: Request, res: Response, next: NextFunction) => {
+  esewaInitiateJson: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const amount = Number(req.query.amount);
 
       if (!amount || Number.isNaN(amount) || amount <= 0) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid amount" });
+        res.status(400).json({
+          success: false,
+          message: "Invalid amount",
+        });
+        return;
       }
 
       const transactionUuid = esewaService.makeOrderId("ESEWA");
@@ -55,75 +69,82 @@ export const paymentController = {
         transactionUuid,
       });
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         formUrl,
         fields,
         note:
           "Use /esewa/initiate in browser for real redirect. This endpoint is for Swagger/debug only.",
       });
+      return;
     } catch (err) {
       next(err);
+      return;
     }
   },
 
   // ======================================================
   // eSewa SUCCESS CALLBACK (gateway → backend → frontend)
   // ======================================================
-  esewaSuccess: async (req: Request, res: Response) => {
-    const data = String(req.query.data || "");
+  esewaSuccess: async (_req: Request, res: Response): Promise<void> => {
+    const data = String(_req.query.data || "");
 
     if (!data) {
-      return res.redirect(`${FRONTEND_BASE}/payment?status=failed`);
+      res.redirect(`${FRONTEND_BASE}/payment?status=failed`);
+      return;
     }
 
-    // Send data back to frontend so it can verify + create order
-    return res.redirect(
+    res.redirect(
       `${FRONTEND_BASE}/payment?esewa=success&data=${encodeURIComponent(data)}`
     );
+    return;
   },
 
   // ======================================================
   // eSewa FAILURE CALLBACK
   // ======================================================
-  esewaFailure: async (_req: Request, res: Response) => {
-    return res.redirect(`${FRONTEND_BASE}/payment?status=failed`);
+  esewaFailure: async (_req: Request, res: Response): Promise<void> => {
+    res.redirect(`${FRONTEND_BASE}/payment?status=failed`);
+    return;
   },
 
   // ======================================================
   // eSewa VERIFY (frontend → backend)
   // ======================================================
-  esewaVerify: async (req: Request, res: Response, next: NextFunction) => {
+  esewaVerify: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const data = String(req.body?.data || "").trim();
 
       if (!data) {
-        return res
-          .status(400)
-          .json({ success: false, message: "data is required" });
+        res.status(400).json({
+          success: false,
+          message: "data is required",
+        });
+        return;
       }
 
-      // decode payload
       const payload = esewaService.decodeEsewaData(data);
 
-      // verify signature (most important)
       const signatureOk = esewaService.verifyEsewaResponseSignature(payload);
       if (!signatureOk) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           message: "Invalid eSewa signature",
           payload,
         });
+        return;
       }
 
-      // parse transaction & amount safely
       const transaction_uuid = String(payload?.transaction_uuid || "").trim();
       const rawAmount = String(payload?.total_amount || "").trim();
       const total_amount = Number(rawAmount.replace(/,/g, ""));
 
-      // if missing fields -> still allow frontend to continue
       if (!transaction_uuid || !total_amount || Number.isNaN(total_amount)) {
-        return res.status(200).json({
+        res.status(200).json({
           success: true,
           signatureOk: true,
           statusOk: false,
@@ -132,9 +153,9 @@ export const paymentController = {
           message: "Signature OK but missing/invalid amount or transaction ID",
           payload,
         });
+        return;
       }
 
-      // optional status check (do not hard fail)
       let statusOk = true;
       try {
         await esewaService.checkStatus({
@@ -145,7 +166,7 @@ export const paymentController = {
         statusOk = false;
       }
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         signatureOk: true,
         statusOk,
@@ -159,30 +180,35 @@ export const paymentController = {
                 "Signature OK, but status check failed (treat as Pending)",
             }),
       });
+      return;
     } catch (err) {
       next(err);
+      return;
     }
   },
 
   // ======================================================
   // Khalti INITIATE
   // ======================================================
-  khaltiInitiate: async (req: Request, res: Response) => {
+  khaltiInitiate: async (req: Request, res: Response): Promise<void> => {
     try {
       const { amount, orderId, orderName } = req.body || {};
       const amt = Number(amount);
 
       if (!amt || Number.isNaN(amt) || amt <= 0) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid amount" });
+        res.status(400).json({
+          success: false,
+          message: "Invalid amount",
+        });
+        return;
       }
 
       if (!orderId || !orderName) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           message: "orderId and orderName required",
         });
+        return;
       }
 
       const data = await khaltiService.initiatePayment({
@@ -191,31 +217,35 @@ export const paymentController = {
         orderName,
       });
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         payment_url: data?.payment_url,
         pidx: data?.pidx,
         raw: data,
       });
+      return;
     } catch (err: any) {
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         message: err?.message || "Khalti initiate failed",
       });
+      return;
     }
   },
 
   // ======================================================
   // Khalti LOOKUP / VERIFY
   // ======================================================
-  khaltiLookup: async (req: Request, res: Response) => {
+  khaltiLookup: async (req: Request, res: Response): Promise<void> => {
     try {
       const { pidx } = req.body || {};
 
       if (!pidx) {
-        return res
-          .status(400)
-          .json({ success: false, message: "pidx is required" });
+        res.status(400).json({
+          success: false,
+          message: "pidx is required",
+        });
+        return;
       }
 
       const data = await khaltiService.lookupPayment({ pidx });
@@ -223,7 +253,7 @@ export const paymentController = {
       const status = String(data?.status || "");
       const paid = status.toLowerCase() === "completed";
 
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         paid,
         status,
@@ -231,11 +261,13 @@ export const paymentController = {
         amount: data?.total_amount ?? data?.amount ?? null,
         raw: data,
       });
+      return;
     } catch (err: any) {
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         message: err?.message || "Khalti lookup failed",
       });
+      return;
     }
   },
 };

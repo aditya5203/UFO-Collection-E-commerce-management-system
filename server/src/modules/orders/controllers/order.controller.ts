@@ -64,10 +64,13 @@ function trackingLink(orderCode: string) {
 }
 
 export const orderController = {
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user?.userId;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      if (!userId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
 
       const data: any = await orderService.createOrder(userId, req.body);
 
@@ -83,15 +86,17 @@ export const orderController = {
         });
       } catch {}
 
-      return res.status(201).json({ data });
+      res.status(201).json({ data });
+      return;
     } catch (err: any) {
-      return res.status(500).json({
+      res.status(500).json({
         message: err?.message || "Failed to create order",
       });
+      return;
     }
   },
 
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { search = "", customerId, paymentStatus, orderStatus } = req.query;
 
@@ -102,30 +107,37 @@ export const orderController = {
         orderStatus: orderStatus ? String(orderStatus) : undefined,
       });
 
-      return res.status(200).json({ data });
+      res.status(200).json({ data });
+      return;
     } catch (err: any) {
-      return res.status(500).json({
+      res.status(500).json({
         message: err?.message || "Failed to fetch orders",
       });
+      return;
     }
   },
 
-  async getOne(req: AuthRequest, res: Response) {
+  async getOne(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
 
       const data = await orderService.getOrderByIdOrCode(id);
-      if (!data) return res.status(404).json({ message: "Order not found" });
+      if (!data) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
 
-      return res.status(200).json({ data });
+      res.status(200).json({ data });
+      return;
     } catch (err: any) {
-      return res.status(500).json({
+      res.status(500).json({
         message: err?.message || "Failed to fetch order",
       });
+      return;
     }
   },
 
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
       const { paymentStatus, orderStatus } = req.body || {};
@@ -135,7 +147,10 @@ export const orderController = {
         ? await Order.findById(id).lean()
         : await Order.findOne({ orderCode: id }).lean();
 
-      if (!existingOrder) return res.status(404).json({ message: "Order not found" });
+      if (!existingOrder) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
 
       const prevOrderStatus = norm(existingOrder.orderStatus);
       const nextOrderStatus = norm(orderStatus);
@@ -148,7 +163,10 @@ export const orderController = {
         orderStatus,
       });
 
-      if (!data) return res.status(404).json({ message: "Order not found" });
+      if (!data) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
 
       const customerId = String(existingOrder.customer);
       const orderCode = String(existingOrder.orderCode || "");
@@ -227,39 +245,53 @@ export const orderController = {
         });
       }
 
-      return res.status(200).json({ data });
+      res.status(200).json({ data });
+      return;
     } catch (err: any) {
-      return res.status(500).json({
+      res.status(500).json({
         message: err?.message || "Failed to update order",
       });
+      return;
     }
   },
 
-  async getMyOrderDetails(req: AuthRequest, res: Response) {
+  async getMyOrderDetails(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user?.userId;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      if (!userId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
 
       const { id } = req.params;
 
       const order = await orderService.getMyOrderDetails(userId, id);
-      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
 
-      return res.status(200).json({ order });
+      res.status(200).json({ order });
+      return;
     } catch (err: any) {
-      return res.status(500).json({
+      res.status(500).json({
         message: err?.message || "Failed to fetch order details",
       });
+      return;
     }
   },
 
-  async getMyOrders(req: AuthRequest, res: Response) {
+  async getMyOrders(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user?.userId;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      if (!userId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
 
       if (!mongoose.Types.ObjectId.isValid(userId)) {
-        return res.status(400).json({ message: "Invalid user" });
+        res.status(400).json({ message: "Invalid user" });
+        return;
       }
 
       const orders = await Order.find({
@@ -274,34 +306,44 @@ export const orderController = {
         date: new Date(o.createdAt).toISOString().split("T")[0],
       }));
 
-      return res.status(200).json({ orders: result });
+      res.status(200).json({ orders: result });
+      return;
     } catch (err: any) {
-      return res.status(500).json({
+      res.status(500).json({
         message: err?.message || "Failed to fetch order history",
       });
+      return;
     }
   },
 
-  async track(req: AuthRequest, res: Response) {
+  async track(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { code } = req.params;
 
       const order = await orderService.trackOrder(code);
-      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
 
-      return res.status(200).json({ order });
+      res.status(200).json({ order });
+      return;
     } catch (err: any) {
-      return res.status(500).json({
+      res.status(500).json({
         message: err?.message || "Failed to track order",
       });
+      return;
     }
   },
 
-  async downloadInvoice(req: AuthRequest, res: Response) {
+  async downloadInvoice(req: AuthRequest, res: Response): Promise<void> {
     try {
       const userId = req.user?.userId;
       const role = req.user?.role;
-      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      if (!userId) {
+        res.status(401).json({ message: "Unauthorized" });
+        return;
+      }
 
       const { id } = req.params;
 
@@ -310,11 +352,15 @@ export const orderController = {
         ? await Order.findById(id).lean()
         : await Order.findOne({ orderCode: id }).lean();
 
-      if (!order) return res.status(404).json({ message: "Order not found" });
+      if (!order) {
+        res.status(404).json({ message: "Order not found" });
+        return;
+      }
 
       if (!isAdminRole(role)) {
         if (String(order.customer) !== String(userId)) {
-          return res.status(403).json({ message: "Forbidden" });
+          res.status(403).json({ message: "Forbidden" });
+          return;
         }
       }
 
@@ -373,10 +419,13 @@ export const orderController = {
           fs.existsSync(filePath) && fs.unlinkSync(filePath);
         } catch {}
       });
+
+      return;
     } catch (err: any) {
-      return res.status(500).json({
+      res.status(500).json({
         message: err?.message || "Failed to download invoice",
       });
+      return;
     }
   },
 };

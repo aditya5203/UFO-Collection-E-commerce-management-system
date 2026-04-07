@@ -3,74 +3,97 @@ import { chatService } from "../services/chat.service";
 
 function getUserId(req: Request) {
   const u: any = (req as any).user;
-  return (
-    u?.userId ||
-    u?._id ||
-    u?.id ||
-    u?.user?._id ||
-    u?.user?.id ||
-    null
-  );
+  return u?.userId || u?._id || u?.id || u?.user?._id || u?.user?.id || null;
 }
 
 export const chatController = {
   // CUSTOMER: open conversation
-  open: async (req: Request, res: Response, next: NextFunction) => {
+  open: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = getUserId(req);
       if (!userId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Unauthorized" });
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+        return;
       }
 
       const orderId = String(req.body?.orderId || "").trim() || undefined;
       const conv = await chatService.openForCustomer(String(userId), orderId);
 
-      return res.json({ success: true, conversation: conv });
+      res.json({ success: true, conversation: conv });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
   // CUSTOMER: my conversations
-  mine: async (req: Request, res: Response, next: NextFunction) => {
+  mine: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = getUserId(req);
       if (!userId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Unauthorized" });
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+        return;
       }
 
       const list = await chatService.listCustomerConversations(String(userId));
-      return res.json({ success: true, conversations: list });
+
+      res.json({ success: true, conversations: list });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
   // CUSTOMER/ADMIN: get messages
-  messages: async (req: Request, res: Response, next: NextFunction) => {
+  messages: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const { conversationId } = req.params;
       const limit = Number(req.query.limit || 50);
 
       const msgs = await chatService.getMessages(conversationId, limit);
-      return res.json({ success: true, messages: msgs });
+
+      res.json({ success: true, messages: msgs });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
   // CUSTOMER: send message
-  customerSend: async (req: Request, res: Response, next: NextFunction) => {
+  customerSend: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = getUserId(req);
       if (!userId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Unauthorized" });
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+        return;
       }
 
       const { conversationId } = req.params;
@@ -80,20 +103,28 @@ export const chatController = {
         req.body
       );
 
-      return res.json({ success: true, message: msg });
+      res.json({ success: true, message: msg });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
   // CUSTOMER: end chat
-  customerEnd: async (req: Request, res: Response, next: NextFunction) => {
+  customerEnd: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const userId = getUserId(req);
       if (!userId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Unauthorized" });
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+        return;
       }
 
       const { conversationId } = req.params;
@@ -102,30 +133,45 @@ export const chatController = {
         conversationId
       );
 
-      return res.json({ success: true, conversation: ended });
+      res.json({ success: true, conversation: ended });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
   // ADMIN: list all conversations
-  adminList: async (_req: Request, res: Response, next: NextFunction) => {
+  adminList: async (
+    _req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const list = await chatService.listAdminConversations();
-      return res.json({ success: true, conversations: list });
+
+      res.json({ success: true, conversations: list });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
   // ADMIN: reply
-  adminSend: async (req: Request, res: Response, next: NextFunction) => {
+  adminSend: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const adminId = getUserId(req);
       if (!adminId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Unauthorized" });
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+        return;
       }
 
       const { conversationId } = req.params;
@@ -135,20 +181,28 @@ export const chatController = {
         req.body
       );
 
-      return res.json({ success: true, message: msg });
+      res.json({ success: true, message: msg });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 
   // ADMIN: end chat
-  adminEnd: async (req: Request, res: Response, next: NextFunction) => {
+  adminEnd: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
       const adminId = getUserId(req);
       if (!adminId) {
-        return res
-          .status(401)
-          .json({ success: false, message: "Unauthorized" });
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+        return;
       }
 
       const { conversationId } = req.params;
@@ -157,9 +211,11 @@ export const chatController = {
         conversationId
       );
 
-      return res.json({ success: true, conversation: ended });
+      res.json({ success: true, conversation: ended });
+      return;
     } catch (e) {
       next(e);
+      return;
     }
   },
 };

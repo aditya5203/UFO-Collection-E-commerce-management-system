@@ -1,5 +1,5 @@
 // server/src/middleware/error.middleware.ts
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from "express";
 
 export class AppError extends Error {
   statusCode: number;
@@ -15,23 +15,25 @@ export class AppError extends Error {
 
 export const errorHandler = (
   err: Error | AppError,
-  req: Request,
+  _req: Request,
   res: Response,
-  next: NextFunction
-) => {
+  _next: NextFunction
+): void => {
   if (err instanceof AppError) {
-    return res.status(err.statusCode).json({
+    res.status(err.statusCode).json({
       success: false,
-      message: err.message
+      message: err.message,
     });
+    return;
   }
 
-  // Default error
-  console.error('Error:', err);
+  console.error("Error:", err);
+
   res.status(500).json({
     success: false,
-    message: 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { error: err.message })
+    message: "Internal server error",
+    ...(process.env.NODE_ENV === "development" && {
+      error: err.message,
+    }),
   });
 };
-

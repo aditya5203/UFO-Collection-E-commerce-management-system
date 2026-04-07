@@ -17,7 +17,7 @@ type Size = (typeof SIZES)[number];
 
 const getRecommendedSizes = (
   heightFt?: number,
-  weightKg?: number
+  _weightKg?: number
 ): { men?: Size; women?: Size } => {
   if (!heightFt) return {};
 

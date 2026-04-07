@@ -9,7 +9,7 @@ import cloudinary from "../../../config/cloudinary";
 function adsCloudinaryUploader(folder: string) {
   const storage = new CloudinaryStorage({
     cloudinary,
-    params: async (_req, file) => {
+    params: async (_req, _file) => {
       return {
         folder,
         resource_type: "auto",

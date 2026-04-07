@@ -1,5 +1,4 @@
 import { Order } from "../../../models/Order.model";
-import { Product } from "../../../models/Product.model";
 import { User } from "../../../models/User.model";
 
 export type RangeKey = "today" | "7days" | "30days";
@@ -106,7 +105,11 @@ function getCustomDates(from?: string, to?: string) {
   };
 }
 
-function buildDateLabels(startDate: Date, totalDays: number, range: RangeKey | "custom") {
+function buildDateLabels(
+  startDate: Date,
+  totalDays: number,
+  range: RangeKey | "custom"
+) {
   return Array.from({ length: totalDays }).map((_, index) => {
     const day = addDays(startDate, index);
 
@@ -198,7 +201,9 @@ export const analyticsService = {
     to?: string;
   }) {
     const safeRange: RangeKey =
-      input?.range === "today" || input?.range === "30days" || input?.range === "7days"
+      input?.range === "today" ||
+      input?.range === "30days" ||
+      input?.range === "7days"
         ? input.range
         : "7days";
 
@@ -407,13 +412,17 @@ export const analyticsService = {
       paidOrdersCount > 0 ? Math.round(totalRevenueRs / paidOrdersCount) : 0;
 
     const previousAverageOrderValueRs =
-      previousPaidOrdersCount > 0 ? Math.round(previousRevenueRs / previousPaidOrdersCount) : 0;
+      previousPaidOrdersCount > 0
+        ? Math.round(previousRevenueRs / previousPaidOrdersCount)
+        : 0;
 
     const conversionRate =
       allOrdersCount > 0 ? (paidOrdersCount / allOrdersCount) * 100 : 0;
 
     const previousConversionRate =
-      previousAllOrdersCount > 0 ? (previousPaidOrdersCount / previousAllOrdersCount) * 100 : 0;
+      previousAllOrdersCount > 0
+        ? (previousPaidOrdersCount / previousAllOrdersCount) * 100
+        : 0;
 
     const salesTrendGrowth =
       previousRevenueRs > 0
@@ -444,7 +453,10 @@ export const analyticsService = {
 
     const revenueCategoryData = categoryRevenueAgg.map((item) => ({
       label: item._id || "Unknown",
-      value: Math.max(8, Math.round((Number(item.totalPaisa || 0) / maxCategory) * 100)),
+      value: Math.max(
+        8,
+        Math.round((Number(item.totalPaisa || 0) / maxCategory) * 100)
+      ),
       revenueRs: Math.round(Number(item.totalPaisa || 0) / 100),
     }));
 
@@ -466,18 +478,27 @@ export const analyticsService = {
       Math.round((count / maxAcquisition) * 100)
     );
 
-    const activeCustomerStats = activeCustomerAgg?.[0] || { total: 0, returning: 0 };
+    const activeCustomerStats = activeCustomerAgg?.[0] || {
+      total: 0,
+      returning: 0,
+    };
     const activeCustomerCount = Number(activeCustomerStats.total || 0);
     const returningCount = Number(activeCustomerStats.returning || 0);
     const newCount = Math.max(activeCustomerCount - returningCount, 0);
 
     const newPercent =
-      activeCustomerCount > 0 ? Math.round((newCount / activeCustomerCount) * 100) : 0;
+      activeCustomerCount > 0
+        ? Math.round((newCount / activeCustomerCount) * 100)
+        : 0;
     const returningPercent =
-      activeCustomerCount > 0 ? Math.round((returningCount / activeCustomerCount) * 100) : 0;
+      activeCustomerCount > 0
+        ? Math.round((returningCount / activeCustomerCount) * 100)
+        : 0;
 
     const customerLifetimeValueRs =
-      activeCustomerCount > 0 ? Math.round(totalRevenueRs / activeCustomerCount) : 0;
+      activeCustomerCount > 0
+        ? Math.round(totalRevenueRs / activeCustomerCount)
+        : 0;
 
     const geoText =
       geographicAgg.length > 0
@@ -490,11 +511,17 @@ export const analyticsService = {
         salesTrendAmount: formatCurrencyRs(totalRevenueRs),
         salesTrendChange: percentChange(totalRevenueRs, previousRevenueRs),
         categoryRevenueAmount: formatCurrencyRs(
-          revenueCategoryData.reduce((sum, item) => sum + Number(item.revenueRs || 0), 0)
+          revenueCategoryData.reduce(
+            (sum, item) => sum + Number(item.revenueRs || 0),
+            0
+          )
         ),
         categoryRevenueChange: percentChange(totalRevenueRs, previousRevenueRs),
         customerAcquisitionTotal: newCustomersCount,
-        customerAcquisitionChange: percentChange(newCustomersCount, previousNewCustomersCount),
+        customerAcquisitionChange: percentChange(
+          newCustomersCount,
+          previousNewCustomersCount
+        ),
         paymentMethodTop: paymentMethodUsage.mostUsedMethod,
         paymentMethodTopCount: paymentMethodUsage.mostUsedCount,
       },
@@ -508,7 +535,10 @@ export const analyticsService = {
         {
           label: "Average Order Value",
           value: formatCurrencyRs(averageOrderValueRs),
-          change: percentChange(averageOrderValueRs, previousAverageOrderValueRs),
+          change: percentChange(
+            averageOrderValueRs,
+            previousAverageOrderValueRs
+          ),
           positive: averageOrderValueRs >= previousAverageOrderValueRs,
         },
         {
@@ -519,7 +549,9 @@ export const analyticsService = {
         },
         {
           label: "Sales Trends",
-          value: `${salesTrendGrowth >= 0 ? "+" : ""}${Math.round(salesTrendGrowth)}%`,
+          value: `${salesTrendGrowth >= 0 ? "+" : ""}${Math.round(
+            salesTrendGrowth
+          )}%`,
           change: percentChange(totalRevenueRs, previousRevenueRs),
           positive: salesTrendGrowth >= 0,
         },
@@ -536,7 +568,10 @@ export const analyticsService = {
         {
           title: "Customer Lifetime Value",
           value: formatCurrencyRs(customerLifetimeValueRs),
-          change: percentChange(customerLifetimeValueRs, previousAverageOrderValueRs),
+          change: percentChange(
+            customerLifetimeValueRs,
+            previousAverageOrderValueRs
+          ),
         },
         {
           title: "Geographic Distribution",
