@@ -1,6 +1,7 @@
 import Ad from "../../../models/ad.model";
 import AdHistory from "../../../models/adHistory.model";
 import cloudinary from "../../../config/cloudinary";
+import { notificationService } from "../../notifications/services/notification.service";
 
 type MediaKind = "image" | "video";
 
@@ -81,6 +82,76 @@ function uploadedToUrlAndId(file: any) {
     url: String(file?.path || "").trim(),
     publicId: String(file?.filename || "").trim(),
   };
+}
+
+async function notifyAdStatusChange(params: {
+  title: string;
+  adId: string;
+  status: string;
+  changedBy: string;
+  type: string;
+}) {
+  const status = String(params.status || "").trim();
+
+  if (status === "Active") {
+    try {
+      await notificationService.createAdminForAll({
+        title: "Campaign started",
+        message: `${params.title} is now live.`,
+        type: "promo",
+        link: "/admin/ads",
+        meta: {
+          adId: params.adId,
+          adTitle: params.title,
+          status,
+          changedBy: params.changedBy,
+          adType: params.type,
+        },
+      });
+    } catch (e: any) {
+      console.log("Ad start notification failed (ignored):", e?.message);
+    }
+  }
+
+  if (status === "Expired") {
+    try {
+      await notificationService.createAdminForAll({
+        title: "Campaign ended",
+        message: `${params.title} has ended.`,
+        type: "promo",
+        link: "/admin/ads",
+        meta: {
+          adId: params.adId,
+          adTitle: params.title,
+          status,
+          changedBy: params.changedBy,
+          adType: params.type,
+        },
+      });
+    } catch (e: any) {
+      console.log("Ad end notification failed (ignored):", e?.message);
+    }
+  }
+
+  if (status === "Scheduled") {
+    try {
+      await notificationService.createAdminForAll({
+        title: "Campaign scheduled",
+        message: `${params.title} has been scheduled.`,
+        type: "promo",
+        link: "/admin/ads",
+        meta: {
+          adId: params.adId,
+          adTitle: params.title,
+          status,
+          changedBy: params.changedBy,
+          adType: params.type,
+        },
+      });
+    } catch (e: any) {
+      console.log("Ad scheduled notification failed (ignored):", e?.message);
+    }
+  }
 }
 
 export const adService = {
@@ -247,6 +318,14 @@ export const adService = {
       note: "Advertisement created",
     });
 
+    await notifyAdStatusChange({
+      title: ad.title,
+      adId: String(ad._id),
+      status: String(ad.status),
+      changedBy,
+      type: ad.type,
+    });
+
     return ad;
   },
 
@@ -259,6 +338,8 @@ export const adService = {
   ) => {
     const ad = await Ad.findById(id);
     if (!ad) throw new Error("Ad not found");
+
+    const previousStatus = String(ad.status || "");
 
     const startDate = payload.startDate
       ? toDateOrNull(payload.startDate)
@@ -359,6 +440,16 @@ export const adService = {
       note: "Advertisement updated",
     });
 
+    if (previousStatus !== String(ad.status || "")) {
+      await notifyAdStatusChange({
+        title: ad.title,
+        adId: String(ad._id),
+        status: String(ad.status),
+        changedBy,
+        type: ad.type,
+      });
+    }
+
     return ad;
   },
 
@@ -389,6 +480,8 @@ export const adService = {
     const ad = await Ad.findById(id);
     if (!ad) throw new Error("Ad not found");
 
+    const previousStatus = String(ad.status || "");
+
     if (makeActive) {
       ad.status = computeAutoStatus(ad.startDate, ad.endDate) as any;
 
@@ -415,6 +508,17 @@ export const adService = {
 
     ad.updatedBy = changedBy;
     await ad.save();
+
+    if (previousStatus !== String(ad.status || "")) {
+      await notifyAdStatusChange({
+        title: ad.title,
+        adId: String(ad._id),
+        status: String(ad.status),
+        changedBy,
+        type: ad.type,
+      });
+    }
+
     return ad;
   },
 

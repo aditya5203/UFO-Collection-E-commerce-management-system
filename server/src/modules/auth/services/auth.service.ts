@@ -1,4 +1,3 @@
-// server/src/modules/auth/services/auth.service.ts
 import { User } from "../../../models";
 import { RegisterDto, LoginDto, JwtPayload } from "../types/auth.types";
 import jwt from "jsonwebtoken";
@@ -126,7 +125,11 @@ export const authService = {
       role: user.role,
     });
 
-    return { user: sanitizeUserForResponse(user), token };
+    return {
+      user: sanitizeUserForResponse(user),
+      token,
+      isNewUser: true,
+    };
   },
 
   loginUser: async (credentials: LoginDto) => {
@@ -172,6 +175,7 @@ export const authService = {
     const name = String(payload.name || "").trim();
 
     let user = await User.findOne({ email });
+    let isNewUser = false;
 
     if (user && (user as any).isDeleted) {
       throw new AppError(
@@ -192,6 +196,7 @@ export const authService = {
     }
 
     if (!user) {
+      isNewUser = true;
       user = new User({
         email,
         name,
@@ -215,7 +220,7 @@ export const authService = {
       role: user.role,
     });
 
-    return { user: sanitizeUserForResponse(user), token };
+    return { user: sanitizeUserForResponse(user), token, isNewUser };
   },
 
   logoutUser: async (userId: string) => {

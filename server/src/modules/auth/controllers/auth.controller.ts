@@ -1,4 +1,3 @@
-// server/src/modules/auth/controllers/auth.controller.ts
 import { Request, Response, NextFunction } from "express";
 import type { Profile } from "passport-google-oauth20";
 import crypto from "crypto";
@@ -9,8 +8,8 @@ import { AppError } from "../../../middleware/error.middleware";
 import { config } from "../../../config";
 import { User } from "../../../models/User.model";
 import { emailService } from "../../../services/email.services";
+import { notificationService } from "../../notifications/services/notification.service";
 
-// Local type for requests where we use req.user
 type AuthRequest = Request & {
   user?:
     | {
@@ -22,7 +21,6 @@ type AuthRequest = Request & {
     | Profile;
 };
 
-// Cookie names
 const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
 const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
 
@@ -123,6 +121,23 @@ export const authController = {
       const result = await authService.registerUser(userData);
 
       setCookie(res, CUSTOMER_COOKIE, result.token);
+
+      try {
+        await notificationService.createAdminForAll({
+          title: "New user registered",
+          message: `${result.user.name || result.user.email || "A new user"} joined the platform.`,
+          type: "user",
+          link: "/admin/customers",
+          meta: {
+            userId: String(result.user._id),
+            name: result.user.name || "",
+            email: result.user.email || "",
+            provider: result.user.provider || "credentials",
+          },
+        });
+      } catch (err: any) {
+        console.log("Register notification failed (ignored):", err?.message);
+      }
 
       emailService
         .sendMail({
@@ -558,6 +573,25 @@ export const authController = {
 
       setCookie(res, CUSTOMER_COOKIE, result.token);
 
+      if (result.isNewUser) {
+        try {
+          await notificationService.createAdminForAll({
+            title: "New user registered",
+            message: `${result.user.name || result.user.email || "A new user"} joined the platform with Google.`,
+            type: "user",
+            link: "/admin/customers",
+            meta: {
+              userId: String(result.user._id),
+              name: result.user.name || "",
+              email: result.user.email || "",
+              provider: "google",
+            },
+          });
+        } catch (err: any) {
+          console.log("Google register notification failed (ignored):", err?.message);
+        }
+      }
+
       const base = process.env.CLIENT_BASE_URL || "http://localhost:3000";
       res.redirect(`${base}/homepage`);
       return;
@@ -587,6 +621,25 @@ export const authController = {
       });
 
       setCookie(res, CUSTOMER_COOKIE, result.token);
+
+      if (result.isNewUser) {
+        try {
+          await notificationService.createAdminForAll({
+            title: "New user registered",
+            message: `${result.user.name || result.user.email || "A new user"} joined the platform with Google.`,
+            type: "user",
+            link: "/admin/customers",
+            meta: {
+              userId: String(result.user._id),
+              name: result.user.name || "",
+              email: result.user.email || "",
+              provider: "google",
+            },
+          });
+        } catch (err: any) {
+          console.log("Google login register notification failed (ignored):", err?.message);
+        }
+      }
 
       res.status(200).json({
         success: true,

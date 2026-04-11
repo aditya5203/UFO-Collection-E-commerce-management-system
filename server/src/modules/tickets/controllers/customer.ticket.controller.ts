@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { ticketService } from "../services/ticket.service";
+import { notificationService } from "../../notifications/services/notification.service";
 
 function getUser(req: Request) {
   return (req as any).user || null;
@@ -54,15 +55,33 @@ export const customerTicketController = {
         message: String(message).trim(),
         customerName: user.name || "Customer",
         customerEmail: user.email,
-
         orderId: orderId ? String(orderId).trim() : null,
         productId: productId ? String(productId).trim() : null,
         productName: productName ? String(productName).trim() : null,
         size: size ? String(size).trim() : null,
         color: color ? String(color).trim() : null,
-
         imageUrl: imageUrl || null,
       });
+
+      try {
+        await notificationService.createAdminForAll({
+          title: "New support ticket",
+          message: `${user.name || user.email || "Customer"} submitted ticket ${created.ticketCode}.`,
+          type: "ticket",
+          link: `/admin/tickets/${String((created as any)._id)}`,
+          meta: {
+            ticketId: String((created as any)._id),
+            ticketCode: created.ticketCode,
+            customerId: String(user.userId),
+            customerName: user.name || "Customer",
+            customerEmail: user.email,
+            subject: created.subject || "",
+            issueType: created.issueType || "",
+          },
+        });
+      } catch (e: any) {
+        console.log("Admin ticket notification failed (ignored):", e?.message);
+      }
 
       res.status(201).json({
         success: true,
@@ -136,9 +155,7 @@ export const customerTicketController = {
       );
 
       if (!t) {
-        res
-          .status(404)
-          .json({ success: false, message: "Ticket not found" });
+        res.status(404).json({ success: false, message: "Ticket not found" });
         return;
       }
 
@@ -189,19 +206,38 @@ export const customerTicketController = {
       const text = String(req.body.text || "").trim();
 
       if (!text) {
-        res
-          .status(400)
-          .json({ success: false, message: "Reply text required" });
+        res.status(400).json({ success: false, message: "Reply text required" });
         return;
       }
 
       const updated = await ticketService.addCustomerReply(id, user.email, text);
 
       if (!updated) {
-        res
-          .status(404)
-          .json({ success: false, message: "Ticket not found" });
+        res.status(404).json({ success: false, message: "Ticket not found" });
         return;
+      }
+
+      try {
+        const fresh: any = await ticketService.getCustomerTicketByIdAndEmail(
+          id,
+          user.email
+        );
+
+        if (fresh) {
+          await notificationService.createAdminForAll({
+            title: "New ticket reply",
+            message: `${user.name || user.email || "Customer"} replied on ticket ${fresh.ticketCode}.`,
+            type: "ticket",
+            link: `/admin/tickets/${String(fresh._id)}`,
+            meta: {
+              ticketId: String(fresh._id),
+              ticketCode: fresh.ticketCode,
+              customerEmail: user.email,
+            },
+          });
+        }
+      } catch (e: any) {
+        console.log("Admin ticket reply notification failed (ignored):", e?.message);
       }
 
       res.json({ success: true, item: updated });

@@ -264,6 +264,17 @@ export default function ProductPage() {
   const [relatedLoading, setRelatedLoading] = React.useState(false);
   const [relatedError, setRelatedError] = React.useState<string | null>(null);
 
+  const [zoomLevel, setZoomLevel] = React.useState<number>(1);
+  const [pan, setPan] = React.useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = React.useState(false);
+
+  const dragStartRef = React.useRef({
+    x: 0,
+    y: 0,
+    panX: 0,
+    panY: 0,
+  });
+
   React.useEffect(() => {
     const update = () => setCartCount(getCartCount());
     update();
@@ -330,6 +341,8 @@ export default function ProductPage() {
 
         const normalizedColors = (mapped.colors || []).map((c) => toHex(c));
         setSelectedColor(normalizedColors[0] || "");
+        setZoomLevel(1);
+        setPan({ x: 0, y: 0 });
       } catch (e: any) {
         console.error(e);
         setError(e?.message || "Failed to load product.");
@@ -432,6 +445,122 @@ export default function ProductPage() {
     })();
   }, [activeTab, product?.id]);
 
+  const sizes = product?.sizes?.length ? product.sizes : DEFAULT_SIZES;
+
+  const colors = (product?.colors ?? []).map((c) => ({
+    value: toHex(c),
+    label: toColorLabel(c),
+  }));
+
+  const galleryImages = product
+    ? (product.images || []).filter((img) => img && img !== product.image)
+    : [];
+
+  const allImages = product ? [product.image, ...galleryImages] : [];
+
+  const currentImage = selectedImage || product?.image || PRODUCT_PLACEHOLDER;
+  const currentImageIndex = Math.max(
+    0,
+    allImages.findIndex((img) => img === currentImage)
+  );
+
+  const selectImage = (img: string) => {
+    setSelectedImage(img);
+    setZoomLevel(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const goToPrevImage = () => {
+    if (!allImages.length) return;
+    const nextIndex =
+      currentImageIndex <= 0 ? allImages.length - 1 : currentImageIndex - 1;
+    selectImage(allImages[nextIndex]);
+  };
+
+  const goToNextImage = () => {
+    if (!allImages.length) return;
+    const nextIndex =
+      currentImageIndex >= allImages.length - 1 ? 0 : currentImageIndex + 1;
+    selectImage(allImages[nextIndex]);
+  };
+
+  const zoomIn = () => {
+    setZoomLevel((prev) => Math.min(3, Number((prev + 0.25).toFixed(2))));
+  };
+
+  const zoomOut = () => {
+    setZoomLevel((prev) => {
+      const next = Math.max(1, Number((prev - 0.25).toFixed(2)));
+      if (next === 1) {
+        setPan({ x: 0, y: 0 });
+      }
+      return next;
+    });
+  };
+
+  const resetPreview = () => {
+    setZoomLevel(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: pan.x,
+      panY: pan.y,
+    };
+    setDragging(true);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+
+    if (zoomLevel > 1) {
+      setPan({
+        x: dragStartRef.current.panX + dx,
+        y: dragStartRef.current.panY + dy,
+      });
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragging) return;
+
+    const dx = e.clientX - dragStartRef.current.x;
+    const dy = e.clientY - dragStartRef.current.y;
+
+    if (zoomLevel === 1 && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) {
+        goToNextImage();
+      } else {
+        goToPrevImage();
+      }
+    }
+
+    setDragging(false);
+  };
+
+  const handleWheelZoom = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+
+    if (e.deltaY < 0) {
+      setZoomLevel((prev) => Math.min(3, Number((prev + 0.15).toFixed(2))));
+      return;
+    }
+
+    setZoomLevel((prev) => {
+      const next = Math.max(1, Number((prev - 0.15).toFixed(2)));
+      if (next === 1) {
+        setPan({ x: 0, y: 0 });
+      }
+      return next;
+    });
+  };
+
   const addToCart = () => {
     if (!product) return;
 
@@ -497,18 +626,6 @@ export default function ProductPage() {
       </main>
     );
   }
-
-  const sizes = product.sizes?.length ? product.sizes : DEFAULT_SIZES;
-
-  const colors = (product.colors ?? []).map((c) => ({
-    value: toHex(c),
-    label: toColorLabel(c),
-  }));
-
-  const galleryImages = (product.images || []).filter(
-    (img) => img && img !== product.image
-  );
-  const allImages = [product.image, ...galleryImages];
 
   return (
     <>
@@ -639,31 +756,118 @@ export default function ProductPage() {
 
           <section className="grid grid-cols-1 gap-8 md:grid-cols-[1.05fr_1.4fr]">
             <div className="rounded-[14px] border border-[#111827] bg-[#050816] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.7)]">
-              <div className="relative h-[520px] w-full overflow-hidden rounded-[12px] bg-[#0b1020]">
-                <Image
-                  src={selectedImage || product.image}
-                  alt={product.name}
-                  fill
-                  className="object-cover object-center"
-                  priority
-                  unoptimized={(selectedImage || product.image).startsWith("http")}
-                />
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-white">
+                    Live Product Preview
+                  </h3>
+                  <p className="mt-1 text-xs text-[#94a3b8]">
+                    Drag to explore • Scroll to zoom • Swipe left/right to change image
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={goToPrevImage}
+                    className="rounded-lg border border-[#243041] bg-[#0b1020] px-3 py-2 text-xs font-semibold text-white hover:border-[#1d9bf0] hover:text-[#7dd3fc]"
+                    aria-label="Previous image"
+                    title="Previous image"
+                  >
+                    Prev
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goToNextImage}
+                    className="rounded-lg border border-[#243041] bg-[#0b1020] px-3 py-2 text-xs font-semibold text-white hover:border-[#1d9bf0] hover:text-[#7dd3fc]"
+                    aria-label="Next image"
+                    title="Next image"
+                  >
+                    Next
+                  </button>
+                  <button
+                    type="button"
+                    onClick={zoomOut}
+                    className="rounded-lg border border-[#243041] bg-[#0b1020] px-3 py-2 text-xs font-semibold text-white hover:border-[#1d9bf0] hover:text-[#7dd3fc]"
+                    aria-label="Zoom out"
+                    title="Zoom out"
+                  >
+                    -
+                  </button>
+                  <button
+                    type="button"
+                    onClick={zoomIn}
+                    className="rounded-lg border border-[#243041] bg-[#0b1020] px-3 py-2 text-xs font-semibold text-white hover:border-[#1d9bf0] hover:text-[#7dd3fc]"
+                    aria-label="Zoom in"
+                    title="Zoom in"
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetPreview}
+                    className="rounded-lg border border-[#243041] bg-[#0b1020] px-3 py-2 text-xs font-semibold text-white hover:border-[#1d9bf0] hover:text-[#7dd3fc]"
+                    aria-label="Reset preview"
+                    title="Reset preview"
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className={`relative h-[520px] w-full overflow-hidden rounded-[12px] border border-[#111827] bg-[#0b1020] ${
+                  zoomLevel > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+                }`}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerLeave={() => setDragging(false)}
+                onWheel={handleWheelZoom}
+              >
+                <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-full border border-[#233044] bg-[rgba(5,8,22,0.75)] px-3 py-1 text-xs font-semibold text-[#cbd5e1] backdrop-blur">
+                  Zoom {Math.round(zoomLevel * 100)}%
+                </div>
+
+                <div className="pointer-events-none absolute bottom-4 right-4 z-20 rounded-full border border-[#233044] bg-[rgba(5,8,22,0.75)] px-3 py-1 text-xs font-semibold text-[#cbd5e1] backdrop-blur">
+                  {currentImageIndex + 1} / {allImages.length}
+                </div>
+
+                <div
+                  className="relative h-full w-full transition-transform duration-200 ease-out"
+                  style={{
+                    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoomLevel})`,
+                    transformOrigin: "center center",
+                  }}
+                >
+                  <Image
+                    src={currentImage}
+                    alt={product.name}
+                    fill
+                    className="object-cover object-center select-none"
+                    priority
+                    draggable={false}
+                    unoptimized={currentImage.startsWith("http")}
+                  />
+                </div>
               </div>
 
               {allImages.length > 1 ? (
                 <div className="mt-4 flex flex-wrap gap-3">
                   {allImages.map((img, index) => {
-                    const active = (selectedImage || product.image) === img;
+                    const active = currentImage === img;
 
                     return (
                       <button
                         key={`${img}-${index}`}
                         type="button"
-                        onClick={() => setSelectedImage(img)}
+                        onClick={() => selectImage(img)}
                         aria-label={`Select product image ${index + 1}`}
                         title={`Select product image ${index + 1}`}
-                        className={`relative h-[76px] w-[76px] overflow-hidden rounded-[10px] border ${
-                          active ? "border-[#1d9bf0]" : "border-[#1f2937]"
+                        className={`relative h-[76px] w-[76px] overflow-hidden rounded-[10px] border transition ${
+                          active
+                            ? "border-[#1d9bf0] ring-2 ring-[#1d9bf0]/30"
+                            : "border-[#1f2937] hover:border-[#4b5563]"
                         }`}
                       >
                         <Image

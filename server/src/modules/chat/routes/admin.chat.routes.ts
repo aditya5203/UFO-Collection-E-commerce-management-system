@@ -1,3 +1,4 @@
+//server/src/modules/chat/routes/admin.chat.routes.ts
 import { Router } from "express";
 import { chatController } from "../controllers/chat.controller";
 import { authorizePermission } from "../../auth/middleware/permission.middleware";

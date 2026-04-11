@@ -186,7 +186,7 @@ export const adminTicketController = {
 
         if (customerId) {
           try {
-            await notificationService.create({
+            await notificationService.createCustomer({
               userId: customerId,
               title: "Ticket Status Updated",
               message: `Your ticket ${before.ticketCode} is now ${status}.`,
@@ -239,7 +239,7 @@ export const adminTicketController = {
 
       if (customerId) {
         try {
-          await notificationService.create({
+          await notificationService.createCustomer({
             userId: customerId,
             title: "Support Reply",
             message: `Admin replied on your ticket ${fresh.ticketCode}.`,

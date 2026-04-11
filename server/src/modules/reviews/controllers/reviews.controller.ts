@@ -1,10 +1,12 @@
-// server/src/modules/reviews/controllers/reviews.controller.ts
 import { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 import { AppError } from "../../../middleware/error.middleware";
 import { Review } from "../../../models/Review.model";
 import { Order } from "../../../models/Order.model";
+import { Product } from "../../../models/Product.model";
+import { User } from "../../../models/User.model";
 import { AuthRequest } from "../../auth/middleware/auth.middleware";
+import { notificationService } from "../../notifications/services/notification.service";
 
 function normalizeOrderCode(v: string) {
   const raw = String(v || "").trim();
@@ -91,9 +93,41 @@ export const reviewController = {
         customer,
         orderCode,
         rating: ratingNum,
-        title: typeof title === "string" ? title : "",
-        comment: typeof comment === "string" ? comment : "",
+        title: typeof title === "string" ? title.trim() : "",
+        comment: typeof comment === "string" ? comment.trim() : "",
       });
+
+      try {
+        const [productDoc, customerDoc] = await Promise.all([
+          Product.findById(product).select("name").lean(),
+          User.findById(customer).select("name email").lean(),
+        ]);
+
+        const customerName =
+          (customerDoc as any)?.name ||
+          (customerDoc as any)?.email ||
+          "Customer";
+
+        const productName = (productDoc as any)?.name || "Product";
+
+        await notificationService.createAdminForAll({
+          title: "New review posted",
+          message: `${customerName} posted a ${ratingNum}★ review on ${productName}.`,
+          type: "review",
+          link: "/admin/reviews",
+          meta: {
+            reviewId: String((created as any)._id),
+            productId: String(product),
+            productName,
+            customerId: String(customer),
+            customerName,
+            rating: ratingNum,
+            orderCode,
+          },
+        });
+      } catch (e: any) {
+        console.log("Review notification failed (ignored):", e?.message);
+      }
 
       res.status(201).json({
         success: true,

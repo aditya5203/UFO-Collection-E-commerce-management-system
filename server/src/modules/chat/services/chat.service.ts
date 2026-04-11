@@ -1,10 +1,12 @@
 import { Types } from "mongoose";
 import { ConversationModel } from "../../../models/Conversation.model";
 import { MessageModel } from "../../../models/Message.model";
+import { User } from "../../../models/User.model";
 import { SendMessageDTO } from "../types/chat.types";
 import { noAiReply } from "../bot/no-ai";
 import { botReply } from "../bot/rivescript";
 import { aiReply } from "./ai.service";
+import { notificationService } from "../../notifications/services/notification.service";
 
 function cleanText(t: string) {
   return String(t || "").trim().slice(0, 2000);
@@ -71,6 +73,26 @@ export const chatService = {
       isReadByAdmin: false,
     });
 
+    try {
+      const customer: any = await User.findById(userId).select("name email").lean();
+
+      await notificationService.createAdminForAll({
+        title: "New live chat opened",
+        message: `${customer?.name || customer?.email || "Customer"} opened a new chat.`,
+        type: "chat",
+        link: `/admin/chat`,
+        meta: {
+          conversationId: String(created._id),
+          customerId: String(userId),
+          customerName: customer?.name || "",
+          customerEmail: customer?.email || "",
+          orderId: orderId || null,
+        },
+      });
+    } catch (e: any) {
+      console.log("Chat open notification failed (ignored):", e?.message);
+    }
+
     return created.toObject();
   },
 
@@ -97,11 +119,7 @@ export const chatService = {
       .lean();
   },
 
-  async customerSend(
-    userId: string,
-    conversationId: string,
-    dto: SendMessageDTO
-  ) {
+  async customerSend(userId: string, conversationId: string, dto: SendMessageDTO) {
     const text = cleanText(dto.text);
     if (!text) throw new Error("Message is empty");
 
@@ -123,6 +141,27 @@ export const chatService = {
     conv.lastMessageAt = new Date();
     await conv.save();
 
+    try {
+      const customer: any = await User.findById(userId).select("name email").lean();
+
+      await notificationService.createAdminForAll({
+        title: "New chat message",
+        message: `${customer?.name || customer?.email || "Customer"} sent: "${text.slice(0, 60)}${text.length > 60 ? "..." : ""}"`,
+        type: "chat",
+        link: `/admin/chat`,
+        meta: {
+          conversationId: String(conv._id),
+          messageId: String(userMsg._id),
+          customerId: String(userId),
+          customerName: customer?.name || "",
+          customerEmail: customer?.email || "",
+          preview: text.slice(0, 120),
+        },
+      });
+    } catch (e: any) {
+      console.log("Chat message notification failed (ignored):", e?.message);
+    }
+
     if (!conv.adminId && wantsHumanAgent(text)) {
       conv.aiDisabled = true;
       await conv.save();
@@ -136,6 +175,25 @@ export const chatService = {
         isReadByUser: true,
         isReadByAdmin: false,
       });
+
+      try {
+        const customer: any = await User.findById(userId).select("name email").lean();
+
+        await notificationService.createAdminForAll({
+          title: "Human agent requested",
+          message: `${customer?.name || customer?.email || "Customer"} requested a human agent.`,
+          type: "chat",
+          link: `/admin/chat`,
+          meta: {
+            conversationId: String(conv._id),
+            customerId: String(userId),
+            customerName: customer?.name || "",
+            customerEmail: customer?.email || "",
+          },
+        });
+      } catch (e: any) {
+        console.log("Human agent request notification failed (ignored):", e?.message);
+      }
 
       return userMsg.toObject();
     }
@@ -193,11 +251,7 @@ export const chatService = {
     return userMsg.toObject();
   },
 
-  async adminSend(
-    adminId: string,
-    conversationId: string,
-    dto: SendMessageDTO
-  ) {
+  async adminSend(adminId: string, conversationId: string, dto: SendMessageDTO) {
     const text = cleanText(dto.text);
     if (!text) throw new Error("Message is empty");
 
@@ -233,6 +287,26 @@ export const chatService = {
     conv.lastMessage = text;
     conv.lastMessageAt = new Date();
     await conv.save();
+
+    try {
+      const customerId = String(conv.userId || "");
+      if (customerId) {
+        await notificationService.createCustomer({
+          userId: customerId,
+          title: "New message from support",
+          message: "Support replied to your live chat.",
+          type: "chat",
+          link: "/notifications",
+          meta: {
+            conversationId: String(conv._id),
+            messageId: String(msg._id),
+            adminId: String(adminId),
+          },
+        });
+      }
+    } catch (e: any) {
+      console.log("Customer live chat notification failed (ignored):", e?.message);
+    }
 
     return msg.toObject();
   },

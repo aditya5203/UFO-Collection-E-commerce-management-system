@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { io, Socket } from "socket.io-client";
 
 type AdminNotification = {
   _id?: string;
@@ -40,6 +41,7 @@ export default function AdminNotificationsPage() {
   const [loading, setLoading] = React.useState(true);
   const [items, setItems] = React.useState<AdminNotification[]>([]);
   const [error, setError] = React.useState<string | null>(null);
+  const socketRef = React.useRef<Socket | null>(null);
 
   const fetchAll = React.useCallback(async () => {
     try {
@@ -54,7 +56,6 @@ export default function AdminNotificationsPage() {
       });
 
       if (res.status === 401 || res.status === 403) {
-        // IMPORTANT: your folder is adminlogin, so use this:
         window.location.href = "/admin/adminlogin";
         return;
       }
@@ -74,18 +75,92 @@ export default function AdminNotificationsPage() {
 
   React.useEffect(() => {
     fetchAll();
+
+    const socket = io(API_BASE_URL, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      fetchAll();
+    });
+
+    socket.on("admin:notification:new", (payload: any) => {
+      const next = payload?.notification;
+      if (!next) return;
+
+      setItems((prev) => {
+        const id = String(next?._id || next?.id || "");
+        if (!id) return [next, ...prev];
+
+        const exists = prev.some((item) => pickId(item) === id);
+        if (exists) return prev;
+
+        return [next, ...prev];
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
   }, [fetchAll]);
+
+  const markOneRead = React.useCallback(async (id: string) => {
+    if (!id) return;
+
+    setItems((prev) =>
+      prev.map((item) =>
+        pickId(item) === id ? { ...item, isRead: true } : item
+      )
+    );
+
+    try {
+      await fetch(
+        `${API_BASE_URL}/api/notifications/admin/${encodeURIComponent(id)}/read`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+    } catch {}
+  }, []);
+
+  const markAllRead = React.useCallback(async () => {
+    setItems((prev) => prev.map((item) => ({ ...item, isRead: true })));
+
+    try {
+      await fetch(`${API_BASE_URL}/api/notifications/admin/read-all`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch {}
+  }, []);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-[22px] font-semibold text-white">Notifications</h1>
-        <Link
-          href="/admin/dashboard"
-          className="text-[12px] text-[#60a5fa] hover:underline"
-        >
-          Back to Dashboard
-        </Link>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={markAllRead}
+            className="rounded-lg border border-[#1f2937] px-3 py-2 text-[12px] text-[#9ca3af] hover:text-white"
+          >
+            Mark all read
+          </button>
+
+          <Link
+            href="/admin/dashboard"
+            className="text-[12px] text-[#60a5fa] hover:underline"
+          >
+            Back to Dashboard
+          </Link>
+        </div>
       </div>
 
       {loading && <div className="text-[13px] text-[#9ca3af]">Loading…</div>}
@@ -117,8 +192,13 @@ export default function AdminNotificationsPage() {
 
               return (
                 <Link
-                  key={id || Math.random()}
+                  key={id || `${n.title}-${n.createdAt}`}
                   href={n.link || "#"}
+                  onClick={() => {
+                    if (id && !isRead) {
+                      markOneRead(id);
+                    }
+                  }}
                   className="block border-b border-[#111827] px-4 py-3 hover:bg-[#0b1220]"
                 >
                   <div className="flex items-start justify-between gap-3">

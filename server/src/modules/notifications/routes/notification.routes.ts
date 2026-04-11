@@ -1,23 +1,46 @@
-// server/src/modules/notifications/routes/notification.routes.ts
 import { Router } from "express";
 import { notificationController } from "../controllers/notification.controller";
-import { customerAuthMiddleware } from "../../auth/middleware/auth.middleware";
+import {
+  customerAuthMiddleware,
+  adminAuthMiddleware,
+} from "../../auth/middleware/auth.middleware";
 
 const router = Router();
 
-// ✅ Customer notifications should ONLY use customer token
-router.use(customerAuthMiddleware);
+/* CUSTOMER */
+router.get("/", customerAuthMiddleware, notificationController.list);
+router.get(
+  "/unread-count",
+  customerAuthMiddleware,
+  notificationController.unreadCount
+);
+router.patch(
+  "/read-all",
+  customerAuthMiddleware,
+  notificationController.markAllRead
+);
+router.patch(
+  "/:id/read",
+  customerAuthMiddleware,
+  notificationController.markRead
+);
 
-// GET /api/notifications?limit=50
-router.get("/", notificationController.list);
-
-// GET /api/notifications/unread-count
-router.get("/unread-count", notificationController.unreadCount);
-
-// PATCH /api/notifications/read-all
-router.patch("/read-all", notificationController.markAllRead);
-
-// PATCH /api/notifications/:id/read
-router.patch("/:id/read", notificationController.markRead);
+/* ADMIN */
+router.get("/admin", adminAuthMiddleware, notificationController.listAdmin);
+router.get(
+  "/admin/unread-count",
+  adminAuthMiddleware,
+  notificationController.adminUnreadCount
+);
+router.patch(
+  "/admin/read-all",
+  adminAuthMiddleware,
+  notificationController.adminMarkAllRead
+);
+router.patch(
+  "/admin/:id/read",
+  adminAuthMiddleware,
+  notificationController.adminMarkRead
+);
 
 export default router;

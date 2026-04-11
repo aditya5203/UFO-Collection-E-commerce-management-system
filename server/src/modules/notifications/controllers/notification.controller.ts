@@ -1,4 +1,3 @@
-// server/src/modules/notifications/controllers/notification.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { notificationService } from "../services/notification.service";
 import { AppError } from "../../../middleware/error.middleware";
@@ -9,17 +8,12 @@ function pickUserId(req: Request) {
 }
 
 export const notificationController = {
-  async list(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> {
+  async list(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const userId = pickUserId(req);
       if (!userId) throw new AppError("Unauthorized", 401);
 
       const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50)));
-
       const items = await notificationService.listForUser(String(userId), limit);
 
       res.json({
@@ -85,6 +79,90 @@ export const notificationController = {
       if (!userId) throw new AppError("Unauthorized", 401);
 
       await notificationService.markAllRead(String(userId));
+
+      res.json({ success: true });
+      return;
+    } catch (e) {
+      next(e);
+      return;
+    }
+  },
+
+  async listAdmin(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const userId = pickUserId(req);
+      if (!userId) throw new AppError("Unauthorized", 401);
+
+      const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50)));
+      const items = await notificationService.listForAdmin(String(userId), limit);
+
+      res.json({
+        success: true,
+        data: items,
+        items,
+      });
+      return;
+    } catch (e) {
+      next(e);
+      return;
+    }
+  },
+
+  async adminUnreadCount(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const userId = pickUserId(req);
+      if (!userId) throw new AppError("Unauthorized", 401);
+
+      const count = await notificationService.unreadCountForAdmin(String(userId));
+
+      res.json({ success: true, count });
+      return;
+    } catch (e) {
+      next(e);
+      return;
+    }
+  },
+
+  async adminMarkRead(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const userId = pickUserId(req);
+      if (!userId) throw new AppError("Unauthorized", 401);
+
+      const id = String(req.params.id || "");
+      if (!id) throw new AppError("Notification id is required", 400);
+
+      const updated = await notificationService.markAdminRead(String(userId), id);
+
+      res.json({ success: true, data: updated });
+      return;
+    } catch (e) {
+      next(e);
+      return;
+    }
+  },
+
+  async adminMarkAllRead(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const userId = pickUserId(req);
+      if (!userId) throw new AppError("Unauthorized", 401);
+
+      await notificationService.markAllAdminRead(String(userId));
 
       res.json({ success: true });
       return;

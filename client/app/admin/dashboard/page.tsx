@@ -1,9 +1,9 @@
-// client/app/admin/dashboard/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { io, Socket } from "socket.io-client";
 import AdminPageGuard from "../_components/AdminPageGuard";
 
 type SummaryResponse = {
@@ -104,10 +104,11 @@ export default function AdminDashboardPage() {
 
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [notifLoading, setNotifLoading] = React.useState(false);
-  const [notifications, setNotifications] = React.useState<AdminNotification[]>(
-    []
-  );
+  const [notifications, setNotifications] = React.useState<AdminNotification[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
+
+  const socketRef = React.useRef<Socket | null>(null);
+  const notifRef = React.useRef<HTMLDivElement | null>(null);
 
   const fetchSummary = React.useCallback(async () => {
     try {
@@ -159,13 +160,13 @@ export default function AdminDashboardPage() {
       const items: AdminNotification[] =
         listJson?.items || listJson?.data || listJson?.notifications || [];
 
-      const count: number =
+      const count =
         Number(countJson?.count ?? countJson?.data ?? countJson?.unreadCount) || 0;
 
       setNotifications(Array.isArray(items) ? items : []);
       setUnreadCount(count);
     } catch {
-      // keep silent
+      // silent
     } finally {
       setNotifLoading(false);
     }
@@ -175,10 +176,9 @@ export default function AdminDashboardPage() {
     fetchSummary();
     fetchNotifications();
 
-    const interval = setInterval(() => {
+    const summaryInterval = setInterval(() => {
       fetchSummary();
-      fetchNotifications();
-    }, 10000);
+    }, 30000);
 
     const onFocus = () => {
       fetchSummary();
@@ -187,18 +187,50 @@ export default function AdminDashboardPage() {
 
     window.addEventListener("focus", onFocus);
 
+    const socket = io(API_BASE_URL, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      fetchNotifications();
+    });
+
+    socket.on("admin:notification:new", (payload: any) => {
+      const next = payload?.notification;
+      if (!next) return;
+
+      setNotifications((prev) => {
+        const id = String(next?._id || next?.id || "");
+        if (!id) return [next, ...prev].slice(0, 10);
+
+        const exists = prev.some((item) => pickId(item) === id);
+        if (exists) return prev;
+
+        return [next, ...prev].slice(0, 10);
+      });
+
+      setUnreadCount((prev) => prev + 1);
+    });
+
     return () => {
-      clearInterval(interval);
+      clearInterval(summaryInterval);
       window.removeEventListener("focus", onFocus);
+      socket.disconnect();
+      socketRef.current = null;
     };
   }, [fetchSummary, fetchNotifications]);
 
-  const notifRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (!notifRef.current) return;
-      if (!notifRef.current.contains(e.target as Node)) setNotifOpen(false);
+      if (!notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
     };
+
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, []);
@@ -226,9 +258,7 @@ export default function AdminDashboardPage() {
 
       return {
         label:
-          x.label ||
-          ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][idx] ||
-          "",
+          x.label || ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][idx] || "",
         heightPx: px,
       };
     });
@@ -335,13 +365,41 @@ export default function AdminDashboardPage() {
 
                       {!notifLoading &&
                         notifications.map((n, i) => {
-                          const id = pickId(n) || `notif-${i}`;
+                          const rawId = pickId(n);
+                          const id = rawId || `notif-${i}`;
                           const isRead = Boolean(n.isRead);
+
                           return (
                             <Link
                               key={id}
                               href={n.link || "#"}
-                              onClick={() => setNotifOpen(false)}
+                              onClick={async () => {
+                                setNotifOpen(false);
+
+                                if (!isRead && rawId) {
+                                  setNotifications((prev) =>
+                                    prev.map((item) =>
+                                      pickId(item) === rawId
+                                        ? { ...item, isRead: true }
+                                        : item
+                                    )
+                                  );
+                                  setUnreadCount((prev) => Math.max(0, prev - 1));
+
+                                  try {
+                                    await fetch(
+                                      `${API_BASE_URL}/api/notifications/admin/${encodeURIComponent(rawId)}/read`,
+                                      {
+                                        method: "PATCH",
+                                        credentials: "include",
+                                        headers: {
+                                          "Content-Type": "application/json",
+                                        },
+                                      }
+                                    );
+                                  } catch {}
+                                }
+                              }}
                               className={[
                                 "block border-b border-[#111827] px-[14px] py-[12px] hover:bg-[#0b1220]",
                                 isRead ? "opacity-80" : "opacity-100",
@@ -378,12 +436,38 @@ export default function AdminDashboardPage() {
                       >
                         View all
                       </Link>
-                      <button
-                        className="text-[12px] text-[#9ca3af] hover:text-white"
-                        onClick={() => setNotifOpen(false)}
-                      >
-                        Close
-                      </button>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          className="text-[12px] text-[#9ca3af] hover:text-white"
+                          onClick={async () => {
+                            try {
+                              await fetch(
+                                `${API_BASE_URL}/api/notifications/admin/read-all`,
+                                {
+                                  method: "PATCH",
+                                  credentials: "include",
+                                  headers: { "Content-Type": "application/json" },
+                                }
+                              );
+
+                              setNotifications((prev) =>
+                                prev.map((n) => ({ ...n, isRead: true }))
+                              );
+                              setUnreadCount(0);
+                            } catch {}
+                          }}
+                        >
+                          Mark all read
+                        </button>
+
+                        <button
+                          className="text-[12px] text-[#9ca3af] hover:text-white"
+                          onClick={() => setNotifOpen(false)}
+                        >
+                          Close
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

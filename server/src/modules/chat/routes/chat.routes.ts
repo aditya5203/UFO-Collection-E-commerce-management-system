@@ -1,3 +1,4 @@
+//server/src/modules/chat/routes/chat.routes.ts
 import { Router } from "express";
 import { chatController } from "../controllers/chat.controller";
 

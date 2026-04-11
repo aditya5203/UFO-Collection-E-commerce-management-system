@@ -50,13 +50,11 @@ export const ticketService = {
       customer: customerObjId,
       customerName: input.customerName,
       customerEmail: input.customerEmail,
-
       orderId: input.orderId || null,
       productId: productObjId,
       productName: input.productName || null,
       size: input.size || null,
       color: input.color || null,
-
       imageUrl: input.imageUrl || null,
       replies: [],
     });

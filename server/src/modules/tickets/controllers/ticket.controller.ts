@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { ticketService } from "../services/ticket.service";
+import { notificationService } from "../../notifications/services/notification.service";
 
 function getUser(req: Request) {
   return (req as any).user || null;
@@ -49,15 +50,33 @@ export const ticketController = {
         message: String(message).trim(),
         customerName: String(name).trim(),
         customerEmail: String(email).trim(),
-
         orderId: orderId ? String(orderId).trim() : null,
         productId: productId ? String(productId).trim() : null,
         productName: productName ? String(productName).trim() : null,
         size: size ? String(size).trim() : null,
         color: color ? String(color).trim() : null,
-
         imageUrl,
       });
+
+      try {
+        await notificationService.createAdminForAll({
+          title: "New support ticket",
+          message: `${String(name).trim()} submitted ticket ${doc.ticketCode}.`,
+          type: "ticket",
+          link: `/admin/tickets/${String((doc as any)._id)}`,
+          meta: {
+            ticketId: String((doc as any)._id),
+            ticketCode: doc.ticketCode,
+            customerId: customerId || "",
+            customerName: String(name).trim(),
+            customerEmail: String(email).trim(),
+            subject: doc.subject || "",
+            issueType: doc.issueType || "",
+          },
+        });
+      } catch (e: any) {
+        console.log("Public ticket notification failed (ignored):", e?.message);
+      }
 
       res.status(201).json({
         success: true,

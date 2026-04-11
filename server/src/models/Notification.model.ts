@@ -1,10 +1,20 @@
-//server/src/models/Notification.model.ts
 import mongoose, { Schema, Document, Types } from "mongoose";
 
-export type NotificationType = "order" | "payment" | "ticket" | "promo" | "system";
+export type NotificationAudience = "customer" | "admin";
+export type NotificationType =
+  | "order"
+  | "payment"
+  | "stock"
+  | "ticket"
+  | "chat"
+  | "promo"
+  | "user"
+  | "review"
+  | "system";
 
 export interface INotification extends Document {
   user: Types.ObjectId;
+  audience: NotificationAudience;
   title: string;
   message: string;
   type: NotificationType;
@@ -17,17 +27,63 @@ export interface INotification extends Document {
 
 const NotificationSchema = new Schema<INotification>(
   {
-    user: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
-    title: { type: String, required: true, trim: true },
-    message: { type: String, required: true, trim: true },
-    type: { type: String, enum: ["order", "payment", "ticket", "promo", "system"], default: "system" },
-    link: { type: String, default: "" },
-    isRead: { type: Boolean, default: false, index: true },
-    meta: { type: Schema.Types.Mixed, default: {} },
+    user: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    audience: {
+      type: String,
+      enum: ["customer", "admin"],
+      default: "customer",
+      index: true,
+    },
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    message: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    type: {
+      type: String,
+      enum: [
+        "order",
+        "payment",
+        "stock",
+        "ticket",
+        "chat",
+        "promo",
+        "user",
+        "review",
+        "system",
+      ],
+      default: "system",
+    },
+    link: {
+      type: String,
+      default: "",
+    },
+    isRead: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    meta: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
   },
   { timestamps: true }
 );
 
-NotificationSchema.index({ user: 1, createdAt: -1 });
+NotificationSchema.index({ user: 1, audience: 1, createdAt: -1 });
+NotificationSchema.index({ user: 1, audience: 1, isRead: 1 });
 
-export const Notification = mongoose.model<INotification>("Notification", NotificationSchema);
+export const Notification =
+  mongoose.models.Notification ||
+  mongoose.model<INotification>("Notification", NotificationSchema);

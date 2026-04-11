@@ -1,3 +1,4 @@
+//server/src/modules/chat/controllers/chat.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { chatService } from "../services/chat.service";
 

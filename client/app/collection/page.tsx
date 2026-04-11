@@ -14,6 +14,9 @@ type Product = {
   customer?: CustomerType;
   subCategory?: string;
   createdAt?: string;
+  gender?: "Male" | "Female";
+  colors?: string[];
+  categoryId?: string;
 };
 
 const API_BASE =
@@ -42,16 +45,39 @@ function parseDateSafe(d?: string) {
   return Number.isFinite(t) ? t : 0;
 }
 
+function mapBackendProduct(p: any): Product {
+  return {
+    id: String(p.id || p._id || ""),
+    name: String(p.name || "Product"),
+    price:
+      typeof p.price === "string" ? Number(p.price) || 0 : Number(p.price ?? 0),
+    image: resolveMediaSrc(p.image || "/images/placeholder.png"),
+    customer:
+      p.gender === "Male"
+        ? "Men"
+        : p.gender === "Female"
+        ? "Women"
+        : undefined,
+    subCategory: String(p.subCategory || p.category || p.slug || ""),
+    createdAt: p.createdAt || p.created_at || p.updatedAt || p.updated_at,
+    gender: p.gender,
+    colors: Array.isArray(p.colors) ? p.colors : [],
+    categoryId: p.categoryId || undefined,
+  };
+}
+
 export default function CollectionPage() {
-  const [sortValue, setSortValue] = React.useState<"low-high" | "high-low" | "newest">(
-    "newest"
-  );
+  const [sortValue, setSortValue] = React.useState<
+    "low-high" | "high-low" | "newest"
+  >("newest");
 
   const [products, setProducts] = React.useState<Product[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  const [selectedCustomers, setSelectedCustomers] = React.useState<CustomerType[]>([]);
+  const [selectedCustomers, setSelectedCustomers] = React.useState<
+    CustomerType[]
+  >([]);
   const [selectedTypes, setSelectedTypes] = React.useState<string[]>([]);
 
   const [search, setSearch] = React.useState("");
@@ -65,6 +91,37 @@ export default function CollectionPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
 
+  const fetchAllProducts = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const res = await fetch(`${API_BASE}/products`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`Failed to load products (status ${res.status})`);
+
+      const raw = await res.json();
+      const arr =
+        (Array.isArray(raw) && raw) ||
+        (Array.isArray(raw?.data) && raw.data) ||
+        (Array.isArray(raw?.items) && raw.items) ||
+        (Array.isArray(raw?.products) && raw.products) ||
+        (Array.isArray(raw?.data?.products) && raw.data.products) ||
+        [];
+
+      const mapped: Product[] = (arr || []).map(mapBackendProduct);
+      setProducts(mapped);
+    } catch (err: any) {
+      console.error("Error fetching collection products:", err);
+      setError(err?.message || "Failed to load products.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    fetchAllProducts();
+  }, [fetchAllProducts]);
+
   React.useEffect(() => {
     const onResize = () => {
       if (window.innerWidth >= 640) setMobileMenuOpen(false);
@@ -72,47 +129,6 @@ export default function CollectionPage() {
     };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, []);
-
-  React.useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const res = await fetch(`${API_BASE}/products`, { cache: "no-store" });
-        if (!res.ok) throw new Error(`Failed to load products (status ${res.status})`);
-
-        const raw = await res.json();
-        const arr =
-          (Array.isArray(raw) && raw) ||
-          (Array.isArray(raw?.data) && raw.data) ||
-          (Array.isArray(raw?.items) && raw.items) ||
-          (Array.isArray(raw?.products) && raw.products) ||
-          (Array.isArray(raw?.data?.products) && raw.data.products) ||
-          [];
-
-        const mapped: Product[] = (arr || []).map((p: any) => ({
-          id: String(p.id || p._id || ""),
-          name: String(p.name || "Product"),
-          price:
-            typeof p.price === "string" ? Number(p.price) || 0 : Number(p.price ?? 0),
-          image: resolveMediaSrc(p.image || "/images/placeholder.png"),
-          customer: p.customer as CustomerType | undefined,
-          subCategory: String(p.subCategory || p.category || ""),
-          createdAt: p.createdAt || p.created_at || p.updatedAt || p.updated_at,
-        }));
-
-        setProducts(mapped);
-      } catch (err: any) {
-        console.error("Error fetching collection products:", err);
-        setError(err?.message || "Failed to load products.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProducts();
   }, []);
 
   React.useEffect(() => {
@@ -219,7 +235,10 @@ export default function CollectionPage() {
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      list = list.filter((p) => (p.name || "").toLowerCase().includes(q));
+      list = list.filter((p) => {
+        const haystack = `${p.name || ""} ${p.subCategory || ""} ${p.customer || ""}`.toLowerCase();
+        return haystack.includes(q);
+      });
     }
 
     if (selectedCustomers.length > 0) {

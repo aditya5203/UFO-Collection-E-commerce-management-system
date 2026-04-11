@@ -1,4 +1,3 @@
-// server/src/modules/orders/controllers/order.controller.ts
 import mongoose from "mongoose";
 import fs from "fs";
 import { Response } from "express";
@@ -74,17 +73,8 @@ export const orderController = {
 
       const data: any = await orderService.createOrder(userId, req.body);
 
-      try {
-        const oc = String(data?.orderCode || "");
-        await notificationService.create({
-          userId,
-          title: "Order Confirmed",
-          message: `Your order ${oc} has been placed successfully.`,
-          type: "order",
-          link: trackingLink(oc),
-          meta: { orderId: data?._id, orderCode: oc },
-        });
-      } catch {}
+      // ✅ Do not create customer order notification here again
+      // orderService.createOrder() already creates it
 
       res.status(201).json({ data });
       return;
@@ -171,15 +161,24 @@ export const orderController = {
       const customerId = String(existingOrder.customer);
       const orderCode = String(existingOrder.orderCode || "");
 
-      const safeNotify = async (payload: any) => {
+      const safeNotifyCustomer = async (payload: {
+        userId: string;
+        title: string;
+        message: string;
+        type?: "order" | "payment" | "stock" | "ticket" | "chat" | "promo" | "user" | "review" | "system";
+        link?: string;
+        meta?: Record<string, any>;
+      }) => {
         try {
-          await notificationService.create(payload);
-        } catch {}
+          await notificationService.createCustomer(payload);
+        } catch (e: any) {
+          console.log("Customer order notification failed (ignored):", e?.message);
+        }
       };
 
       if (orderStatus && nextOrderStatus && nextOrderStatus !== prevOrderStatus) {
         if (nextOrderStatus === "shipped") {
-          await safeNotify({
+          await safeNotifyCustomer({
             userId: customerId,
             title: "Order Shipped",
             message: `Good news! Your order ${orderCode} has been shipped.`,
@@ -188,7 +187,7 @@ export const orderController = {
             meta: { orderId: existingOrder._id, orderCode },
           });
         } else if (nextOrderStatus === "delivered") {
-          await safeNotify({
+          await safeNotifyCustomer({
             userId: customerId,
             title: "Order Delivered",
             message: `Your order ${orderCode} has been delivered. Thank you for shopping with us!`,
@@ -200,7 +199,7 @@ export const orderController = {
           nextOrderStatus === "cancelled" ||
           nextOrderStatus === "canceled"
         ) {
-          await safeNotify({
+          await safeNotifyCustomer({
             userId: customerId,
             title: "Order Cancelled",
             message: `Your order ${orderCode} has been cancelled.`,
@@ -209,7 +208,7 @@ export const orderController = {
             meta: { orderId: existingOrder._id, orderCode },
           });
         } else if (nextOrderStatus === "pending") {
-          await safeNotify({
+          await safeNotifyCustomer({
             userId: customerId,
             title: "Order Pending",
             message: `Your order ${orderCode} is now pending.`,
@@ -218,13 +217,17 @@ export const orderController = {
             meta: { orderId: existingOrder._id, orderCode },
           });
         } else {
-          await safeNotify({
+          await safeNotifyCustomer({
             userId: customerId,
             title: statusLabel(nextOrderStatus),
             message: `Your order ${orderCode} status was updated.`,
             type: "order",
             link: trackingLink(orderCode),
-            meta: { orderId: existingOrder._id, orderCode, orderStatus },
+            meta: {
+              orderId: existingOrder._id,
+              orderCode,
+              orderStatus,
+            },
           });
         }
       }
@@ -232,17 +235,35 @@ export const orderController = {
       if (
         paymentStatus &&
         nextPaymentStatus &&
-        isPaidLike(nextPaymentStatus) &&
-        !isPaidLike(prevPaymentStatus)
+        nextPaymentStatus !== prevPaymentStatus
       ) {
-        await safeNotify({
-          userId: customerId,
-          title: "Payment Successful",
-          message: `Payment received for order ${orderCode}.`,
-          type: "payment",
-          link: trackingLink(orderCode),
-          meta: { orderId: existingOrder._id, orderCode, paymentStatus },
-        });
+        if (isPaidLike(nextPaymentStatus) && !isPaidLike(prevPaymentStatus)) {
+          await safeNotifyCustomer({
+            userId: customerId,
+            title: "Payment Successful",
+            message: `Payment received for order ${orderCode}.`,
+            type: "payment",
+            link: trackingLink(orderCode),
+            meta: {
+              orderId: existingOrder._id,
+              orderCode,
+              paymentStatus,
+            },
+          });
+        } else if (nextPaymentStatus === "failed") {
+          await safeNotifyCustomer({
+            userId: customerId,
+            title: "Payment Failed",
+            message: `Payment failed for order ${orderCode}. Please try again.`,
+            type: "payment",
+            link: trackingLink(orderCode),
+            meta: {
+              orderId: existingOrder._id,
+              orderCode,
+              paymentStatus,
+            },
+          });
+        }
       }
 
       res.status(200).json({ data });

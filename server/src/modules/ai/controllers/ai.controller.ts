@@ -53,6 +53,9 @@ const tryOn = async (req: Request, res: Response, next: NextFunction) => {
       throw new AppError("productId is required", 400);
     }
 
+    const mirrorMode =
+      String(req.body?.mirrorMode || "false").toLowerCase() === "true";
+
     const product = await productService.getById(productId);
     if (!product) {
       throw new AppError("Product not found", 404);
@@ -71,6 +74,7 @@ const tryOn = async (req: Request, res: Response, next: NextFunction) => {
       personImageUrl,
       garmentImageUrl,
       garmentDescription,
+      mirrorMode,
     });
 
     return res.json({
@@ -78,6 +82,7 @@ const tryOn = async (req: Request, res: Response, next: NextFunction) => {
       imageUrl: result.imageUrl,
       source: result.provider,
       warning: result.warning || null,
+      mirrorMode,
     });
   } catch (err) {
     return next(err);

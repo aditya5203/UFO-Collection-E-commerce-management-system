@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { io, Socket } from "socket.io-client";
 import { useI18n } from "@/lib/i18n/I18nProvider";
 
 type User = {
@@ -55,6 +56,17 @@ type HomeAd = {
     | "Home Bottom"
     | "Category Top"
     | "Product Page";
+};
+
+type NotificationItem = {
+  _id?: string;
+  id?: string;
+  title?: string;
+  message?: string;
+  type?: string;
+  link?: string;
+  isRead?: boolean;
+  createdAt?: string;
 };
 
 function isSafeSrc(src: unknown): src is string {
@@ -613,9 +625,57 @@ export default function HomePage() {
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
+  const socketRef = React.useRef<Socket | null>(null);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+
   const API_BASE =
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
     "http://localhost:8080/api";
+
+  const SOCKET_BASE =
+    process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
+    "http://localhost:8080";
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    audioRef.current = new Audio("/sounds/notification.mp3");
+    audioRef.current.preload = "auto";
+  }, []);
+
+  const playNotificationSound = React.useCallback(() => {
+    try {
+      if (!audioRef.current) return;
+      audioRef.current.currentTime = 0;
+      void audioRef.current.play();
+    } catch {
+      // ignore autoplay block
+    }
+  }, []);
+
+  const syncUnreadCount = React.useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/notifications/unread-count`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        setUnreadCount(0);
+        return;
+      }
+
+      const json = await safeJson(res);
+      const count =
+        Number((json as any)?.count) ||
+        Number((json as any)?.data?.count) ||
+        Number((json as any)?.data) ||
+        0;
+
+      setUnreadCount(count);
+    } catch {
+      // keep current count if temporary failure happens
+    }
+  }, [API_BASE]);
 
   React.useEffect(() => {
     const onResize = () => {
@@ -662,35 +722,73 @@ export default function HomePage() {
       return;
     }
 
-    const run = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/notifications/unread-count`, {
-          credentials: "include",
-          cache: "no-store",
-        });
+    syncUnreadCount();
+  }, [user, syncUnreadCount]);
 
-        if (!res.ok) {
-          setUnreadCount(0);
-          return;
-        }
+  React.useEffect(() => {
+    if (!user) return;
 
-        const json = await safeJson(res);
-        const count =
-          Number((json as any)?.count) ||
-          Number((json as any)?.data?.count) ||
-          Number((json as any)?.data) ||
-          0;
+    const handleFocus = () => {
+      syncUnreadCount();
+    };
 
-        setUnreadCount(count);
-      } catch {
-        setUnreadCount(0);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        syncUnreadCount();
       }
     };
 
-    run();
-    const timer = setInterval(run, 25000);
-    return () => clearInterval(timer);
-  }, [API_BASE, user]);
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [user, syncUnreadCount]);
+
+  React.useEffect(() => {
+    if (!user) return;
+
+    const socket = io(SOCKET_BASE, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("Customer socket connected");
+      syncUnreadCount();
+    });
+
+    socket.on("notification:new", async (payload: { notification?: NotificationItem }) => {
+      const next = payload?.notification;
+      if (!next) return;
+
+      playNotificationSound();
+
+      setUnreadCount((prev) => prev + 1);
+
+      await syncUnreadCount();
+    });
+
+    socket.on("disconnect", () => {
+      console.log("Customer socket disconnected");
+    });
+
+    socket.on("reconnect", () => {
+      syncUnreadCount();
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [SOCKET_BASE, user, playNotificationSound, syncUnreadCount]);
 
   React.useEffect(() => {
     const fetchProducts = async () => {

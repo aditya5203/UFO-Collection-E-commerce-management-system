@@ -1,4 +1,3 @@
-// server/src/modules/orders/services/order.service.ts
 import mongoose from "mongoose";
 import { Order } from "../../../models/Order.model";
 import { User } from "../../../models/User.model";
@@ -6,6 +5,7 @@ import { Product } from "../../../models/Product.model";
 import { Address } from "../../../models/Address.model";
 import discountService from "../../discounts/services/discount.service";
 import { maybeSendInvoiceForOrder } from "../../../services/invoiceWorkflow.service";
+import { notificationService } from "../../notifications/services/notification.service";
 
 type ListInput = {
   search?: string;
@@ -203,6 +203,46 @@ export const orderService = {
       throw new Error("Stock update failed. Please try again.");
     }
 
+    try {
+      const updatedProducts = await Product.find({ _id: { $in: productIds } })
+        .select("_id name stock")
+        .lean();
+
+      for (const p of updatedProducts as any[]) {
+        const stock = Number(p.stock || 0);
+
+        if (stock > 0 && stock <= 5) {
+          await notificationService.createAdminForAll({
+            title: "Low stock alert",
+            message: `${p.name} is running low (${stock} left).`,
+            type: "stock",
+            link: `/admin/products/${String(p._id)}`,
+            meta: {
+              productId: String(p._id),
+              productName: p.name,
+              stock,
+            },
+          });
+        }
+
+        if (stock === 0) {
+          await notificationService.createAdminForAll({
+            title: "Out of stock",
+            message: `${p.name} is out of stock.`,
+            type: "stock",
+            link: `/admin/products/${String(p._id)}`,
+            meta: {
+              productId: String(p._id),
+              productName: p.name,
+              stock,
+            },
+          });
+        }
+      }
+    } catch (e: any) {
+      console.log("Low stock notification failed (ignored):", e?.message);
+    }
+
     const totalPaisa = Math.max(0, subtotalPaisa + shippingPaisa - discountPaisa);
     const orderCode = await generateUniqueOrderCode();
 
@@ -278,6 +318,39 @@ export const orderService = {
     };
 
     const doc: any = await Order.create(payload);
+
+    try {
+      await notificationService.createAdminForAll({
+        title: "New order received",
+        message: `A new order ${orderCode} has been placed.`,
+        type: "order",
+        link: `/admin/orders/${String(doc._id)}`,
+        meta: {
+          orderId: String(doc._id),
+          orderCode,
+          customerId: userId,
+          totalPaisa,
+        },
+      });
+    } catch (e: any) {
+      console.log("Admin notification create failed (ignored):", e?.message);
+    }
+
+    try {
+      await notificationService.createCustomer({
+        userId,
+        title: "Order placed successfully",
+        message: `Your order ${orderCode} has been placed successfully.`,
+        type: "order",
+        link: `/notifications`,
+        meta: {
+          orderId: String(doc._id),
+          orderCode,
+        },
+      });
+    } catch (e: any) {
+      console.log("Customer notification create failed (ignored):", e?.message);
+    }
 
     if (userCouponId) {
       await discountService.markUsed(userCouponId, String(doc._id));
@@ -407,6 +480,48 @@ export const orderService = {
       .lean();
 
     if (!updated) return null;
+
+    try {
+      if (input.orderStatus) {
+        await notificationService.createAdminForAll({
+          title: "Order status updated",
+          message: `Order ${updated.orderCode} marked as ${updated.orderStatus}.`,
+          type: "order",
+          link: `/admin/orders/${String(updated._id || found._id)}`,
+          meta: {
+            orderId: String(updated._id || found._id),
+            orderCode: updated.orderCode,
+            orderStatus: updated.orderStatus,
+          },
+        });
+      }
+    } catch (e: any) {
+      console.log("Order status notification failed (ignored):", e?.message);
+    }
+
+    try {
+      if (input.paymentStatus === "Paid" || input.paymentStatus === "Failed") {
+        await notificationService.createAdminForAll({
+          title:
+            input.paymentStatus === "Paid"
+              ? "Payment successful"
+              : "Payment failed",
+          message:
+            input.paymentStatus === "Paid"
+              ? `Payment received for order ${updated.orderCode}.`
+              : `Payment failed for order ${updated.orderCode}.`,
+          type: "payment",
+          link: `/admin/orders/${String(updated._id || found._id)}`,
+          meta: {
+            orderId: String(updated._id || found._id),
+            orderCode: updated.orderCode,
+            paymentStatus: input.paymentStatus,
+          },
+        });
+      }
+    } catch (e: any) {
+      console.log("Payment notification failed (ignored):", e?.message);
+    }
 
     try {
       if (input.paymentStatus === "Paid") {
