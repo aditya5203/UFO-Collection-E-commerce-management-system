@@ -4,6 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
 
 import {
   NEPAL_PROVINCES,
@@ -14,6 +15,19 @@ import {
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+
+const GOOGLE_MAPS_API_KEY =
+  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+
+const defaultCenter = {
+  lat: 27.7172,
+  lng: 85.324, // Kathmandu
+};
+
+type LatLng = {
+  lat: number;
+  lng: number;
+};
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -36,6 +50,15 @@ export default function CheckoutPage() {
   const [saveForNextTime, setSaveForNextTime] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string>("");
+
+  const [mapCenter, setMapCenter] = React.useState<LatLng>(defaultCenter);
+  const [markerPosition, setMarkerPosition] =
+    React.useState<LatLng>(defaultCenter);
+  const [mapLoaded, setMapLoaded] = React.useState(false);
+
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+  });
 
   const districtsForProvince: District[] = React.useMemo(() => {
     return NEPAL_DISTRICTS.filter((d) => d.provinceId === provinceId);
@@ -94,6 +117,17 @@ export default function CheckoutPage() {
         setStreet(def.street || "");
         setPostalCode(def.postalCode || "");
         setPhone(def.phone || "");
+
+        if (
+          typeof def.lat === "number" &&
+          typeof def.lng === "number" &&
+          Number.isFinite(def.lat) &&
+          Number.isFinite(def.lng)
+        ) {
+          const pos = { lat: def.lat, lng: def.lng };
+          setMapCenter(pos);
+          setMarkerPosition(pos);
+        }
       } catch {
         // ignore
       }
@@ -130,6 +164,8 @@ export default function CheckoutPage() {
       postalCode: postalCode.trim(),
       phone: phone.trim(),
       isDefault: true,
+      lat: markerPosition.lat,
+      lng: markerPosition.lng,
     };
 
     const res = await fetch(`${API_BASE}/api/addresses`, {
@@ -145,6 +181,39 @@ export default function CheckoutPage() {
     }
 
     return json?.data;
+  };
+
+  const handleMarkerDragEnd = (e: google.maps.MapMouseEvent) => {
+    const lat = e.latLng?.lat();
+    const lng = e.latLng?.lng();
+
+    if (typeof lat !== "number" || typeof lng !== "number") return;
+
+    setMarkerPosition({ lat, lng });
+    setMapCenter({ lat, lng });
+  };
+
+  const handleUseCurrentLocation = () => {
+    setError("");
+
+    if (!navigator.geolocation) {
+      setError("Geolocation is not supported in this browser");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+
+        setMarkerPosition({ lat, lng });
+        setMapCenter({ lat, lng });
+      },
+      () => {
+        setError("Unable to fetch your current location");
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
   const handleContinue = async () => {
@@ -175,6 +244,8 @@ export default function CheckoutPage() {
         phone: phone.trim(),
         marketingOptIn,
         savedAddressId: savedAddress?.id || savedAddress?._id || null,
+        lat: markerPosition.lat,
+        lng: markerPosition.lng,
       };
 
       localStorage.setItem("checkout_address", JSON.stringify(checkoutAddress));
@@ -288,8 +359,18 @@ export default function CheckoutPage() {
                 </div>
               ) : null}
 
+              {loadError ? (
+                <div className="mb-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
+                  Google Maps failed to load. Check your API key and allowed
+                  referrers.
+                </div>
+              ) : null}
+
               <div className="mb-3">
-                <label htmlFor="email" className="mb-2 block text-[14px] text-[#cfd3ff]">
+                <label
+                  htmlFor="email"
+                  className="mb-2 block text-[14px] text-[#cfd3ff]"
+                >
                   Email
                 </label>
                 <input
@@ -315,6 +396,83 @@ export default function CheckoutPage() {
               <h2 className="mb-4 mt-10 text-[20px] font-semibold">
                 Shipping address
               </h2>
+
+              {isLoaded ? (
+                <div className="mb-6 rounded-[16px] border border-[#1f2a40] bg-[#0b1623] p-4 sm:p-5">
+                  <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h3 className="text-[16px] font-semibold text-white">
+                        Pick delivery location
+                      </h3>
+                      <p className="mt-1 text-[13px] text-[#9aa3cc]">
+                        Use current location or drag the pin to set the exact
+                        delivery spot.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleUseCurrentLocation}
+                      className="rounded-[10px] border border-[#2b2f45] px-4 py-2 text-[13px] font-medium text-[#cfd3ff] transition hover:bg-[#12182a] hover:text-white"
+                    >
+                      Use current location
+                    </button>
+                  </div>
+
+                  <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-[12px] border border-[#1f2a40] bg-[#08111d] px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[#7f88b3]">
+                        Latitude
+                      </div>
+                      <div className="mt-1 text-[15px] font-semibold text-white">
+                        {markerPosition.lat.toFixed(6)}
+                      </div>
+                    </div>
+
+                    <div className="rounded-[12px] border border-[#1f2a40] bg-[#08111d] px-4 py-3">
+                      <div className="text-[11px] uppercase tracking-[0.16em] text-[#7f88b3]">
+                        Longitude
+                      </div>
+                      <div className="mt-1 text-[15px] font-semibold text-white">
+                        {markerPosition.lng.toFixed(6)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-hidden rounded-[14px] border border-[#1f2a40]">
+                    <GoogleMap
+                      mapContainerStyle={{
+                        width: "100%",
+                        height: "360px",
+                      }}
+                      center={mapCenter}
+                      zoom={15}
+                      onLoad={() => setMapLoaded(true)}
+                      options={{
+                        fullscreenControl: false,
+                        streetViewControl: false,
+                        mapTypeControl: false,
+                      }}
+                    >
+                      <Marker
+                        position={markerPosition}
+                        draggable
+                        onDragEnd={handleMarkerDragEnd}
+                      />
+                    </GoogleMap>
+                  </div>
+
+                  <div className="mt-3 text-[12px] text-[#7f88b3]">
+                    {mapLoaded
+                      ? "Tip: drag the pin for exact delivery location. Latitude and longitude will be saved automatically."
+                      : "Loading map..."}
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-6 rounded-[16px] border border-[#1f2a40] bg-[#0b1623] p-4 text-[14px] text-[#9aa3cc]">
+                  Loading Google Maps...
+                </div>
+              )}
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
@@ -541,6 +699,14 @@ export default function CheckoutPage() {
                   <div className="flex items-center justify-between gap-4">
                     <span>Step</span>
                     <span className="text-white">Information</span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4">
+                    <span>Map pin</span>
+                    <span className="text-right text-white">
+                      {markerPosition.lat.toFixed(5)},{" "}
+                      {markerPosition.lng.toFixed(5)}
+                    </span>
                   </div>
                 </div>
 

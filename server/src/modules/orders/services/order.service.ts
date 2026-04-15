@@ -39,11 +39,19 @@ type CreateOrderBody = {
     city: string;
     area: string;
     street: string;
+    lat?: number;
+    lng?: number;
   };
 };
 
 function safeRegex(input: string) {
   return new RegExp(input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+}
+
+function normalizeNumber(v: any): number | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 async function generateUniqueOrderCode() {
@@ -271,6 +279,8 @@ export const orderService = {
         street: saved.street || "",
         postalCode: saved.postalCode || "",
         isDefault: Boolean(saved.isDefault),
+        lat: normalizeNumber((saved as any).lat),
+        lng: normalizeNumber((saved as any).lng),
       };
     } else if (body.address) {
       orderAddress = {
@@ -284,6 +294,8 @@ export const orderService = {
         street: body.address.street || "",
         postalCode: "",
         country: "Nepal",
+        lat: normalizeNumber(body.address.lat),
+        lng: normalizeNumber(body.address.lng),
       };
     }
 
@@ -422,6 +434,7 @@ export const orderService = {
           }
         : { id: "", name: "", email: "" },
       shipping: o.shipping || null,
+      address: o.address || null,
       invoiceNo: o.invoiceNo || null,
       invoiceSentAt: o.invoiceSentAt || null,
     }));
@@ -559,7 +572,19 @@ export const orderService = {
             colorLabel: it?.colorLabel || "",
           }))
         : [],
-      address: o.address || null,
+      address: o.address
+        ? {
+            ...o.address,
+            lat:
+              typeof o.address.lat === "number" && Number.isFinite(o.address.lat)
+                ? o.address.lat
+                : undefined,
+            lng:
+              typeof o.address.lng === "number" && Number.isFinite(o.address.lng)
+                ? o.address.lng
+                : undefined,
+          }
+        : null,
       shipping: o.shipping || null,
       shippedAt: o.shippedAt || null,
       inTransitAt: o.inTransitAt || null,
@@ -654,6 +679,19 @@ export const orderService = {
       coupon: o.coupon || null,
       invoiceNo: o.invoiceNo || null,
       invoiceSentAt: o.invoiceSentAt || null,
+      address: o.address
+        ? {
+            ...o.address,
+            lat:
+              typeof o.address.lat === "number" && Number.isFinite(o.address.lat)
+                ? o.address.lat
+                : undefined,
+            lng:
+              typeof o.address.lng === "number" && Number.isFinite(o.address.lng)
+                ? o.address.lng
+                : undefined,
+          }
+        : null,
     };
   },
 

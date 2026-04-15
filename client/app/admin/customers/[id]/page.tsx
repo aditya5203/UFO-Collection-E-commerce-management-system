@@ -67,7 +67,10 @@ type Address = {
   postalCode?: string;
   phone?: string;
   isDefault?: boolean;
+  lat?: number;
+  lng?: number;
   createdAt?: string;
+  updatedAt?: string;
 };
 
 const API_BASE =
@@ -152,23 +155,49 @@ function nameFromAddress(a: Address) {
 }
 
 function addressLinePretty(a: Address) {
+  const provinceText = a.provinceId
+    ? /^province/i.test(String(a.provinceId))
+      ? String(a.provinceId)
+      : `Province ${a.provinceId}`
+    : "";
+
   const parts = [
     a.addressLine,
     a.street,
     a.cityOrMunicipality,
     a.district,
-    a.provinceId ? `Province ${a.provinceId}` : "",
+    provinceText,
     a.postalCode,
     a.country || "Nepal",
   ]
-    .map((x) => (x || "").trim())
+    .map((x) => String(x || "").trim())
     .filter(Boolean);
 
   return parts.length ? parts.join(", ") : "—";
 }
 
+function hasLatLng(a: Address) {
+  return (
+    typeof a.lat === "number" &&
+    Number.isFinite(a.lat) &&
+    typeof a.lng === "number" &&
+    Number.isFinite(a.lng)
+  );
+}
+
+function latLngText(a: Address) {
+  if (!hasLatLng(a)) return "No map location saved";
+  return `${Number(a.lat).toFixed(6)}, ${Number(a.lng).toFixed(6)}`;
+}
+
+function getGoogleMapsUrl(a: Address) {
+  if (!hasLatLng(a)) return "";
+  return `https://www.google.com/maps?q=${a.lat},${a.lng}`;
+}
+
 function AddressCard({ a }: { a: Address }) {
   const id = a._id || a.id || "";
+
   return (
     <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -177,6 +206,11 @@ function AddressCard({ a }: { a: Address }) {
             <div className="text-sm font-bold text-slate-100">
               {a.label || "Home"}
             </div>
+
+            <span className="rounded-full border border-slate-700/60 bg-slate-800/40 px-2 py-0.5 text-[11px] font-semibold text-slate-200">
+              {a.type}
+            </span>
+
             {a.isDefault ? (
               <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
                 Default
@@ -191,21 +225,61 @@ function AddressCard({ a }: { a: Address }) {
           {a.phone ? (
             <div className="mt-1 text-xs text-slate-400">{a.phone}</div>
           ) : null}
+
+          {a.email ? (
+            <div className="mt-1 text-xs text-slate-500">{a.email}</div>
+          ) : null}
         </div>
 
         {id ? <div className="text-xs text-slate-500">ID: {id}</div> : null}
       </div>
 
-      <div className="mt-4 text-sm text-slate-200">{addressLinePretty(a)}</div>
+      <div className="mt-4 text-sm leading-6 text-slate-200">
+        {addressLinePretty(a)}
+      </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
         {a.cityOrMunicipality ? <Pill>{a.cityOrMunicipality}</Pill> : null}
         {a.district ? <Pill>{a.district}</Pill> : null}
-        {a.provinceId ? <Pill>Province {a.provinceId}</Pill> : null}
+        {a.provinceId ? (
+          <Pill>
+            {/^province/i.test(String(a.provinceId))
+              ? String(a.provinceId)
+              : `Province ${a.provinceId}`}
+          </Pill>
+        ) : null}
+        {hasLatLng(a) ? <Pill>Map Saved</Pill> : null}
       </div>
 
-      <div className="mt-4 text-xs text-slate-500">
-        Created: {formatDateShort(a.createdAt)}
+      <div className="mt-4 rounded-xl border border-slate-700/40 bg-slate-950/30 p-3">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          Map Location
+        </div>
+        <div
+          className={`mt-1 text-xs ${
+            hasLatLng(a) ? "text-slate-200" : "text-slate-500"
+          }`}
+        >
+          {latLngText(a)}
+        </div>
+
+        {hasLatLng(a) ? (
+          <div className="mt-3">
+            <a
+              href={getGoogleMapsUrl(a)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-xs font-semibold text-blue-200 transition hover:bg-blue-500/15"
+            >
+              View on Google Maps
+            </a>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+        <span>Created: {formatDateShort(a.createdAt)}</span>
+        <span>Updated: {formatDateShort(a.updatedAt)}</span>
       </div>
     </div>
   );
@@ -250,7 +324,8 @@ export default function CustomerDetailsPage() {
   const [billing, setBilling] = React.useState<Address[]>([]);
 
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
-  const [permissions, setPermissions] = React.useState<AdminPermissions | null>(null);
+  const [permissions, setPermissions] =
+    React.useState<AdminPermissions | null>(null);
 
   React.useEffect(() => {
     let mounted = true;
@@ -266,7 +341,9 @@ export default function CustomerDetailsPage() {
         if (!res.ok) return;
 
         const body = (await safeJson(res)) as AdminSettingsResponse;
-        const nextRole = (body?.profile?.role || "admin") as "admin" | "superadmin";
+        const nextRole = (body?.profile?.role || "admin") as
+          | "admin"
+          | "superadmin";
         const nextPermissions = normalizeAdminPermissions(
           nextRole,
           body?.profile?.permissions
@@ -318,38 +395,35 @@ export default function CustomerDetailsPage() {
     }
   };
 
-  const loadOrders = React.useCallback(
-    async (id: string) => {
-      setOrdersLoading(true);
-      setOrdersError("");
+  const loadOrders = React.useCallback(async (id: string) => {
+    setOrdersLoading(true);
+    setOrdersError("");
 
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/admin/orders?customerId=${encodeURIComponent(id)}`,
-          {
-            credentials: "include",
-            cache: "no-store",
-          }
-        );
-
-        const json = await safeJson(res);
-
-        if (!res.ok) {
-          setOrders([]);
-          setOrdersError(json?.message || "Failed to load orders");
-          return;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/admin/orders?customerId=${encodeURIComponent(id)}`,
+        {
+          credentials: "include",
+          cache: "no-store",
         }
+      );
 
-        setOrders(Array.isArray(json?.data) ? json.data : []);
-      } catch {
+      const json = await safeJson(res);
+
+      if (!res.ok) {
         setOrders([]);
-        setOrdersError("Network error while loading orders");
-      } finally {
-        setOrdersLoading(false);
+        setOrdersError(json?.message || "Failed to load orders");
+        return;
       }
-    },
-    []
-  );
+
+      setOrders(Array.isArray(json?.data) ? json.data : []);
+    } catch {
+      setOrders([]);
+      setOrdersError("Network error while loading orders");
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, []);
 
   const loadAddresses = React.useCallback(async (id: string) => {
     setAddrLoading(true);
@@ -400,7 +474,15 @@ export default function CustomerDetailsPage() {
     if (orders.length === 0 && !ordersLoading && !ordersError) {
       loadOrders(customerId);
     }
-  }, [tab, customerId, canViewOrders, loadOrders, orders.length, ordersLoading, ordersError]);
+  }, [
+    tab,
+    customerId,
+    canViewOrders,
+    loadOrders,
+    orders.length,
+    ordersLoading,
+    ordersError,
+  ]);
 
   React.useEffect(() => {
     if (!customerId) return;
@@ -478,7 +560,9 @@ export default function CustomerDetailsPage() {
             </h1>
             <div className="flex flex-wrap items-center gap-2">
               <Badge text={customer.role || "customer"} />
-              <span className="text-sm text-slate-400">{customer.email || "-"}</span>
+              <span className="text-sm text-slate-400">
+                {customer.email || "-"}
+              </span>
             </div>
           </div>
 
@@ -493,23 +577,34 @@ export default function CustomerDetailsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-700/50 bg-[#0A1324] p-3">
-          <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>
+          <TabButton
+            active={tab === "overview"}
+            onClick={() => setTab("overview")}
+          >
             Overview
           </TabButton>
 
           {canViewOrders ? (
             <TabButton active={tab === "orders"} onClick={() => setTab("orders")}>
-              Orders <span className="ml-2 text-xs opacity-70">({ordersCount})</span>
+              Orders{" "}
+              <span className="ml-2 text-xs opacity-70">({ordersCount})</span>
             </TabButton>
           ) : null}
 
           {canViewTickets ? (
-            <TabButton active={tab === "tickets"} onClick={() => setTab("tickets")}>
-              Tickets <span className="ml-2 text-xs opacity-70">({ticketsCount})</span>
+            <TabButton
+              active={tab === "tickets"}
+              onClick={() => setTab("tickets")}
+            >
+              Tickets{" "}
+              <span className="ml-2 text-xs opacity-70">({ticketsCount})</span>
             </TabButton>
           ) : null}
 
-          <TabButton active={tab === "addresses"} onClick={() => setTab("addresses")}>
+          <TabButton
+            active={tab === "addresses"}
+            onClick={() => setTab("addresses")}
+          >
             Addresses{" "}
             <span className="ml-2 text-xs opacity-70">
               ({tab === "addresses" ? addressesCount : "—"})
@@ -526,7 +621,9 @@ export default function CustomerDetailsPage() {
               <p className="mt-2 text-lg font-bold text-slate-100">
                 {formatDateShort(customer.createdAt)}
               </p>
-              <p className="mt-1 text-sm text-slate-400">Account creation date</p>
+              <p className="mt-1 text-sm text-slate-400">
+                Account creation date
+              </p>
             </div>
 
             <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
@@ -536,14 +633,18 @@ export default function CustomerDetailsPage() {
               <p className="mt-2 text-lg font-bold text-slate-100">
                 {formatDateShort(customer.lastLogin)}
               </p>
-              <p className="mt-1 text-sm text-slate-400">Last time user logged in</p>
+              <p className="mt-1 text-sm text-slate-400">
+                Last time user logged in
+              </p>
             </div>
 
             <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
                 Total Orders
               </p>
-              <p className="mt-2 text-lg font-bold text-slate-100">{ordersCount}</p>
+              <p className="mt-2 text-lg font-bold text-slate-100">
+                {ordersCount}
+              </p>
               <p className="mt-1 text-sm text-slate-400">Lifetime orders</p>
             </div>
           </div>
@@ -575,7 +676,10 @@ export default function CustomerDetailsPage() {
                 <tbody>
                   {ordersLoading ? (
                     <tr>
-                      <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
+                      <td
+                        colSpan={6}
+                        className="px-6 py-10 text-center text-sm text-slate-400"
+                      >
                         Loading...
                       </td>
                     </tr>
@@ -592,7 +696,9 @@ export default function CustomerDetailsPage() {
                           className="border-t border-slate-700/40 text-sm text-slate-100 hover:bg-slate-900/20"
                         >
                           <td className="px-6 py-5 font-semibold">{code}</td>
-                          <td className="px-6 py-5 text-slate-300">{formatNPR(paisa)}</td>
+                          <td className="px-6 py-5 text-slate-300">
+                            {formatNPR(paisa)}
+                          </td>
                           <td className="px-6 py-5">
                             <Pill>{o.paymentStatus}</Pill>
                           </td>
@@ -615,7 +721,10 @@ export default function CustomerDetailsPage() {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
+                      <td
+                        colSpan={6}
+                        className="px-6 py-10 text-center text-sm text-slate-400"
+                      >
                         No orders for this customer.
                       </td>
                     </tr>
@@ -658,12 +767,16 @@ export default function CustomerDetailsPage() {
 
             <div className="px-6 pb-6">
               {addrLoading ? (
-                <div className="py-8 text-sm text-slate-400">Loading addresses...</div>
+                <div className="py-8 text-sm text-slate-400">
+                  Loading addresses...
+                </div>
               ) : (
                 <div className="grid gap-6 lg:grid-cols-2">
                   <div>
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-slate-100">Shipping</h3>
+                      <h3 className="text-sm font-bold text-slate-100">
+                        Shipping
+                      </h3>
                       <span className="text-xs text-slate-400">
                         {shipping.length} saved
                       </span>
@@ -687,7 +800,9 @@ export default function CustomerDetailsPage() {
 
                   <div>
                     <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-slate-100">Billing</h3>
+                      <h3 className="text-sm font-bold text-slate-100">
+                        Billing
+                      </h3>
                       <span className="text-xs text-slate-400">
                         {billing.length} saved
                       </span>

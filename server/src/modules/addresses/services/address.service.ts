@@ -17,39 +17,59 @@ type CreateInput = {
   postalCode?: string;
   phone: string;
   isDefault?: boolean;
+  lat?: number;
+  lng?: number;
 };
 
 function must(v: any, name: string) {
   if (!String(v || "").trim()) throw new Error(`${name} is required`);
 }
 
+function normalizeNumber(v: any): number | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function mapAddress(a: any) {
+  return {
+    id: String(a._id),
+    type: a.type,
+    label: a.label,
+    email: a.email || "",
+    firstName: a.firstName,
+    lastName: a.lastName,
+    country: a.country || "Nepal",
+    provinceId: a.provinceId,
+    district: a.district,
+    cityOrMunicipality: a.cityOrMunicipality,
+    addressLine: a.addressLine,
+    street: a.street || "",
+    postalCode: a.postalCode || "",
+    phone: a.phone,
+    isDefault: Boolean(a.isDefault),
+    lat:
+      typeof a.lat === "number" && Number.isFinite(a.lat) ? a.lat : undefined,
+    lng:
+      typeof a.lng === "number" && Number.isFinite(a.lng) ? a.lng : undefined,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+  };
+}
+
 export const addressService = {
   async listMine(userId: string) {
-    if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid user");
+    }
 
-    const rows = await Address.find({ userId: new mongoose.Types.ObjectId(userId) })
+    const rows = await Address.find({
+      userId: new mongoose.Types.ObjectId(userId),
+    })
       .sort({ isDefault: -1, createdAt: -1 })
       .lean();
 
-    const mapped = (rows as any[]).map((a) => ({
-      id: String(a._id),
-      type: a.type,
-      label: a.label,
-      email: a.email || "",
-      firstName: a.firstName,
-      lastName: a.lastName,
-      country: a.country || "Nepal",
-      provinceId: a.provinceId,
-      district: a.district,
-      cityOrMunicipality: a.cityOrMunicipality,
-      addressLine: a.addressLine,
-      street: a.street || "",
-      postalCode: a.postalCode || "",
-      phone: a.phone,
-      isDefault: Boolean(a.isDefault),
-      createdAt: a.createdAt,
-      updatedAt: a.updatedAt,
-    }));
+    const mapped = (rows as any[]).map(mapAddress);
 
     const shipping = mapped.filter((x) => x.type === "Shipping");
     const billing = mapped.filter((x) => x.type === "Billing");
@@ -58,7 +78,9 @@ export const addressService = {
   },
 
   async createMine(userId: string, body: CreateInput) {
-    if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid user");
+    }
 
     must(body.firstName, "firstName");
     must(body.lastName, "lastName");
@@ -70,8 +92,9 @@ export const addressService = {
 
     const type = body.type || "Shipping";
     const label = body.label || "Home";
+    const lat = normalizeNumber(body.lat);
+    const lng = normalizeNumber(body.lng);
 
-    // if creating default, unset existing default of same type
     if (body.isDefault) {
       await Address.updateMany(
         { userId: new mongoose.Types.ObjectId(userId), type },
@@ -87,7 +110,7 @@ export const addressService = {
       firstName: body.firstName.trim(),
       lastName: body.lastName.trim(),
       country: (body.country || "Nepal").trim(),
-      provinceId: String(body.provinceId),
+      provinceId: String(body.provinceId).trim(),
       district: body.district.trim(),
       cityOrMunicipality: body.cityOrMunicipality.trim(),
       addressLine: body.addressLine.trim(),
@@ -95,32 +118,20 @@ export const addressService = {
       postalCode: body.postalCode?.trim() || "",
       phone: body.phone.trim(),
       isDefault: Boolean(body.isDefault),
+      lat,
+      lng,
     });
 
-    return {
-      id: String(created._id),
-      type: created.type,
-      label: created.label,
-      email: created.email || "",
-      firstName: created.firstName,
-      lastName: created.lastName,
-      country: created.country || "Nepal",
-      provinceId: created.provinceId,
-      district: created.district,
-      cityOrMunicipality: created.cityOrMunicipality,
-      addressLine: created.addressLine,
-      street: created.street || "",
-      postalCode: created.postalCode || "",
-      phone: created.phone,
-      isDefault: Boolean(created.isDefault),
-      createdAt: created.createdAt,
-      updatedAt: created.updatedAt,
-    };
+    return mapAddress(created);
   },
 
   async updateMine(userId: string, id: string, patch: Partial<CreateInput>) {
-    if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
-    if (!mongoose.Types.ObjectId.isValid(id)) throw new Error("Address not found");
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid user");
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error("Address not found");
+    }
 
     const existing = await Address.findOne({
       _id: new mongoose.Types.ObjectId(id),
@@ -140,43 +151,40 @@ export const addressService = {
     if (patch.type) existing.type = patch.type;
     if (patch.label) existing.label = patch.label;
     if (patch.email !== undefined) existing.email = patch.email || "";
-    if (patch.firstName) existing.firstName = patch.firstName;
-    if (patch.lastName) existing.lastName = patch.lastName;
-    if (patch.country) existing.country = patch.country;
-    if (patch.provinceId) existing.provinceId = patch.provinceId;
-    if (patch.district) existing.district = patch.district;
-    if (patch.cityOrMunicipality) existing.cityOrMunicipality = patch.cityOrMunicipality;
-    if (patch.addressLine) existing.addressLine = patch.addressLine;
-    if (patch.street !== undefined) existing.street = patch.street || "";
-    if (patch.postalCode !== undefined) existing.postalCode = patch.postalCode || "";
-    if (patch.phone) existing.phone = patch.phone;
+    if (patch.firstName) existing.firstName = patch.firstName.trim();
+    if (patch.lastName) existing.lastName = patch.lastName.trim();
+    if (patch.country) existing.country = patch.country.trim();
+    if (patch.provinceId) existing.provinceId = String(patch.provinceId).trim();
+    if (patch.district) existing.district = patch.district.trim();
+    if (patch.cityOrMunicipality) {
+      existing.cityOrMunicipality = patch.cityOrMunicipality.trim();
+    }
+    if (patch.addressLine) existing.addressLine = patch.addressLine.trim();
+    if (patch.street !== undefined) existing.street = patch.street?.trim() || "";
+    if (patch.postalCode !== undefined) {
+      existing.postalCode = patch.postalCode?.trim() || "";
+    }
+    if (patch.phone) existing.phone = patch.phone.trim();
+
+    if (patch.lat !== undefined) {
+      existing.lat = normalizeNumber(patch.lat);
+    }
+    if (patch.lng !== undefined) {
+      existing.lng = normalizeNumber(patch.lng);
+    }
 
     await existing.save();
 
-    return {
-      id: String(existing._id),
-      type: existing.type,
-      label: existing.label,
-      email: existing.email || "",
-      firstName: existing.firstName,
-      lastName: existing.lastName,
-      country: existing.country || "Nepal",
-      provinceId: existing.provinceId,
-      district: existing.district,
-      cityOrMunicipality: existing.cityOrMunicipality,
-      addressLine: existing.addressLine,
-      street: existing.street || "",
-      postalCode: existing.postalCode || "",
-      phone: existing.phone,
-      isDefault: Boolean(existing.isDefault),
-      createdAt: existing.createdAt,
-      updatedAt: existing.updatedAt,
-    };
+    return mapAddress(existing);
   },
 
   async deleteMine(userId: string, id: string) {
-    if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
-    if (!mongoose.Types.ObjectId.isValid(id)) throw new Error("Address not found");
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid user");
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error("Address not found");
+    }
 
     const deleted = await Address.findOneAndDelete({
       _id: new mongoose.Types.ObjectId(id),
@@ -188,8 +196,12 @@ export const addressService = {
   },
 
   async setDefault(userId: string, id: string) {
-    if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
-    if (!mongoose.Types.ObjectId.isValid(id)) throw new Error("Address not found");
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid user");
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error("Address not found");
+    }
 
     const found = await Address.findOne({
       _id: new mongoose.Types.ObjectId(id),
@@ -206,7 +218,10 @@ export const addressService = {
     found.isDefault = true;
     await found.save();
 
-    return { id: String(found._id), isDefault: true };
+    return {
+      id: String(found._id),
+      isDefault: true,
+    };
   },
 };
 

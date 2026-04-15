@@ -12,7 +12,7 @@ type CartItem = {
   size: string;
   color: string;
   colorLabel: string;
-  price: number; // Rs
+  price: number;
   qty: number;
   image: string;
 };
@@ -35,6 +35,9 @@ type CheckoutAddressLS = {
   phone?: string;
 
   savedAddressId?: string | null;
+
+  lat?: number;
+  lng?: number;
 };
 
 type OrderAddressAPI = {
@@ -44,13 +47,15 @@ type OrderAddressAPI = {
   city: string;
   area: string;
   street: string;
+  lat?: number;
+  lng?: number;
 };
 
 type OrderSummaryLS = {
-  subtotal: number; // Rs
-  shipping: number; // Rs
-  discount: number; // Rs
-  total: number; // Rs
+  subtotal: number;
+  shipping: number;
+  discount: number;
+  total: number;
   currency?: string;
   updatedAt?: string;
   couponCode?: string | null;
@@ -83,6 +88,15 @@ function getOrderSummary(): OrderSummaryLS | null {
   }
 }
 
+function normalizeNumber(v: unknown): number | undefined {
+  if (v === undefined || v === null || v === "") return undefined;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+const inputClass =
+  "h-12 w-full rounded-[10px] border border-[#2b2f45] bg-[#0b0f1a] px-4 text-[14px] text-white outline-none placeholder:text-[#7f88b3] disabled:opacity-50";
+
 export default function PaymentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -98,7 +112,6 @@ export default function PaymentPage() {
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
   const apiBase = React.useMemo(() => joinUrl(API_BASE, "/api"), [API_BASE]);
 
-  // ✅ Load cart
   React.useEffect(() => {
     try {
       const raw = localStorage.getItem("ufo_cart");
@@ -111,13 +124,11 @@ export default function PaymentPage() {
     }
   }, []);
 
-  // ✅ Load order summary saved from CartPage
   React.useEffect(() => {
     const s = getOrderSummary();
     setSummary(s);
   }, []);
 
-  // ✅ Use totals from summary (fallback to old calc if not found)
   const fallbackSubtotal = React.useMemo(() => {
     return items.reduce(
       (sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0),
@@ -152,6 +163,7 @@ export default function PaymentPage() {
         "";
 
       if (!raw) return undefined;
+
       const addr = JSON.parse(raw);
       return addr && typeof addr === "object"
         ? (addr as CheckoutAddressLS)
@@ -161,7 +173,9 @@ export default function PaymentPage() {
     }
   };
 
-  const mapToOrderAddress = (a?: CheckoutAddressLS): OrderAddressAPI | undefined => {
+  const mapToOrderAddress = (
+    a?: CheckoutAddressLS
+  ): OrderAddressAPI | undefined => {
     if (!a) return undefined;
 
     const fullName = `${a.firstName || ""} ${a.lastName || ""}`.trim();
@@ -170,6 +184,9 @@ export default function PaymentPage() {
     const city = String(a.cityOrMunicipality || "").trim();
     const area = String(a.district || "").trim();
     const street = String(a.street || a.addressLine || "").trim();
+
+    const lat = normalizeNumber(a.lat);
+    const lng = normalizeNumber(a.lng);
 
     if (!fullName && !phone && !city && !area && !street) return undefined;
 
@@ -180,6 +197,8 @@ export default function PaymentPage() {
       city,
       area,
       street,
+      lat,
+      lng,
     };
   };
 
@@ -189,6 +208,7 @@ export default function PaymentPage() {
     paymentStatus?: "Paid" | "Pending" | "Failed"
   ) => {
     let safeItems: CartItem[] = items;
+
     if (!safeItems.length) {
       try {
         const raw = localStorage.getItem("ufo_cart");
@@ -220,6 +240,7 @@ export default function PaymentPage() {
         colorLabel: it.colorLabel || "",
         qty: Math.max(1, Number(it.qty || 1)),
       })),
+
       address: mappedAddress,
     };
 
@@ -232,7 +253,12 @@ export default function PaymentPage() {
 
     const json = await res.json().catch(() => ({} as any));
     if (!res.ok) throw new Error(json?.message || "Failed to create order");
-    return json?.data as { id: string; orderCode: string; totalPaisa: number };
+
+    return json?.data as {
+      id: string;
+      orderCode: string;
+      totalPaisa: number;
+    };
   };
 
   const finishToThankYou = (data: {
@@ -374,7 +400,9 @@ export default function PaymentPage() {
     });
 
     const data = await res.json().catch(() => ({} as any));
-    if (!res.ok) return alert(data?.message || "Failed to initiate Khalti payment");
+    if (!res.ok) {
+      return alert(data?.message || "Failed to initiate Khalti payment");
+    }
     if (data?.payment_url) window.location.href = data.payment_url;
     else alert("Khalti initiate did not return payment_url");
   };
@@ -502,24 +530,26 @@ export default function PaymentPage() {
 
           <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1fr_460px]">
             <section className="max-w-[520px]">
-              <h2 className="mb-6 text-[22px] font-semibold">Payment Information</h2>
+              <h2 className="mb-6 text-[22px] font-semibold">
+                Payment Information
+              </h2>
 
               <input
                 placeholder="Card Number"
                 disabled={method !== "card"}
-                className="input mb-4 disabled:opacity-50"
+                className={`${inputClass} mb-4`}
               />
 
               <div className="grid grid-cols-2 gap-4">
                 <input
                   placeholder="Expiry Date"
                   disabled={method !== "card"}
-                  className="input disabled:opacity-50"
+                  className={inputClass}
                 />
                 <input
                   placeholder="CVV"
                   disabled={method !== "card"}
-                  className="input disabled:opacity-50"
+                  className={inputClass}
                 />
               </div>
 
@@ -567,7 +597,8 @@ export default function PaymentPage() {
 
                   <div className="flex items-center justify-between text-[#9aa3cc]">
                     <span>
-                      Discount {summary?.couponCode ? `(${summary.couponCode})` : ""}
+                      Discount{" "}
+                      {summary?.couponCode ? `(${summary.couponCode})` : ""}
                     </span>
                     <span className="text-green-400">- Rs. {discount}</span>
                   </div>
@@ -618,23 +649,6 @@ export default function PaymentPage() {
           </div>
         </div>
       </main>
-
-      <style jsx>{`
-        .input {
-          height: 48px;
-          width: 100%;
-          border-radius: 10px;
-          border: 1px solid #2b2f45;
-          background: #0b0f1a;
-          padding: 0 16px;
-          font-size: 14px;
-          color: #ffffff;
-          outline: none;
-        }
-        .input::placeholder {
-          color: #7f88b3;
-        }
-      `}</style>
     </>
   );
 }

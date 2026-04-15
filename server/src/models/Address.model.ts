@@ -9,22 +9,24 @@ export interface IAddress extends Document {
   type: AddressType;
   label?: AddressLabel;
 
-  // checkout fields
   email?: string;
   firstName: string;
   lastName: string;
 
-  country: string; // Nepal
+  country: string;
   provinceId: string;
   district: string;
   cityOrMunicipality: string;
 
-  addressLine: string; // "Address"
+  addressLine: string;
   street?: string;
   postalCode?: string;
   phone: string;
 
   isDefault?: boolean;
+
+  lat?: number;
+  lng?: number;
 
   createdAt: Date;
   updatedAt: Date;
@@ -32,19 +34,32 @@ export interface IAddress extends Document {
 
 const addressSchema = new Schema<IAddress>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
 
-    type: { type: String, enum: ["Shipping", "Billing"], default: "Shipping" },
-    label: { type: String, enum: ["Home", "Work", "Other"], default: "Home" },
+    type: {
+      type: String,
+      enum: ["Shipping", "Billing"],
+      default: "Shipping",
+    },
+    label: {
+      type: String,
+      enum: ["Home", "Work", "Other"],
+      default: "Home",
+    },
 
     email: { type: String, trim: true },
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
 
-    country: { type: String, default: "Nepal" },
-    provinceId: { type: String, required: true },
-    district: { type: String, required: true },
-    cityOrMunicipality: { type: String, required: true },
+    country: { type: String, default: "Nepal", trim: true },
+    provinceId: { type: String, required: true, trim: true },
+    district: { type: String, required: true, trim: true },
+    cityOrMunicipality: { type: String, required: true, trim: true },
 
     addressLine: { type: String, required: true, trim: true },
     street: { type: String, trim: true },
@@ -52,6 +67,9 @@ const addressSchema = new Schema<IAddress>(
     phone: { type: String, required: true, trim: true },
 
     isDefault: { type: Boolean, default: false },
+
+    lat: { type: Number },
+    lng: { type: Number },
   },
   { timestamps: true }
 );

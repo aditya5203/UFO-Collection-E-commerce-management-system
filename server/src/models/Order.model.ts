@@ -11,7 +11,6 @@ const orderItemSchema = new Schema(
     name: { type: String, required: true, trim: true },
     size: { type: String, required: false, default: "" },
 
-    // ✅ NEW
     color: { type: String, required: false, default: "" },
     colorLabel: { type: String, required: false, default: "" },
 
@@ -22,7 +21,6 @@ const orderItemSchema = new Schema(
   { _id: false }
 );
 
-// ✅ Address snapshot schema
 const addressSchema = new Schema(
   {
     label: { type: String, enum: ["Home", "Work", "Other"], required: false },
@@ -44,11 +42,13 @@ const addressSchema = new Schema(
     postalCode: { type: String, trim: true, default: "" },
 
     isDefault: { type: Boolean, default: false },
+
+    lat: { type: Number, default: null },
+    lng: { type: Number, default: null },
   },
   { _id: false }
 );
 
-// ✅ Shipping snapshot schema
 const shippingSchema = new Schema(
   {
     method: { type: String, trim: true, default: "Standard Shipping" },
@@ -57,13 +57,12 @@ const shippingSchema = new Schema(
   { _id: false }
 );
 
-// ✅ Coupon snapshot schema
 const couponSchema = new Schema(
   {
     code: { type: String, trim: true, default: "" },
     title: { type: String, trim: true, default: "" },
-    type: { type: String, trim: true, default: "" }, // PERCENT | FLAT | FREESHIP
-    scope: { type: String, trim: true, default: "" }, // ALL | CATEGORY | PRODUCT
+    type: { type: String, trim: true, default: "" },
+    scope: { type: String, trim: true, default: "" },
     value: { type: Number, default: 0 },
   },
   { _id: false }
@@ -84,7 +83,6 @@ const orderSchema = new Schema(
     subtotalPaisa: { type: Number, default: 0, min: 0 },
     shippingPaisa: { type: Number, default: 0, min: 0 },
 
-    // ✅ Discount fields
     discountPaisa: { type: Number, default: 0, min: 0 },
     coupon: { type: couponSchema, required: false, default: null },
 
@@ -115,12 +113,10 @@ const orderSchema = new Schema(
     shipping: { type: shippingSchema, required: false, default: null },
     address: { type: addressSchema, required: false, default: null },
 
-    // ✅ Tracking timestamps
     shippedAt: { type: Date, default: null },
     inTransitAt: { type: Date, default: null },
     deliveredAt: { type: Date, default: null },
 
-    // ✅ Invoice fields
     invoiceNo: { type: String, default: null },
     invoiceSentAt: { type: Date, default: null },
   },
