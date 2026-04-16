@@ -42,5 +42,15 @@ router.patch(
   adminAuthMiddleware,
   notificationController.adminMarkRead
 );
+router.post(
+  "/admin/broadcast",
+  adminAuthMiddleware,
+  notificationController.adminBroadcast
+);
+router.get(
+  "/admin/broadcast-history",
+  adminAuthMiddleware,
+  notificationController.adminBroadcastHistory
+);
 
 export default router;

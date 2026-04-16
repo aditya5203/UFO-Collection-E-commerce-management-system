@@ -1,4 +1,3 @@
-// client/app/admin/_components/AdminSidebar.tsx
 "use client";
 
 import Image from "next/image";
@@ -87,6 +86,12 @@ const NAV_ITEMS: NavItem[] = [
     viewPermission: "advertisementView",
   },
   {
+    label: "Notifications",
+    href: "/admin/notifications/send",
+    icon: "/images/admin/notification.png",
+    viewPermission: "advertisementView",
+  },
+  {
     label: "Analytics",
     href: "/admin/analytics",
     icon: "/images/admin/analytics.png",
@@ -100,7 +105,9 @@ const NAV_ITEMS: NavItem[] = [
   },
 ];
 
-const BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080").replace(/\/+$/, "");
+const BASE = (
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
+).replace(/\/+$/, "");
 const API_BASE = `${BASE}/api`;
 
 async function safeJson(res: Response) {
@@ -136,7 +143,10 @@ export default function AdminSidebar() {
         }
 
         const json = (await safeJson(res)) as AdminSettingsResponse;
-        const nextRole = (json?.profile?.role || "admin") as "admin" | "superadmin";
+        const nextRole = (json?.profile?.role || "admin") as
+          | "admin"
+          | "superadmin";
+
         const permissions = normalizeAdminPermissions(
           nextRole,
           json?.profile?.permissions
@@ -219,19 +229,16 @@ export default function AdminSidebar() {
           type="button"
           onClick={onAdminLogout}
           disabled={loggingOut}
-          className="admin-nav-link"
-          style={{
-            width: "100%",
-            justifyContent: "center",
-            border: "1px solid #1f2937",
-            background: loggingOut ? "#111827" : "transparent",
-            cursor: loggingOut ? "not-allowed" : "pointer",
-          }}
+          className={`admin-nav-link admin-logout-btn ${
+            loggingOut ? "admin-logout-btn-disabled" : ""
+          }`}
         >
           {loggingOut ? "Logging out..." : "Logout"}
         </button>
 
-        <div style={{ marginTop: 10 }}>© {new Date().getFullYear()} UFO Collection</div>
+        <div className="sidebar-copyright">
+          © {new Date().getFullYear()} UFO Collection
+        </div>
       </div>
     </aside>
   );

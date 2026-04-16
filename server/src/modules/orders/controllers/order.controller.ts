@@ -62,6 +62,11 @@ function trackingLink(orderCode: string) {
   return `/order-tracking?code=${encodeURIComponent(orderCode)}`;
 }
 
+function orderDetailsLink(orderCode: string) {
+  const clean = String(orderCode || "").replace(/^#/, "").trim();
+  return clean ? `/customerorderdetails/${clean}` : "/profile/orders";
+}
+
 export const orderController = {
   async create(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -72,9 +77,6 @@ export const orderController = {
       }
 
       const data: any = await orderService.createOrder(userId, req.body);
-
-      // ✅ Do not create customer order notification here again
-      // orderService.createOrder() already creates it
 
       res.status(201).json({ data });
       return;
@@ -165,7 +167,16 @@ export const orderController = {
         userId: string;
         title: string;
         message: string;
-        type?: "order" | "payment" | "stock" | "ticket" | "chat" | "promo" | "user" | "review" | "system";
+        type?:
+          | "order"
+          | "payment"
+          | "stock"
+          | "ticket"
+          | "chat"
+          | "promo"
+          | "user"
+          | "review"
+          | "system";
         link?: string;
         meta?: Record<string, any>;
       }) => {
@@ -183,7 +194,7 @@ export const orderController = {
             title: "Order Shipped",
             message: `Good news! Your order ${orderCode} has been shipped.`,
             type: "order",
-            link: trackingLink(orderCode),
+            link: orderDetailsLink(orderCode),
             meta: { orderId: existingOrder._id, orderCode },
           });
         } else if (nextOrderStatus === "delivered") {
@@ -192,7 +203,7 @@ export const orderController = {
             title: "Order Delivered",
             message: `Your order ${orderCode} has been delivered. Thank you for shopping with us!`,
             type: "order",
-            link: trackingLink(orderCode),
+            link: orderDetailsLink(orderCode),
             meta: { orderId: existingOrder._id, orderCode },
           });
         } else if (
@@ -204,7 +215,7 @@ export const orderController = {
             title: "Order Cancelled",
             message: `Your order ${orderCode} has been cancelled.`,
             type: "order",
-            link: trackingLink(orderCode),
+            link: orderDetailsLink(orderCode),
             meta: { orderId: existingOrder._id, orderCode },
           });
         } else if (nextOrderStatus === "pending") {
@@ -213,7 +224,7 @@ export const orderController = {
             title: "Order Pending",
             message: `Your order ${orderCode} is now pending.`,
             type: "order",
-            link: trackingLink(orderCode),
+            link: orderDetailsLink(orderCode),
             meta: { orderId: existingOrder._id, orderCode },
           });
         } else {
@@ -222,7 +233,7 @@ export const orderController = {
             title: statusLabel(nextOrderStatus),
             message: `Your order ${orderCode} status was updated.`,
             type: "order",
-            link: trackingLink(orderCode),
+            link: orderDetailsLink(orderCode),
             meta: {
               orderId: existingOrder._id,
               orderCode,
@@ -243,7 +254,7 @@ export const orderController = {
             title: "Payment Successful",
             message: `Payment received for order ${orderCode}.`,
             type: "payment",
-            link: trackingLink(orderCode),
+            link: orderDetailsLink(orderCode),
             meta: {
               orderId: existingOrder._id,
               orderCode,
@@ -256,7 +267,7 @@ export const orderController = {
             title: "Payment Failed",
             message: `Payment failed for order ${orderCode}. Please try again.`,
             type: "payment",
-            link: trackingLink(orderCode),
+            link: orderDetailsLink(orderCode),
             meta: {
               orderId: existingOrder._id,
               orderCode,

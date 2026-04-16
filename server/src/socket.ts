@@ -13,13 +13,16 @@ let io: SocketIOServer | null = null;
 
 function parseCookies(cookieHeader?: string) {
   const out: Record<string, string> = {};
+
   if (!cookieHeader) return out;
 
   for (const part of cookieHeader.split(";")) {
     const idx = part.indexOf("=");
     if (idx === -1) continue;
+
     const key = part.slice(0, idx).trim();
     const value = decodeURIComponent(part.slice(idx + 1).trim());
+
     out[key] = value;
   }
 
@@ -60,11 +63,17 @@ export function initSocket(server: HTTPServer) {
         role?: string;
       };
 
-      const role = String(decoded.role || "").toLowerCase();
+      const userId = String(decoded.userId || "").trim();
+      const email = String(decoded.email || "").trim();
+      const role = String(decoded.role || "").trim().toLowerCase();
+
+      if (!userId) {
+        return next(new Error("Unauthorized"));
+      }
 
       socket.data.user = {
-        userId: String(decoded.userId || ""),
-        email: decoded.email || "",
+        userId,
+        email,
         role,
       } as SocketUser;
 
@@ -76,8 +85,8 @@ export function initSocket(server: HTTPServer) {
 
   io.on("connection", (socket: Socket) => {
     const user = (socket.data.user || {}) as SocketUser;
-    const userId = String(user.userId || "");
-    const role = String(user.role || "").toLowerCase();
+    const userId = String(user.userId || "").trim();
+    const role = String(user.role || "").trim().toLowerCase();
 
     if (userId) {
       socket.join(`user:${userId}`);

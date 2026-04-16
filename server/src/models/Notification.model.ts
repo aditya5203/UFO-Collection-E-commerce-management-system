@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
 export type NotificationAudience = "customer" | "admin";
+
 export type NotificationType =
   | "order"
   | "payment"
@@ -10,7 +11,10 @@ export type NotificationType =
   | "promo"
   | "user"
   | "review"
-  | "system";
+  | "system"
+  | "offer"
+  | "product"
+  | "account";
 
 export interface INotification extends Document {
   user: Types.ObjectId;
@@ -21,6 +25,7 @@ export interface INotification extends Document {
   link?: string;
   isRead: boolean;
   meta?: Record<string, any>;
+  expiresAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,12 +66,17 @@ const NotificationSchema = new Schema<INotification>(
         "user",
         "review",
         "system",
+        "offer",
+        "product",
+        "account",
       ],
       default: "system",
+      index: true,
     },
     link: {
       type: String,
       default: "",
+      trim: true,
     },
     isRead: {
       type: Boolean,
@@ -77,12 +87,19 @@ const NotificationSchema = new Schema<INotification>(
       type: Schema.Types.Mixed,
       default: {},
     },
+    expiresAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
   },
   { timestamps: true }
 );
 
 NotificationSchema.index({ user: 1, audience: 1, createdAt: -1 });
 NotificationSchema.index({ user: 1, audience: 1, isRead: 1 });
+NotificationSchema.index({ audience: 1, type: 1, createdAt: -1 });
+NotificationSchema.index({ audience: 1, expiresAt: 1, createdAt: -1 });
 
 export const Notification =
   mongoose.models.Notification ||

@@ -146,6 +146,11 @@ function initialForm(type: AddressType = "Shipping"): FormState {
 const inputClass =
   "h-12 w-full rounded-[14px] border border-white/10 bg-white/[0.04] px-3.5 text-sm text-white outline-none transition placeholder:text-[#7f88b3] focus:border-[#2f7efc]/80 focus:bg-white/[0.05] focus:ring-4 focus:ring-[#2f7efc]/15 disabled:cursor-not-allowed disabled:opacity-60";
 
+const noStoreHeaders = {
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
+};
+
 export default function AddressPage() {
   const router = useRouter();
 
@@ -232,6 +237,8 @@ export default function AddressPage() {
     try {
       const res = await fetch(`${API}/addresses`, {
         credentials: "include",
+        cache: "no-store",
+        headers: noStoreHeaders,
       });
 
       if (res.status === 401) {
@@ -309,6 +316,8 @@ export default function AddressPage() {
       await fetch(`${API}/auth/logout`, {
         method: "POST",
         credentials: "include",
+        cache: "no-store",
+        headers: noStoreHeaders,
       });
     } catch {
       // ignore
@@ -531,7 +540,11 @@ export default function AddressPage() {
         const res = await fetch(`${API}/addresses`, {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...noStoreHeaders,
+          },
           body: JSON.stringify(payload),
         });
 
@@ -558,7 +571,11 @@ export default function AddressPage() {
       const res = await fetch(`${API}/addresses/${editing.id}`, {
         method: "PATCH",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          ...noStoreHeaders,
+        },
         body: JSON.stringify(payload),
       });
 
@@ -592,6 +609,8 @@ export default function AddressPage() {
       const res = await fetch(`${API}/addresses/${id}`, {
         method: "DELETE",
         credentials: "include",
+        cache: "no-store",
+        headers: noStoreHeaders,
       });
 
       const json = await res.json().catch(() => ({} as any));
@@ -618,6 +637,8 @@ export default function AddressPage() {
       const res = await fetch(`${API}/addresses/${id}/default`, {
         method: "PATCH",
         credentials: "include",
+        cache: "no-store",
+        headers: noStoreHeaders,
       });
 
       const json = await res.json().catch(() => ({} as any));

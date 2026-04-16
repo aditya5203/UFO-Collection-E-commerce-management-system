@@ -73,10 +73,12 @@ function getTypeLabel(n: NotificationItem) {
   if (type === "order") return "Order";
   if (type === "payment") return "Payment";
   if (type === "chat") return "Chat";
-  if (type === "promo") return "Offer";
+  if (type === "promo" || type === "offer") return "Offer";
   if (type === "review") return "Review";
   if (type === "stock") return "Stock";
   if (type === "system") return "System";
+  if (type === "product") return "Product";
+  if (type === "account") return "Account";
 
   return "Notification";
 }
@@ -95,10 +97,12 @@ function getTypeIcon(n: NotificationItem) {
   if (type === "order") return "📦";
   if (type === "payment") return "💳";
   if (type === "chat") return "💬";
-  if (type === "promo") return "🏷️";
+  if (type === "promo" || type === "offer") return "🏷️";
   if (type === "review") return "⭐";
   if (type === "stock") return "📊";
   if (type === "system") return "🔔";
+  if (type === "product") return "🛍️";
+  if (type === "account") return "👤";
 
   return "🔔";
 }
@@ -115,14 +119,26 @@ function getTypeChipClass(n: NotificationItem) {
   if (type === "payment") {
     return "border-[#4b6842] bg-[#192816] text-[#b8f1a7]";
   }
-  if (type === "promo") {
+  if (type === "promo" || type === "offer") {
     return "border-[#6b5030] bg-[#2a1c0d] text-[#ffd59a]";
+  }
+  if (type === "product") {
+    return "border-[#1d4f63] bg-[#0d2530] text-[#9fe7ff]";
+  }
+  if (type === "account") {
+    return "border-[#4f3d6d] bg-[#1d1730] text-[#d5b8ff]";
   }
   if (type === "chat") {
     return "border-[#4f4f72] bg-[#191a2b] text-[#c7cbff]";
   }
   if (type === "system") {
     return "border-[#444861] bg-[#161924] text-[#cfd6f6]";
+  }
+  if (type === "stock") {
+    return "border-[#46604b] bg-[#162119] text-[#b6f0c0]";
+  }
+  if (type === "review") {
+    return "border-[#66511d] bg-[#2b220d] text-[#ffe39c]";
   }
 
   return "border-[#444861] bg-[#161924] text-[#cfd6f6]";
@@ -187,7 +203,7 @@ export default function NotificationsPage() {
           (Array.isArray((j as any)?.data?.items) && (j as any).data.items) ||
           [];
 
-        setItems(list);
+        setItems(Array.isArray(list) ? list : []);
       } catch {
         setErr("Failed to load notifications");
         setItems([]);
@@ -269,10 +285,13 @@ export default function NotificationsPage() {
     );
 
     try {
-      const res = await fetch(`${API_BASE}/notifications/${encodeURIComponent(id)}/read`, {
-        method: "PATCH",
-        credentials: "include",
-      });
+      const res = await fetch(
+        `${API_BASE}/notifications/${encodeURIComponent(id)}/read`,
+        {
+          method: "PATCH",
+          credentials: "include",
+        }
+      );
 
       if (!res.ok) {
         fetchNotifications(false);
@@ -321,6 +340,7 @@ export default function NotificationsPage() {
                 className="h-full w-full object-cover"
               />
             </div>
+
             <div className="text-[28px] font-bold uppercase tracking-[0.18em] text-white max-sm:text-[22px]">
               UFO Collection
             </div>
@@ -423,7 +443,7 @@ export default function NotificationsPage() {
                       key={id || `${n.title}-${n.createdAt}`}
                       type="button"
                       onClick={() => {
-                        if (id) markRead(id);
+                        if (id) void markRead(id);
                         if (n.link) router.push(n.link);
                       }}
                       className={`w-full rounded-[16px] border p-4 text-left transition ${

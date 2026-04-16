@@ -101,8 +101,8 @@ function SmartImage({
   const isRemote = src.startsWith("http://") || src.startsWith("https://");
 
   if (isRemote) {
-    // eslint-disable-next-line @next/next/no-img-element
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={src}
         alt={alt}
@@ -135,6 +135,24 @@ function getInitials(name: string) {
   const last =
     parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : parts[0]?.[1] ?? "";
   return (first + last).toUpperCase();
+}
+
+function pickId(n: NotificationItem) {
+  return (n._id || n.id || "") as string;
+}
+
+function timeAgo(iso?: string) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const diff = Date.now() - d.getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 }
 
 async function safeJson(res: Response) {
@@ -625,8 +643,13 @@ export default function HomePage() {
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
+  const [notificationOpen, setNotificationOpen] = React.useState(false);
+  const [notificationItems, setNotificationItems] = React.useState<NotificationItem[]>([]);
+  const [markingAllNotifications, setMarkingAllNotifications] = React.useState(false);
+
   const socketRef = React.useRef<Socket | null>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const notificationRef = React.useRef<HTMLDivElement | null>(null);
 
   const API_BASE =
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
@@ -651,6 +674,32 @@ export default function HomePage() {
       // ignore autoplay block
     }
   }, []);
+
+  const fetchNotificationItems = React.useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/notifications?limit=5`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        setNotificationItems([]);
+        return;
+      }
+
+      const json = await safeJson(res);
+      const items: NotificationItem[] =
+        (Array.isArray(json) && json) ||
+        (Array.isArray((json as any)?.items) && (json as any).items) ||
+        (Array.isArray((json as any)?.data) && (json as any).data) ||
+        (Array.isArray((json as any)?.data?.items) && (json as any).data.items) ||
+        [];
+
+      setNotificationItems(Array.isArray(items) ? items : []);
+    } catch {
+      setNotificationItems([]);
+    }
+  }, [API_BASE]);
 
   const syncUnreadCount = React.useCallback(async () => {
     try {
@@ -677,6 +726,65 @@ export default function HomePage() {
     }
   }, [API_BASE]);
 
+  const markNotificationRead = React.useCallback(
+    async (id: string) => {
+      if (!id) return;
+
+      setNotificationItems((prev) =>
+        prev.map((item) =>
+          pickId(item) === id ? { ...item, isRead: true } : item
+        )
+      );
+
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+
+      try {
+        const res = await fetch(
+          `${API_BASE}/notifications/${encodeURIComponent(id)}/read`,
+          {
+            method: "PATCH",
+            credentials: "include",
+          }
+        );
+
+        if (!res.ok) {
+          await syncUnreadCount();
+          await fetchNotificationItems();
+        }
+      } catch {
+        await syncUnreadCount();
+        await fetchNotificationItems();
+      }
+    },
+    [API_BASE, syncUnreadCount, fetchNotificationItems]
+  );
+
+  const markAllNotificationsRead = React.useCallback(async () => {
+    if (markingAllNotifications) return;
+
+    const previousItems = notificationItems;
+    setMarkingAllNotifications(true);
+    setNotificationItems((prev) => prev.map((item) => ({ ...item, isRead: true })));
+    setUnreadCount(0);
+
+    try {
+      const res = await fetch(`${API_BASE}/notifications/read-all`, {
+        method: "PATCH",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        setNotificationItems(previousItems);
+        await syncUnreadCount();
+      }
+    } catch {
+      setNotificationItems(previousItems);
+      await syncUnreadCount();
+    } finally {
+      setMarkingAllNotifications(false);
+    }
+  }, [API_BASE, markingAllNotifications, notificationItems, syncUnreadCount]);
+
   React.useEffect(() => {
     const onResize = () => {
       if (window.innerWidth >= 768) setMobileMenuOpen(false);
@@ -693,6 +801,22 @@ export default function HomePage() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [mobileMenuOpen]);
+
+  React.useEffect(() => {
+    if (!notificationOpen) return;
+
+    const onDocClick = (event: MouseEvent) => {
+      if (!notificationRef.current) return;
+      if (!notificationRef.current.contains(event.target as Node)) {
+        setNotificationOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onDocClick);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+    };
+  }, [notificationOpen]);
 
   React.useEffect(() => {
     const fetchMe = async () => {
@@ -719,22 +843,26 @@ export default function HomePage() {
   React.useEffect(() => {
     if (!user) {
       setUnreadCount(0);
+      setNotificationItems([]);
       return;
     }
 
     syncUnreadCount();
-  }, [user, syncUnreadCount]);
+    fetchNotificationItems();
+  }, [user, syncUnreadCount, fetchNotificationItems]);
 
   React.useEffect(() => {
     if (!user) return;
 
     const handleFocus = () => {
       syncUnreadCount();
+      fetchNotificationItems();
     };
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
         syncUnreadCount();
+        fetchNotificationItems();
       }
     };
 
@@ -745,7 +873,7 @@ export default function HomePage() {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [user, syncUnreadCount]);
+  }, [user, syncUnreadCount, fetchNotificationItems]);
 
   React.useEffect(() => {
     if (!user) return;
@@ -761,8 +889,8 @@ export default function HomePage() {
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("Customer socket connected");
       syncUnreadCount();
+      fetchNotificationItems();
     });
 
     socket.on("notification:new", async (payload: { notification?: NotificationItem }) => {
@@ -771,8 +899,14 @@ export default function HomePage() {
 
       playNotificationSound();
 
-      setUnreadCount((prev) => prev + 1);
+      setNotificationItems((prev) => {
+        const id = pickId(next);
+        const exists = prev.some((item) => pickId(item) === id);
+        if (exists) return prev;
+        return [{ ...next, isRead: false }, ...prev].slice(0, 5);
+      });
 
+      setUnreadCount((prev) => prev + 1);
       await syncUnreadCount();
     });
 
@@ -782,13 +916,14 @@ export default function HomePage() {
 
     socket.on("reconnect", () => {
       syncUnreadCount();
+      fetchNotificationItems();
     });
 
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [SOCKET_BASE, user, playNotificationSound, syncUnreadCount]);
+  }, [SOCKET_BASE, user, playNotificationSound, syncUnreadCount, fetchNotificationItems]);
 
   React.useEffect(() => {
     const fetchProducts = async () => {
@@ -966,26 +1101,141 @@ export default function HomePage() {
             {loadingUser ? (
               <div className="h-9 w-9 animate-pulse rounded-full bg-white/10" />
             ) : (
-              <button
-                type="button"
-                onClick={() => router.push(user ? "/notifications" : "/signup")}
-                aria-label="Notifications"
-                className="relative rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
-                title={user ? t("nav.notifications") : "Login to view notifications"}
-              >
-                <Image
-                  src="/images/notification.png"
-                  width={18}
-                  height={18}
-                  alt="Notifications"
-                  className="brightness-0 invert"
-                />
-                {user && unreadCount > 0 ? (
-                  <span className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                    {unreadCount > 99 ? "99+" : unreadCount}
-                  </span>
+              <div ref={notificationRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!user) {
+                      router.push("/signup");
+                      return;
+                    }
+                    setNotificationOpen((prev) => !prev);
+                  }}
+                  aria-label="Notifications"
+                  className="relative rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
+                  title={user ? t("nav.notifications") : "Login to view notifications"}
+                >
+                  <Image
+                    src="/images/notification.png"
+                    width={18}
+                    height={18}
+                    alt="Notifications"
+                    className="brightness-0 invert"
+                  />
+                  {user && unreadCount > 0 ? (
+                    <span className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  ) : null}
+                </button>
+
+                {user && notificationOpen ? (
+                  <div className="absolute right-0 top-[calc(100%+12px)] z-50 w-[360px] overflow-hidden rounded-[22px] border border-[#17233c] bg-[#020817] shadow-[0_24px_70px_rgba(0,0,0,0.5)] max-sm:w-[92vw]">
+                    <div className="flex items-center justify-between border-b border-[#152039] px-5 py-4">
+                      <div className="text-[18px] font-semibold text-white">
+                        Notifications
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          syncUnreadCount();
+                          fetchNotificationItems();
+                        }}
+                        className="text-[14px] text-[#4ea1ff] transition hover:text-[#84beff]"
+                      >
+                        Refresh
+                      </button>
+                    </div>
+
+                    <div className="max-h-[420px] overflow-y-auto">
+                      {notificationItems.length === 0 ? (
+                        <div className="p-5 text-sm text-gray-400">
+                          No notifications
+                        </div>
+                      ) : (
+                        notificationItems.map((n) => {
+                          const id = pickId(n);
+
+                          return (
+                            <button
+                              key={id || `${n.title}-${n.createdAt}`}
+                              type="button"
+                              onClick={() => {
+                                if (id) void markNotificationRead(id);
+                                setNotificationOpen(false);
+                                router.push(n.link || "/notifications");
+                              }}
+                              className="block w-full border-b border-[#121d33] px-5 py-5 text-left transition hover:bg-white/[0.03]"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-[16px] font-semibold text-[#e6ebff]">
+                                    {n.title || "Notification"}
+                                  </div>
+
+                                  {n.message ? (
+                                    <div className="mt-2 text-[15px] leading-7 text-[#7f8bad]">
+                                      {n.message}
+                                    </div>
+                                  ) : null}
+
+                                  <div className="mt-3 text-[13px] text-[#5f6b8a]">
+                                    {timeAgo(n.createdAt)}
+                                    {n.type ? ` • ${String(n.type).toLowerCase()}` : ""}
+                                  </div>
+                                </div>
+
+                                {n.isRead === false ? (
+                                  <span className="mt-1 h-[10px] w-[10px] shrink-0 rounded-full bg-red-500" />
+                                ) : null}
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between px-5 py-4 text-[15px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNotificationOpen(false);
+                          router.push("/notifications");
+                        }}
+                        className="text-[#4ea1ff] transition hover:text-[#84beff]"
+                      >
+                        View all
+                      </button>
+
+                      <div className="flex items-center gap-5">
+                        <button
+                          type="button"
+                          onClick={() => void markAllNotificationsRead()}
+                          disabled={
+                            markingAllNotifications || notificationItems.length === 0
+                          }
+                          className={`transition ${
+                            markingAllNotifications || notificationItems.length === 0
+                              ? "cursor-not-allowed text-gray-500"
+                              : "text-[#aeb7d6] hover:text-white"
+                          }`}
+                        >
+                          {markingAllNotifications ? "Marking..." : "Mark all read"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setNotificationOpen(false)}
+                          className="text-[#aeb7d6] transition hover:text-white"
+                        >
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ) : null}
-              </button>
+              </div>
             )}
 
             {loadingUser ? (

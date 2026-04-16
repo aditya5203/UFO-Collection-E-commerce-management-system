@@ -90,6 +90,11 @@ function computeEstimatedDeliveryRange() {
   return `${fmt(from)} – ${fmt(to)}`;
 }
 
+function orderDetailsLink(orderCode: string) {
+  const clean = String(orderCode || "").replace(/^#/, "").trim();
+  return clean ? `/customerorderdetails/${clean}` : "/profile/orders";
+}
+
 export const orderService = {
   async createOrder(userId: string, body: CreateOrderBody) {
     if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
@@ -354,7 +359,7 @@ export const orderService = {
         title: "Order placed successfully",
         message: `Your order ${orderCode} has been placed successfully.`,
         type: "order",
-        link: `/notifications`,
+        link: orderDetailsLink(orderCode),
         meta: {
           orderId: String(doc._id),
           orderCode,
