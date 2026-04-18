@@ -1,3 +1,4 @@
+//welcomeEmail.ts
 import { emailService } from "../../../services/email.services";
 
 export async function sendWelcomeEmail(to: string, name: string) {

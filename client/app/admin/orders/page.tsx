@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { io, Socket } from "socket.io-client";
 import AdminPageGuard from "../_components/AdminPageGuard";
 import {
   AdminPermissions,
@@ -11,7 +12,12 @@ import {
 } from "../_components/adminPermissions";
 
 type PaymentStatus = "Paid" | "Pending" | "Failed";
-type OrderStatus = "Delivered" | "Shipped" | "Pending" | "Cancelled";
+type OrderStatus =
+  | "Delivered"
+  | "Transit"
+  | "Shipped"
+  | "Pending"
+  | "Cancelled";
 
 type PaymentMethod =
   | "eSewa"
@@ -177,6 +183,22 @@ export default function OrdersPage() {
     const t = setTimeout(() => load(q), 300);
     return () => clearTimeout(t);
   }, [q, load]);
+
+  React.useEffect(() => {
+    const socket: Socket = io(API_BASE, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("order:updated", () => {
+      load(q);
+    });
+
+    return () => {
+      socket.off("order:updated");
+      socket.disconnect();
+    };
+  }, [load, q]);
 
   const downloadInvoice = async (orderId: string, orderCode?: string) => {
     try {

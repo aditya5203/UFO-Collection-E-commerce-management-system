@@ -44,6 +44,18 @@ const NAV_ITEMS: NavItem[] = [
     viewPermission: "orderView",
   },
   {
+  label: "Delivery",
+  href: "/admin/delivery",
+  icon: "/images/admin/order.png",
+  viewPermission: "orderView",
+},
+{
+  label: "Delivery Staff",
+  href: "/admin/delivery/staff",
+  icon: "/images/admin/customers.png",
+  viewPermission: "orderView",
+},
+  {
     label: "Customers",
     href: "/admin/customers",
     icon: "/images/admin/customers.png",
@@ -188,7 +200,7 @@ export default function AdminSidebar() {
 
       if (!res.ok) {
         const j = await safeJson(res);
-        alert(j?.message || "Admin logout failed");
+        alert((j as any)?.message || "Admin logout failed");
         return;
       }
 

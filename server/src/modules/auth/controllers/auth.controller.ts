@@ -23,6 +23,7 @@ type AuthRequest = Request & {
 
 const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
 const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
+const DELIVERY_COOKIE = process.env.DELIVERY_COOKIE_NAME || "deliveryToken";
 
 function getCookieOptions() {
   const isProd = config.nodeEnv === "production";
@@ -125,7 +126,9 @@ export const authController = {
       try {
         await notificationService.createAdminForAll({
           title: "New user registered",
-          message: `${result.user.name || result.user.email || "A new user"} joined the platform.`,
+          message: `${
+            result.user.name || result.user.email || "A new user"
+          } joined the platform.`,
           type: "user",
           link: "/admin/customers",
           meta: {
@@ -184,6 +187,122 @@ export const authController = {
         message: "Login successful",
         token: result.token,
         user: result.user,
+      });
+      return;
+    } catch (error) {
+      next(error);
+      return;
+    }
+  },
+
+  deliveryLogin: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const credentials = req.body;
+
+      if (
+        (!credentials.email &&
+          !credentials.phone &&
+          !credentials.emailOrPhone) ||
+        !credentials.password
+      ) {
+        throw new AppError("Email or phone and password are required", 400);
+      }
+
+      const result = await authService.deliveryLogin(credentials);
+
+      setCookie(res, DELIVERY_COOKIE, result.token);
+
+      res.status(200).json({
+        success: true,
+        message: "Delivery login successful",
+        token: result.token,
+        mustChangePassword: !!result.user.mustChangePassword,
+        user: {
+          _id: result.user._id,
+          name: result.user.name,
+          email: result.user.email,
+          role: result.user.role,
+          status: result.user.status,
+          mustChangePassword: result.user.mustChangePassword,
+          phone: result.user.phone,
+          vehicleType: result.user.vehicleType,
+          vehicleNumber: result.user.vehicleNumber,
+          deliveryArea: result.user.deliveryArea,
+        },
+      });
+      return;
+    } catch (error) {
+      next(error);
+      return;
+    }
+  },
+
+  deliveryMe: async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const userId = (req.user as any)?.userId;
+
+      if (!userId) {
+        res.status(401).json({
+          success: false,
+          message: "User not authenticated",
+        });
+        return;
+      }
+
+      const user = await authService.getDeliveryMe(userId);
+
+      if (!user) {
+        clearCookie(res, DELIVERY_COOKIE);
+        res.status(401).json({
+          success: false,
+          message: "User not found",
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: user,
+      });
+      return;
+    } catch (error) {
+      next(error);
+      return;
+    }
+  },
+
+  deliveryChangePassword: async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const userId = (req.user as any)?.userId;
+      if (!userId) throw new AppError("User not authenticated", 401);
+
+      const { currentPassword, newPassword } = req.body as {
+        currentPassword?: string;
+        newPassword?: string;
+      };
+
+      const user = await authService.deliveryChangePassword(
+        userId,
+        String(currentPassword || ""),
+        String(newPassword || "")
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Password changed successfully",
+        data: user,
       });
       return;
     } catch (error) {
@@ -387,6 +506,30 @@ export const authController = {
     }
   },
 
+  deliveryLogout: async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const userId = (req.user as any)?.userId;
+      if (!userId) throw new AppError("User not authenticated", 401);
+
+      await authService.logoutUser(userId);
+
+      clearCookie(res, DELIVERY_COOKIE);
+
+      res.status(200).json({
+        success: true,
+        message: "Delivery logout successful",
+      });
+      return;
+    } catch (error) {
+      next(error);
+      return;
+    }
+  },
+
   getMe: async (
     req: AuthRequest,
     res: Response,
@@ -507,9 +650,9 @@ export const authController = {
       }
 
       const role = String((user as any).role || "").toLowerCase();
-      if (role === "admin" || role === "superadmin") {
+      if (role === "admin" || role === "superadmin" || role === "delivery") {
         throw new AppError(
-          "Admins cannot delete account from customer portal.",
+          "This account cannot be deleted from customer portal.",
           403
         );
       }
@@ -577,7 +720,9 @@ export const authController = {
         try {
           await notificationService.createAdminForAll({
             title: "New user registered",
-            message: `${result.user.name || result.user.email || "A new user"} joined the platform with Google.`,
+            message: `${
+              result.user.name || result.user.email || "A new user"
+            } joined the platform with Google.`,
             type: "user",
             link: "/admin/customers",
             meta: {
@@ -588,7 +733,10 @@ export const authController = {
             },
           });
         } catch (err: any) {
-          console.log("Google register notification failed (ignored):", err?.message);
+          console.log(
+            "Google register notification failed (ignored):",
+            err?.message
+          );
         }
       }
 
@@ -626,7 +774,9 @@ export const authController = {
         try {
           await notificationService.createAdminForAll({
             title: "New user registered",
-            message: `${result.user.name || result.user.email || "A new user"} joined the platform with Google.`,
+            message: `${
+              result.user.name || result.user.email || "A new user"
+            } joined the platform with Google.`,
             type: "user",
             link: "/admin/customers",
             meta: {
@@ -637,7 +787,10 @@ export const authController = {
             },
           });
         } catch (err: any) {
-          console.log("Google login register notification failed (ignored):", err?.message);
+          console.log(
+            "Google login register notification failed (ignored):",
+            err?.message
+          );
         }
       }
 

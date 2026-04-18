@@ -1,4 +1,3 @@
-// server/src/modules/orders/routes/order.routes.ts
 import { Router } from "express";
 import {
   customerAuthMiddleware,
@@ -27,7 +26,7 @@ const adminRouter = Router();
  * @swagger
  * /api/orders:
  *   post:
- *     summary: Create an order (COD / Khalti / eSewa)
+ *     summary: Create an order (COD / Khalti / eSewa / Fonepay)
  *     tags: [Orders - Public]
  *     security:
  *       - cookieAuth: []
@@ -205,6 +204,7 @@ publicRouter.get("/:id/invoice", anyAuthMiddleware, orderController.downloadInvo
  *         name: orderStatus
  *         schema:
  *           type: string
+ *         description: Pending | Shipped | Transit | Delivered | Cancelled
  *     responses:
  *       200:
  *         description: Orders list
@@ -253,7 +253,7 @@ adminRouter.get(
  * @swagger
  * /api/admin/orders/{id}:
  *   patch:
- *     summary: Update order status/payment status
+ *     summary: Update order status/payment status/delivery assignment
  *     tags: [Orders - Admin]
  *     security:
  *       - cookieAuth: []
@@ -272,8 +272,22 @@ adminRouter.get(
  *             properties:
  *               paymentStatus:
  *                 type: string
+ *                 example: Paid
  *               orderStatus:
  *                 type: string
+ *                 example: Transit
+ *               deliveryAssignment:
+ *                 type: object
+ *                 properties:
+ *                   deliveryManId:
+ *                     type: string
+ *                     example: 68001234567890abcdef1234
+ *                   note:
+ *                     type: string
+ *                     example: Call customer before arrival
+ *                   status:
+ *                     type: string
+ *                     example: Assigned
  *     responses:
  *       200:
  *         description: Order updated

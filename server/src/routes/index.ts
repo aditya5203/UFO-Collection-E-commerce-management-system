@@ -1,5 +1,3 @@
-// server/src/routes/index.ts
-
 import { Router } from "express";
 
 import authRoutes from "../modules/auth/routes/auth.routes";
@@ -11,35 +9,38 @@ import customerRoutes from "../modules/customers/routes/customer.routes";
 import addressRoutes from "../modules/addresses/routes/address.routes";
 import notificationRoutes from "../modules/notifications/routes/notification.routes";
 
-// ✅ Dashboard (Admin)
+// Dashboard (Admin)
 import dashboardRoutes from "../modules/admin/routes/dashboard.routes";
 import analyticsRoutes from "../modules/admin/routes/analytics.routes";
 
-// ✅ Reviews
+// Reviews
 import reviewRoutes from "../modules/reviews/routes/reviews.routes";
 import adminReviewsRoutes from "../modules/reviews/routes/admin.reviews.routes";
 
-// ✅ Chat
+// Chat
 import chatRoutes from "../modules/chat/routes/chat.routes";
 import adminChatRoutes from "../modules/chat/routes/admin.chat.routes";
 
-// ✅ Tickets
+// Tickets
 import ticketRoutes from "../modules/tickets/routes/ticket.routes";
 import adminTicketRoutes from "../modules/tickets/routes/admin.ticket.routes";
 import customerTicketRoutes from "../modules/tickets/routes/customer.ticket.routes";
 
-// ✅ Ads
+// Ads
 import adsRoutes from "../modules/ads/routes/ads.routes";
 
-// ✅ Discounts
+// Discounts
 import discountRoutes from "../modules/discounts/routes/discount.routes";
 
-// ✅ Settings + Admins
+// Settings + Admins
 import adminSettingsRoutes from "../modules/admin/routes/settings.routes";
 import adminsRoutes from "../modules/admin/routes/admins.routes";
 
-// ✅ AI
+// AI
 import aiRoutes from "../modules/ai/routes/ai.routes";
+
+// Delivery Staff
+import deliveryStaffRoutes from "../modules/delivery/routes/deliveryStaff.routes";
 
 import {
   adminAuthMiddleware,
@@ -49,12 +50,12 @@ import {
 
 const router = Router();
 
-console.log("✅ main routes index loaded");
+console.log("main routes index loaded");
 
 /* -------------------- PUBLIC ENDPOINTS -------------------- */
 router.use("/payments", paymentRoutes);
 
-// ✅ Products public + reviews under same /products base
+// Products public + reviews under same /products base
 router.use("/products", productRoutes.publicRouter);
 router.use("/products", reviewRoutes);
 
@@ -62,17 +63,17 @@ router.use("/auth", authRoutes);
 router.use("/categories", categoryRoutes.publicRouter);
 router.use("/orders", orderRoutes.publicRouter);
 
-// ✅ PUBLIC ADS
+// PUBLIC ADS
 router.use("/ads", adsRoutes.publicRouter);
 
-// ✅ tickets (public create)
+// tickets (public create)
 router.use("/tickets", ticketRoutes);
 
-// ✅ PUBLIC DISCOUNTS
+// PUBLIC DISCOUNTS
 router.use("/discounts", discountRoutes.publicRouter);
 
-// ✅ AI TRY-ON
-console.log("✅ mounting /ai routes");
+// AI TRY-ON
+console.log("mounting /ai routes");
 router.use("/ai", aiRoutes);
 
 /* -------------------- CUSTOMER (PROTECTED) -------------------- */
@@ -80,10 +81,10 @@ router.use("/addresses", customerAuthMiddleware, addressRoutes);
 router.use("/chat", customerAuthMiddleware, chatRoutes);
 router.use("/tickets", customerAuthMiddleware, customerTicketRoutes);
 
-// ✅ CUSTOMER DISCOUNTS
+// CUSTOMER DISCOUNTS
 router.use("/discounts", customerAuthMiddleware, discountRoutes.customerRouter);
 
-// ✅ NOTIFICATIONS (Customer OR Admin)
+// NOTIFICATIONS (Customer OR Admin OR Delivery if anyAuth supports it)
 router.use("/notifications", anyAuthMiddleware, notificationRoutes);
 
 /* -------------------- ADMIN (PROTECTED) -------------------- */
@@ -97,17 +98,26 @@ router.use("/admin/reviews", adminAuthMiddleware, adminReviewsRoutes);
 router.use("/admin/tickets", adminAuthMiddleware, adminTicketRoutes);
 router.use("/admin/ads", adminAuthMiddleware, adsRoutes.adminRouter);
 
-// ✅ ADMIN DISCOUNTS
+// ADMIN DISCOUNTS
 router.use("/admin/discounts", adminAuthMiddleware, discountRoutes.adminRouter);
 
-// ✅ ADMIN DASHBOARD
+// ADMIN DASHBOARD
 router.use("/admin/dashboard", adminAuthMiddleware, dashboardRoutes);
 
-// ✅ ADMIN ANALYTICS
+// ADMIN ANALYTICS
 router.use("/admin/analytics", adminAuthMiddleware, analyticsRoutes);
 
-// ✅ ADMIN SETTINGS + ADMINS
+// ADMIN SETTINGS + ADMINS
 router.use("/admin", adminAuthMiddleware, adminSettingsRoutes);
 router.use("/admins", adminAuthMiddleware, adminsRoutes);
+
+/*
+  IMPORTANT:
+  Do NOT wrap deliveryStaffRoutes here with adminAuthMiddleware,
+  because the router itself already protects:
+  - admin-only routes with adminAuthMiddleware
+  - rider self-service routes with deliveryAuthMiddleware
+*/
+router.use("/admin/delivery-staff", deliveryStaffRoutes);
 
 export default router;

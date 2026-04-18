@@ -51,15 +51,12 @@ function isPaidLike(s: any) {
 function statusLabel(statusLower: string) {
   if (statusLower === "pending") return "Order Pending";
   if (statusLower === "shipped") return "Order Shipped";
+  if (statusLower === "transit") return "Order In Transit";
   if (statusLower === "delivered") return "Order Delivered";
   if (statusLower === "cancelled" || statusLower === "canceled") {
     return "Order Cancelled";
   }
   return "Order Updated";
-}
-
-function trackingLink(orderCode: string) {
-  return `/order-tracking?code=${encodeURIComponent(orderCode)}`;
 }
 
 function orderDetailsLink(orderCode: string) {
@@ -132,7 +129,7 @@ export const orderController = {
   async update(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { paymentStatus, orderStatus } = req.body || {};
+      const { paymentStatus, orderStatus, deliveryAssignment } = req.body || {};
 
       const isObjId = mongoose.Types.ObjectId.isValid(id);
       const existingOrder: any = isObjId
@@ -153,6 +150,7 @@ export const orderController = {
       const data = await orderService.updateOrder(id, {
         paymentStatus,
         orderStatus,
+        deliveryAssignment,
       });
 
       if (!data) {
@@ -183,7 +181,10 @@ export const orderController = {
         try {
           await notificationService.createCustomer(payload);
         } catch (e: any) {
-          console.log("Customer order notification failed (ignored):", e?.message);
+          console.log(
+            "Customer order notification failed (ignored):",
+            e?.message
+          );
         }
       };
 
@@ -193,6 +194,15 @@ export const orderController = {
             userId: customerId,
             title: "Order Shipped",
             message: `Good news! Your order ${orderCode} has been shipped.`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: { orderId: existingOrder._id, orderCode },
+          });
+        } else if (nextOrderStatus === "transit") {
+          await safeNotifyCustomer({
+            userId: customerId,
+            title: "Order In Transit",
+            message: `Your order ${orderCode} is now in transit.`,
             type: "order",
             link: orderDetailsLink(orderCode),
             meta: { orderId: existingOrder._id, orderCode },
@@ -326,19 +336,9 @@ export const orderController = {
         return;
       }
 
-      const orders = await Order.find({
-        customer: new mongoose.Types.ObjectId(userId),
-      })
-        .select("orderCode createdAt")
-        .sort({ createdAt: -1 })
-        .lean();
+      const orders = await orderService.getMyOrdersSummary(userId);
 
-      const result = orders.map((o: any) => ({
-        id: o.orderCode,
-        date: new Date(o.createdAt).toISOString().split("T")[0],
-      }));
-
-      res.status(200).json({ orders: result });
+      res.status(200).json({ orders });
       return;
     } catch (err: any) {
       res.status(500).json({

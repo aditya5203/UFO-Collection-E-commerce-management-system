@@ -53,6 +53,10 @@ const sanitizeUserForResponse = (user: any) => {
         ? fullSuperadminPermissions()
         : plain.permissions || {},
     address: plain.address,
+    phone: plain.phone,
+    vehicleType: plain.vehicleType,
+    vehicleNumber: plain.vehicleNumber,
+    deliveryArea: plain.deliveryArea,
     height: plain.height,
     weight: plain.weight,
     recommendedSizeMen: plain.recommendedSizeMen,
@@ -150,6 +154,10 @@ export const authService = {
       throw new AppError("Use Google login for this account", 401);
     }
 
+    if (String(user.role || "").toLowerCase() !== "customer") {
+      throw new AppError("Customer login only", 403);
+    }
+
     const ok = await user.comparePassword(String(credentials.password || ""));
     if (!ok) throw new AppError("Invalid email or password", 401);
 
@@ -211,6 +219,13 @@ export const authService = {
       });
     }
 
+    if (String(user.role || "").toLowerCase() !== "customer") {
+      throw new AppError(
+        "Google login is only available for customer accounts.",
+        403
+      );
+    }
+
     (user as any).lastLogin = new Date();
     await user.save();
 
@@ -254,6 +269,10 @@ export const authService = {
 
     if ((user as any).isBlocked) {
       throw new AppError("Your account has been blocked by admin.", 403);
+    }
+
+    if (String(user.role || "").toLowerCase() !== "customer") {
+      throw new AppError("Customer profile only", 403);
     }
 
     if (data.name !== undefined) user.name = String(data.name).trim();
@@ -354,5 +373,132 @@ export const authService = {
     });
 
     return { user: sanitizeUserForResponse(user), token };
+  },
+
+  deliveryLogin: async (credentials: any) => {
+    const email = String(credentials.email || "").trim().toLowerCase();
+    const phone = String(credentials.phone || "").trim();
+    const emailOrPhone = String(credentials.emailOrPhone || "").trim();
+
+    const password = String(credentials.password || "");
+    if (!password) throw new AppError("Password is required", 400);
+
+    const query: any = {
+      role: "delivery",
+      provider: "credentials",
+    };
+
+    if (emailOrPhone) {
+      query.$or = [
+        { email: emailOrPhone.toLowerCase() },
+        { phone: emailOrPhone },
+      ];
+    } else if (email) {
+      query.email = email;
+    } else if (phone) {
+      query.phone = phone;
+    } else {
+      throw new AppError("Email or phone is required", 400);
+    }
+
+    const user = await User.findOne(query).select("+password");
+
+    if (!user) throw new AppError("Invalid email/phone or password", 401);
+
+    if ((user as any).isDeleted) {
+      throw new AppError("This account has been deleted.", 403);
+    }
+
+    if ((user as any).isBlocked) {
+      throw new AppError("This delivery account has been blocked.", 403);
+    }
+
+    if ((user as any).status === "inactive") {
+      throw new AppError("This delivery account is inactive.", 403);
+    }
+
+    const ok = await user.comparePassword(password);
+    if (!ok) throw new AppError("Invalid email/phone or password", 401);
+
+    (user as any).lastLogin = new Date();
+    await user.save();
+
+    const token = generateToken({
+      userId: user._id.toString(),
+      email: user.email,
+      role: user.role,
+    });
+
+    return { user: sanitizeUserForResponse(user), token };
+  },
+
+  deliveryChangePassword: async (
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ) => {
+    const user = await User.findById(userId).select("+password");
+    if (!user) throw new AppError("User not found", 404);
+
+    if (String(user.role || "").toLowerCase() !== "delivery") {
+      throw new AppError("Delivery access only", 403);
+    }
+
+    if ((user as any).isDeleted) {
+      throw new AppError("This account has been deleted.", 403);
+    }
+
+    if ((user as any).isBlocked) {
+      throw new AppError("This delivery account has been blocked.", 403);
+    }
+
+    if ((user as any).status === "inactive") {
+      throw new AppError("This delivery account is inactive.", 403);
+    }
+
+    if (!currentPassword || !newPassword) {
+      throw new AppError("Current password and new password are required", 400);
+    }
+
+    if (String(newPassword).trim().length < 6) {
+      throw new AppError("New password must be at least 6 characters", 400);
+    }
+
+    const ok = await user.comparePassword(String(currentPassword || ""));
+    if (!ok) throw new AppError("Current password is incorrect", 400);
+
+    if (String(currentPassword) === String(newPassword)) {
+      throw new AppError(
+        "New password must be different from current password",
+        400
+      );
+    }
+
+    (user as any).password = String(newPassword).trim();
+    (user as any).mustChangePassword = false;
+    await user.save();
+
+    return sanitizeUserForResponse(user);
+  },
+
+  getDeliveryMe: async (userId: string) => {
+    if (!userId) return null;
+
+    const user = await User.findById(userId);
+    if (!user) return null;
+
+    if (String(user.role || "").toLowerCase() !== "delivery") {
+      throw new AppError("Delivery access only", 403);
+    }
+
+    if ((user as any).isDeleted) {
+      throw new AppError("This account has been deleted.", 403);
+    }
+
+    if ((user as any).isBlocked) {
+      throw new AppError("This delivery account has been blocked.", 403);
+    }
+
+    return sanitizeUserForResponse(user);
   },
 };

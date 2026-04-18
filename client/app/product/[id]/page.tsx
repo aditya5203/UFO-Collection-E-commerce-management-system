@@ -275,6 +275,84 @@ export default function ProductPage() {
     panY: 0,
   });
 
+  const fetchReviews = React.useCallback(async (productId: string) => {
+    try {
+      setReviewsLoading(true);
+      setReviewsError(null);
+
+      const res = await fetch(`${API_BASE}/products/${productId}/reviews`, {
+        cache: "no-store",
+      });
+
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(data?.message || "Failed to load reviews");
+
+      const rawReviews = Array.isArray(data?.reviews) ? data.reviews : [];
+
+      const mapped: Review[] = rawReviews.map((r: any) => ({
+        id: r.id || r._id || "",
+        _id: r._id || r.id || "",
+        product: r.product ?? null,
+        customer: r.customer ?? null,
+        orderCode: r.orderCode || "",
+        rating: Number(r.rating || 0),
+        title: typeof r.title === "string" ? r.title : "",
+        comment: typeof r.comment === "string" ? r.comment : "",
+        createdAt: r.createdAt,
+      }));
+
+      const summary =
+        data?.summary && typeof data.summary === "object"
+          ? {
+              count: Number(data.summary.count || 0),
+              avgRating: Number(data.summary.avgRating || 0),
+            }
+          : {
+              count: mapped.length,
+              avgRating: mapped.length
+                ? Number(
+                    (
+                      mapped.reduce(
+                        (sum, item) => sum + Number(item.rating || 0),
+                        0
+                      ) / mapped.length
+                    ).toFixed(2)
+                  )
+                : 0,
+            };
+
+      setReviews(mapped);
+      setReviewSummary(summary);
+
+      setProduct((prev) =>
+        prev
+          ? {
+              ...prev,
+              rating: summary.avgRating || 0,
+              reviews: summary.count || 0,
+            }
+          : prev
+      );
+    } catch (e: any) {
+      console.error(e);
+      setReviewsError(e?.message || "Failed to load reviews");
+      setReviews([]);
+      setReviewSummary({ count: 0, avgRating: 0 });
+
+      setProduct((prev) =>
+        prev
+          ? {
+              ...prev,
+              rating: 0,
+              reviews: 0,
+            }
+          : prev
+      );
+    } finally {
+      setReviewsLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     const update = () => setCartCount(getCartCount());
     update();
@@ -320,7 +398,7 @@ export default function ProductPage() {
           price: toNumber(raw.price, 0),
           image: getProductImageSrc(raw.image),
           images: normalizeImageList(raw.images),
-          rating: toNumber(raw.rating, 4.8),
+          rating: toNumber(raw.rating, 0),
           reviews: toNumber(raw.reviews, 0),
           shortDesc: toStr(raw.shortDesc, toStr(raw.description, "")),
           longDesc: toStr(raw.longDesc, toStr(raw.description, "")),
@@ -397,53 +475,22 @@ export default function ProductPage() {
 
   React.useEffect(() => {
     if (!product?.id) return;
-    if (activeTab !== "reviews") return;
+    fetchReviews(product.id);
+  }, [product?.id, fetchReviews]);
 
-    (async () => {
-      try {
-        setReviewsLoading(true);
-        setReviewsError(null);
+  React.useEffect(() => {
+    if (!product?.id) return;
 
-        const res = await fetch(`${API_BASE}/products/${product.id}/reviews`, {
-          cache: "no-store",
-        });
+    const handleReviewRefresh = () => {
+      fetchReviews(product.id);
+    };
 
-        const data = await res.json().catch(() => ({} as any));
-        if (!res.ok) throw new Error(data?.message || "Failed to load reviews");
+    window.addEventListener("ufo_review_updated", handleReviewRefresh);
 
-        const rawReviews = Array.isArray(data?.reviews) ? data.reviews : [];
-
-        const mapped: Review[] = rawReviews.map((r: any) => ({
-          id: r.id || r._id || "",
-          _id: r._id || r.id || "",
-          product: r.product ?? null,
-          customer: r.customer ?? null,
-          orderCode: r.orderCode || "",
-          rating: Number(r.rating || 0),
-          title: typeof r.title === "string" ? r.title : "",
-          comment: typeof r.comment === "string" ? r.comment : "",
-          createdAt: r.createdAt,
-        }));
-
-        setReviews(mapped);
-
-        setReviewSummary(
-          data?.summary && typeof data.summary === "object"
-            ? {
-                count: Number(data.summary.count || 0),
-                avgRating: Number(data.summary.avgRating || 0),
-              }
-            : { count: 0, avgRating: 0 }
-        );
-      } catch (e: any) {
-        setReviewsError(e?.message || "Failed to load reviews");
-        setReviews([]);
-        setReviewSummary({ count: 0, avgRating: 0 });
-      } finally {
-        setReviewsLoading(false);
-      }
-    })();
-  }, [activeTab, product?.id]);
+    return () => {
+      window.removeEventListener("ufo_review_updated", handleReviewRefresh);
+    };
+  }, [product?.id, fetchReviews]);
 
   const sizes = product?.sizes?.length ? product.sizes : DEFAULT_SIZES;
 
@@ -463,6 +510,9 @@ export default function ProductPage() {
     0,
     allImages.findIndex((img) => img === currentImage)
   );
+
+const displayRating = Number(reviewSummary.avgRating || product?.rating || 0);
+const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
 
   const selectImage = (img: string) => {
     setSelectedImage(img);
@@ -889,19 +939,20 @@ export default function ProductPage() {
 
               <div className="mt-3 flex items-center gap-3">
                 <span className="text-[22px] font-semibold">
-                  {(product.rating ?? 0).toFixed(1)}
+                  {displayRating.toFixed(1)}
                 </span>
 
                 <div className="flex items-center gap-[2px]" aria-label="Rating stars">
                   {Array.from({ length: 5 }).map((_, i) => {
-                    const filled = i < Math.round(product.rating ?? 0);
+                    const filled = i < Math.round(displayRating);
                     return (
                       <Image
                         key={i}
-                        src={filled ? "/images/star.png" : "/star-empty.png"}
-                        alt={filled ? "Full star" : "Empty star"}
+                        src="/images/star.png"
+                        alt="star"
                         width={16}
                         height={16}
+                        className={filled ? "" : "opacity-30 grayscale"}
                       />
                     );
                   })}
@@ -909,7 +960,7 @@ export default function ProductPage() {
               </div>
 
               <div className="mt-1 text-[13px] text-[#9ca3af]">
-                {reviewSummary.count || product.reviews || 0} reviews
+                {displayReviewCount} reviews
               </div>
 
               <div className="mt-3 text-[22px] font-semibold text-[#7dd3fc]">
@@ -1047,10 +1098,7 @@ export default function ProductPage() {
                 aria-label="Show reviews tab"
                 title="Show reviews tab"
               >
-                Reviews{" "}
-                <span className="text-[13px]">
-                  ({reviewSummary.count || product.reviews || 0})
-                </span>
+                Reviews <span className="text-[13px]">({displayReviewCount})</span>
               </button>
             </div>
 
@@ -1062,11 +1110,11 @@ export default function ProductPage() {
                   <div className="text-sm text-[#9ca3af]">
                     Avg:{" "}
                     <span className="font-semibold text-white">
-                      {Number(reviewSummary.avgRating || 0).toFixed(1)}
+                      {displayRating.toFixed(1)}
                     </span>{" "}
                     •{" "}
                     <span className="font-semibold text-white">
-                      {reviewSummary.count || 0}
+                      {displayReviewCount}
                     </span>{" "}
                     reviews
                   </div>

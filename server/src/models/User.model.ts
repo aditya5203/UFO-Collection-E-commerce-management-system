@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from "mongoose";
 import bcrypt from "bcryptjs";
 
 export type ClothingSize = "XS" | "S" | "M" | "L" | "XL" | "XXL";
-export type UserRole = "customer" | "admin" | "superadmin";
+export type UserRole = "customer" | "admin" | "superadmin" | "delivery";
 export type AdminStatus = "active" | "inactive" | "invited";
 
 export interface IAdminPermissions {
@@ -72,6 +72,11 @@ export interface IUser extends Document {
   mustChangePassword?: boolean;
   permissions?: IAdminPermissions;
   address?: string;
+
+  phone?: string;
+  vehicleType?: string;
+  vehicleNumber?: string;
+  deliveryArea?: string;
 
   height?: number;
   weight?: number;
@@ -305,7 +310,7 @@ const UserSchema = new Schema<IUser>(
     role: {
       type: String,
       default: "customer",
-      enum: ["customer", "admin", "superadmin"],
+      enum: ["customer", "admin", "superadmin", "delivery"],
     },
 
     status: {
@@ -325,6 +330,11 @@ const UserSchema = new Schema<IUser>(
     },
 
     address: { type: String, trim: true },
+
+    phone: { type: String, trim: true, default: "" },
+    vehicleType: { type: String, trim: true, default: "" },
+    vehicleNumber: { type: String, trim: true, default: "" },
+    deliveryArea: { type: String, trim: true, default: "" },
 
     height: { type: Number },
     weight: { type: Number },

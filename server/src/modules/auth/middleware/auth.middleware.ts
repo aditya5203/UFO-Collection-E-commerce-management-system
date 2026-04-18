@@ -1,15 +1,13 @@
-// server/src/modules/auth/middleware/auth.middleware.ts
-
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../../../config";
 import { JwtPayload } from "../types/auth.types";
 import { AppError } from "../../../middleware/error.middleware";
-import { User } from "../../../models"; // ✅ barrel export (User.model.ts)
+import { User } from "../../../models";
 
-// ✅ cookie names
 const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
 const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
+const DELIVERY_COOKIE = process.env.DELIVERY_COOKIE_NAME || "deliveryToken";
 
 export type AuthRequest = Request & {
   user?: {
@@ -20,27 +18,20 @@ export type AuthRequest = Request & {
   };
 };
 
-// ✅ clear cookie helper (must match your cookie options enough to clear)
 function clearAuthCookie(res: Response, cookieName: string) {
-  // For clearing reliably, path should match. secure/samesite vary in dev/prod,
-  // but even minimal clear usually works. If you want perfect matching, reuse
-  // getCookieOptions() from controller, but middleware doesn't have it.
   res.clearCookie(cookieName, { path: "/" });
 }
 
-// ✅ Base middleware factory: verifies token and sets req.user
 export const makeAuthMiddleware =
   (cookieName: string) =>
   async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
       let token: string | undefined;
 
-      // 1) Cookie
       if (req.cookies && req.cookies[cookieName]) {
         token = req.cookies[cookieName] as string;
       }
 
-      // 2) Authorization header fallback
       if (!token) {
         const authHeader = req.headers.authorization;
         if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -58,13 +49,9 @@ export const makeAuthMiddleware =
         role: decoded.role,
       };
 
-      // ✅ EXTRA SECURITY: block soft-deleted users immediately
-      // NOTE: In User.model.ts you added pre(/^find/) filter that hides deleted users.
-      // So this findById will return null for deleted users -> treat as unauthorized.
       const dbUser = await User.findById(decoded.userId).select("_id role");
 
       if (!dbUser) {
-        // user missing OR soft-deleted (because pre-find filter hides isDeleted users)
         clearAuthCookie(res, cookieName);
         return next(new AppError("User not found or deleted", 401));
       }
@@ -83,7 +70,6 @@ export const makeAuthMiddleware =
     }
   };
 
-// ✅ Customer auth: allow ANY logged-in non-admin user
 export const customerAuthMiddleware = (
   req: AuthRequest,
   res: Response,
@@ -94,8 +80,7 @@ export const customerAuthMiddleware = (
 
     const role = String(req.user?.role || "").toLowerCase();
 
-    // block admin roles from customer endpoints
-    if (role === "admin" || role === "superadmin") {
+    if (role !== "customer") {
       clearAuthCookie(res, CUSTOMER_COOKIE);
       return next(new AppError("Customer access only", 403));
     }
@@ -104,7 +89,6 @@ export const customerAuthMiddleware = (
   });
 };
 
-// ✅ Admin auth: must be admin/superadmin
 export const adminAuthMiddleware = (
   req: AuthRequest,
   res: Response,
@@ -123,7 +107,24 @@ export const adminAuthMiddleware = (
   });
 };
 
-// ✅ Role-based authorization
+export const deliveryAuthMiddleware = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  return makeAuthMiddleware(DELIVERY_COOKIE)(req, res, (err?: any) => {
+    if (err) return next(err);
+
+    const role = String(req.user?.role || "").toLowerCase();
+    if (role !== "delivery") {
+      clearAuthCookie(res, DELIVERY_COOKIE);
+      return next(new AppError("Delivery access only", 403));
+    }
+
+    return next();
+  });
+};
+
 export const authorize =
   (...roles: string[]) =>
   (req: AuthRequest, _res: Response, next: NextFunction) => {
@@ -141,23 +142,23 @@ export const authorize =
     return next();
   };
 
-// ✅ allow BOTH admin OR customer (used for invoice download)
 export const anyAuthMiddleware = (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) => {
-  // Try admin token first
   makeAuthMiddleware(ADMIN_COOKIE)(req, res, (adminErr?: any) => {
     if (!adminErr && req.user?.userId) return next();
 
-    // If admin token not valid, try customer token
     makeAuthMiddleware(CUSTOMER_COOKIE)(req, res, (custErr?: any) => {
-      if (custErr) return next(custErr);
-      return next();
+      if (!custErr && req.user?.userId) return next();
+
+      makeAuthMiddleware(DELIVERY_COOKIE)(req, res, (deliveryErr?: any) => {
+        if (deliveryErr) return next(deliveryErr);
+        return next();
+      });
     });
   });
 };
 
-// ✅ Default export: auth only (no role restriction)
 export default makeAuthMiddleware(CUSTOMER_COOKIE);

@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { io, Socket } from "socket.io-client";
 import { useParams, useRouter } from "next/navigation";
 
 type OrderItem = {
@@ -20,8 +21,17 @@ type OrderStatus =
   | "Pending"
   | "Confirmed"
   | "Shipped"
+  | "Transit"
   | "Delivered"
   | "Cancelled";
+
+type DeliveryAssignmentStatus =
+  | "Assigned"
+  | "Picked Up"
+  | "Out for Delivery"
+  | "Delivered"
+  | "Failed Delivery"
+  | "Returned";
 
 type Order = {
   orderId: string;
@@ -50,6 +60,22 @@ type Order = {
     taxes: number;
     total: number;
   };
+
+  deliveryAssignment?: {
+    deliveryManId?: string;
+    name?: string;
+    phone?: string;
+    email?: string;
+    vehicleType?: string;
+    note?: string;
+    assignedAt?: string | null;
+    pickedUpAt?: string | null;
+    outForDeliveryAt?: string | null;
+    deliveredAt?: string | null;
+    failedAt?: string | null;
+    returnedAt?: string | null;
+    status?: DeliveryAssignmentStatus;
+  } | null;
 };
 
 type ReviewDraft = {
@@ -70,6 +96,7 @@ function StatusBadge({ status }: { status: OrderStatus }) {
     Pending: "bg-yellow-500/15 text-yellow-200 border-yellow-500/30",
     Confirmed: "bg-blue-500/15 text-blue-200 border-blue-500/30",
     Shipped: "bg-purple-500/15 text-purple-200 border-purple-500/30",
+    Transit: "bg-cyan-500/15 text-cyan-200 border-cyan-500/30",
     Delivered: "bg-green-500/15 text-green-200 border-green-500/30",
     Cancelled: "bg-red-500/15 text-red-200 border-red-500/30",
   };
@@ -83,11 +110,91 @@ function StatusBadge({ status }: { status: OrderStatus }) {
   );
 }
 
+function DeliveryStatusBadge({
+  status,
+}: {
+  status?: DeliveryAssignmentStatus | string;
+}) {
+  const value = String(status || "").trim();
+  if (!value) return null;
+
+  const map: Record<string, string> = {
+    Assigned: "bg-slate-500/15 text-slate-200 border-slate-500/30",
+    "Picked Up": "bg-indigo-500/15 text-indigo-200 border-indigo-500/30",
+    "Out for Delivery": "bg-cyan-500/15 text-cyan-200 border-cyan-500/30",
+    Delivered: "bg-green-500/15 text-green-200 border-green-500/30",
+    "Failed Delivery": "bg-orange-500/15 text-orange-200 border-orange-500/30",
+    Returned: "bg-red-500/15 text-red-200 border-red-500/30",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${
+        map[value] ||
+        "bg-slate-500/15 text-slate-200 border-slate-500/30"
+      }`}
+    >
+      {value}
+    </span>
+  );
+}
+
 function getFilenameFromDisposition(disposition: string | null) {
   if (!disposition) return "";
   const m = disposition.match(/filename\*?=(?:UTF-8''|")?([^";\n]+)"?/i);
   if (!m?.[1]) return "";
   return decodeURIComponent(m[1]);
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function mergeLiveOrder(prev: Order | null, payload: any): Order | null {
+  if (!prev) return prev;
+
+  const nextStatus = String(payload?.orderStatus || "").trim();
+  const nextPaymentStatus = String(payload?.paymentStatus || "").trim();
+  const nextDelivery = payload?.deliveryAssignment || null;
+
+  return {
+    ...prev,
+    status: nextStatus ? (nextStatus as OrderStatus) : prev.status,
+    payment: {
+      ...prev.payment,
+      method:
+        nextPaymentStatus.toLowerCase() === "paid" &&
+        String(prev.payment?.method || "").toUpperCase() === "COD"
+          ? "Cash on Delivery (Paid)"
+          : prev.payment.method,
+    },
+    deliveryAssignment: nextDelivery
+      ? {
+          deliveryManId: String(nextDelivery.deliveryManId || ""),
+          name: String(nextDelivery.name || ""),
+          phone: String(nextDelivery.phone || ""),
+          email: String(nextDelivery.email || ""),
+          vehicleType: String(nextDelivery.vehicleType || ""),
+          note: String(nextDelivery.note || ""),
+          assignedAt: nextDelivery.assignedAt || null,
+          pickedUpAt: nextDelivery.pickedUpAt || null,
+          outForDeliveryAt: nextDelivery.outForDeliveryAt || null,
+          deliveredAt: nextDelivery.deliveredAt || null,
+          failedAt: nextDelivery.failedAt || null,
+          returnedAt: nextDelivery.returnedAt || null,
+          status: (nextDelivery.status || "") as DeliveryAssignmentStatus,
+        }
+      : prev.deliveryAssignment || null,
+  };
 }
 
 export default function CustomerOrderDetailsPage() {
@@ -108,59 +215,91 @@ export default function CustomerOrderDetailsPage() {
   const [reviewOk, setReviewOk] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<ReviewDraft | null>(null);
 
-  React.useEffect(() => {
-    let mounted = true;
+  const socketRef = React.useRef<Socket | null>(null);
 
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
+  const loadOrder = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
 
-        if (!orderIdFromUrl) {
-          setOrder(null);
-          setError("Order ID is missing in the URL.");
-          return;
-        }
+      if (!orderIdFromUrl) {
+        setOrder(null);
+        setError("Order ID is missing in the URL.");
+        return;
+      }
 
-        const meRes = await fetch(`${API}/auth/me`, {
+      const meRes = await fetch(`${API}/auth/me`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      if (meRes.status === 401) {
+        router.push("/login");
+        return;
+      }
+
+      const res = await fetch(
+        `${API}/orders/my/${encodeURIComponent(orderIdFromUrl)}`,
+        {
           method: "GET",
           credentials: "include",
           cache: "no-store",
-        });
-
-        if (meRes.status === 401) {
-          router.push("/login");
-          return;
         }
+      );
 
-        const res = await fetch(
-          `${API}/orders/my/${encodeURIComponent(orderIdFromUrl)}`,
-          {
-            method: "GET",
-            credentials: "include",
-            cache: "no-store",
-          }
-        );
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) throw new Error(data?.message || "Failed to load order");
 
-        const data = await res.json().catch(() => ({} as any));
-        if (!res.ok) throw new Error(data?.message || "Failed to load order");
-
-        if (!mounted) return;
-        setOrder(data?.order || null);
-      } catch (e: any) {
-        if (!mounted) return;
-        setError(e?.message || "Something went wrong");
-      } finally {
-        if (!mounted) return;
-        setLoading(false);
-      }
+      setOrder(data?.order || null);
+    } catch (e: any) {
+      setError(e?.message || "Something went wrong");
+    } finally {
+      setLoading(false);
     }
+  }, [orderIdFromUrl, router]);
 
-    load();
+  React.useEffect(() => {
+    let mounted = true;
+
+    const run = async () => {
+      if (!mounted) return;
+      await loadOrder();
+    };
+
+    run();
+
     return () => {
       mounted = false;
     };
-  }, [orderIdFromUrl, router]);
+  }, [loadOrder]);
+
+  React.useEffect(() => {
+    const socket = io(API_BASE, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    socketRef.current = socket;
+
+    socket.on("order:updated", (payload: any) => {
+      const payloadCode = String(payload?.orderCode || "").replace(/^#/, "");
+      const currentCode = String(order?.orderId || orderIdFromUrl).replace(
+        /^#/,
+        ""
+      );
+
+      if (payloadCode && currentCode && payloadCode === currentCode) {
+        setOrder((prev) => mergeLiveOrder(prev, payload));
+      }
+    });
+
+    return () => {
+      socket.off("order:updated");
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [order?.orderId, orderIdFromUrl]);
 
   const trackingNumber = (order?.orderId || orderIdFromUrl).replace("#", "");
 
@@ -223,6 +362,9 @@ export default function CustomerOrderDetailsPage() {
       if (!res.ok) throw new Error(data?.message || "Failed to submit review");
 
       setReviewOk("Review submitted successfully!");
+
+      window.dispatchEvent(new Event("ufo_review_updated"));
+
       setTimeout(() => {
         closeReviewModal();
       }, 900);
@@ -378,6 +520,10 @@ export default function CustomerOrderDetailsPage() {
 
                 <StatusBadge status={order.status} />
 
+                {order.deliveryAssignment?.status ? (
+                  <DeliveryStatusBadge status={order.deliveryAssignment.status} />
+                ) : null}
+
                 <button
                   type="button"
                   onClick={downloadInvoice}
@@ -495,7 +641,9 @@ export default function CustomerOrderDetailsPage() {
                           <span>{it.colorLabel || "-"}</span>
                         </div>
 
-                        <div className="text-center text-[#9aa3cc]">{it.qty}</div>
+                        <div className="text-center text-[#9aa3cc]">
+                          {it.qty}
+                        </div>
                         <span className="text-[#9aa3cc]">Rs. {it.price}</span>
                         <span className="text-white">Rs. {it.price * it.qty}</span>
                       </div>
@@ -599,6 +747,60 @@ export default function CustomerOrderDetailsPage() {
                     <div className="col-span-12 text-white md:col-span-9">
                       {order.shipping.estimatedDelivery || "—"}
                     </div>
+
+                    {order.deliveryAssignment?.status ? (
+                      <>
+                        <div className="col-span-12 h-px bg-[#2b2f45]" />
+                        <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
+                          Delivery Status
+                        </div>
+                        <div className="col-span-12 text-white md:col-span-9">
+                          <DeliveryStatusBadge
+                            status={order.deliveryAssignment.status}
+                          />
+                        </div>
+                      </>
+                    ) : null}
+
+                    {order.deliveryAssignment?.name ? (
+                      <>
+                        <div className="col-span-12 h-px bg-[#2b2f45]" />
+                        <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
+                          Delivery Rider
+                        </div>
+                        <div className="col-span-12 text-white md:col-span-9">
+                          {order.deliveryAssignment.name}
+                          {order.deliveryAssignment.phone
+                            ? ` • ${order.deliveryAssignment.phone}`
+                            : ""}
+                        </div>
+                      </>
+                    ) : null}
+
+                    {order.deliveryAssignment?.outForDeliveryAt ? (
+                      <>
+                        <div className="col-span-12 h-px bg-[#2b2f45]" />
+                        <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
+                          Out for Delivery At
+                        </div>
+                        <div className="col-span-12 text-white md:col-span-9">
+                          {formatDateTime(order.deliveryAssignment.outForDeliveryAt)}
+                        </div>
+                      </>
+                    ) : null}
+
+                    {order.deliveryAssignment?.deliveredAt ? (
+                      <>
+                        <div className="col-span-12 h-px bg-[#2b2f45]" />
+                        <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
+                          Delivered At
+                        </div>
+                        <div className="col-span-12 text-white md:col-span-9">
+                          {formatDateTime(order.deliveryAssignment.deliveredAt)}
+                        </div>
+                      </>
+                    ) : null}
+
                     <div className="col-span-12 h-px bg-[#2b2f45]" />
 
                     <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
@@ -606,7 +808,7 @@ export default function CustomerOrderDetailsPage() {
                     </div>
                     <div className="col-span-12 md:col-span-9">
                       <Link
-                        href={`/order-tracking?tracking=${encodeURIComponent(
+                        href={`/order-tracking?code=${encodeURIComponent(
                           trackingNumber
                         )}`}
                         className="text-white underline underline-offset-4 hover:text-[#c9b9ff]"

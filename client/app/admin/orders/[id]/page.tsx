@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useParams, useRouter } from "next/navigation";
+import { io, Socket } from "socket.io-client";
+import { useParams } from "next/navigation";
 import AdminPageGuard from "../../_components/AdminPageGuard";
 import {
   AdminPermissions,
@@ -16,12 +17,36 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
 type PaymentStatus = "Paid" | "Pending" | "Failed";
-type OrderStatus = "Pending" | "Shipped" | "Delivered" | "Cancelled";
+type OrderStatus =
+  | "Pending"
+  | "Shipped"
+  | "Transit"
+  | "Delivered"
+  | "Cancelled";
+
+type DeliveryAssignmentStatus =
+  | "Assigned"
+  | "Picked Up"
+  | "Out for Delivery"
+  | "Delivered"
+  | "Failed Delivery"
+  | "Returned";
 
 type TimelineStep = {
   label: string;
   date: string;
   status: "done" | "current" | "upcoming";
+};
+
+type RiderRow = {
+  id: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  vehicleType?: string;
+  vehicleNumber?: string;
+  area?: string;
+  isActive?: boolean;
 };
 
 function formatNPR(paisa: number) {
@@ -65,22 +90,38 @@ function getInitials(name?: string) {
   const safe = safeStr(name).trim();
   if (!safe) return "CU";
   const parts = safe.split(/\s+/).filter(Boolean);
-  const initials = parts.slice(0, 2).map((x) => x[0]?.toUpperCase()).join("");
+  const initials = parts
+    .slice(0, 2)
+    .map((x) => x[0]?.toUpperCase())
+    .join("");
   return initials || "CU";
 }
 
 function getStatusTone(status?: string) {
   const s = safeStr(status).toLowerCase();
 
-  if (s === "paid" || s === "delivered") {
+  if (
+    s === "paid" ||
+    s === "delivered" ||
+    s === "active" ||
+    s === "assigned" ||
+    s === "picked up" ||
+    s === "out for delivery"
+  ) {
     return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
   }
 
-  if (s === "pending" || s === "shipped") {
+  if (s === "pending" || s === "shipped" || s === "transit") {
     return "border-amber-500/30 bg-amber-500/10 text-amber-200";
   }
 
-  if (s === "failed" || s === "cancelled") {
+  if (
+    s === "failed" ||
+    s === "cancelled" ||
+    s === "inactive" ||
+    s === "failed delivery" ||
+    s === "returned"
+  ) {
     return "border-red-500/30 bg-red-500/10 text-red-200";
   }
 
@@ -193,7 +234,6 @@ async function safeJson(res: Response) {
 
 export default function OrderDetailsPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const id = params?.id;
 
   const [loading, setLoading] = React.useState(true);
@@ -210,6 +250,14 @@ export default function OrderDetailsPage() {
   const [permissions, setPermissions] = React.useState<AdminPermissions | null>(
     null
   );
+
+  const [riders, setRiders] = React.useState<RiderRow[]>([]);
+  const [ridersLoading, setRidersLoading] = React.useState(false);
+
+  const [deliveryManId, setDeliveryManId] = React.useState("");
+  const [deliveryNote, setDeliveryNote] = React.useState("");
+  const [deliveryStatus, setDeliveryStatus] =
+    React.useState<DeliveryAssignmentStatus>("Assigned");
 
   const canUpdate = hasPermission(role, permissions, "orderUpdate");
 
@@ -251,49 +299,118 @@ export default function OrderDetailsPage() {
   }, []);
 
   React.useEffect(() => {
-    if (!id) return;
-
-    const load = async () => {
+    const loadRiders = async () => {
       try {
-        setLoading(true);
-        setError("");
+        setRidersLoading(true);
 
-        const res = await fetch(`${API_BASE}/api/admin/orders/${id}`, {
+        const res = await fetch(`${API_BASE}/api/admin/delivery-staff?search=`, {
           credentials: "include",
           cache: "no-store",
         });
 
         const json = await safeJson(res);
+        const data = Array.isArray((json as any)?.data) ? (json as any).data : [];
 
-        if (!res.ok) {
-          setError((json as any)?.message || "Order not found");
-          setOrder(null);
-          return;
-        }
+        const normalized: RiderRow[] = data
+          .map((item: any) => ({
+            id: safeStr(item?.id || item?._id),
+            name: safeStr(item?.name),
+            email: safeStr(item?.email),
+            phone: safeStr(item?.phone),
+            vehicleType: safeStr(item?.vehicleType),
+            vehicleNumber: safeStr(item?.vehicleNumber),
+            area: safeStr(item?.area),
+            isActive:
+              typeof item?.isActive === "boolean"
+                ? item.isActive
+                : Boolean(item?.active),
+          }))
+          .filter((item: RiderRow) => item.id && item.isActive);
 
-        setOrder((json as any).data);
-        setPaymentStatus(
-          (((json as any).data?.paymentStatus || "Pending") as PaymentStatus)
-        );
-        setOrderStatus(
-          (((json as any).data?.orderStatus || "Pending") as OrderStatus)
-        );
+        setRiders(normalized);
       } catch {
-        setError("Failed to load order");
-        setOrder(null);
+        setRiders([]);
       } finally {
-        setLoading(false);
+        setRidersLoading(false);
       }
     };
 
-    load();
+    loadRiders();
+  }, []);
+
+  const loadOrder = React.useCallback(async () => {
+    if (!id) return;
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const res = await fetch(`${API_BASE}/api/admin/orders/${id}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+
+      const json = await safeJson(res);
+
+      if (!res.ok) {
+        setError((json as any)?.message || "Order not found");
+        setOrder(null);
+        return;
+      }
+
+      const nextOrder = (json as any).data;
+      setOrder(nextOrder);
+      setPaymentStatus((nextOrder?.paymentStatus || "Pending") as PaymentStatus);
+      setOrderStatus((nextOrder?.orderStatus || "Pending") as OrderStatus);
+      setDeliveryManId(safeStr(nextOrder?.deliveryAssignment?.deliveryManId || ""));
+      setDeliveryNote(safeStr(nextOrder?.deliveryAssignment?.note || ""));
+      setDeliveryStatus(
+        (nextOrder?.deliveryAssignment?.status ||
+          "Assigned") as DeliveryAssignmentStatus
+      );
+    } catch {
+      setError("Failed to load order");
+      setOrder(null);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  React.useEffect(() => {
+    loadOrder();
+  }, [loadOrder]);
+
+  React.useEffect(() => {
+    if (!id) return;
+
+    const socket: Socket = io(API_BASE, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("order:updated", (payload: any) => {
+      const updatedOrderId = String(payload?.orderId || "");
+      if (updatedOrderId && updatedOrderId === String(id)) {
+        loadOrder();
+      }
+    });
+
+    return () => {
+      socket.off("order:updated");
+      socket.disconnect();
+    };
+  }, [id, loadOrder]);
 
   const saveChanges = async () => {
     if (!order?.id) return;
 
     if (!canUpdate) {
       alert("You do not have permission to update orders.");
+      return;
+    }
+
+    if (!deliveryManId) {
+      alert("Please select a delivery rider.");
       return;
     }
 
@@ -307,6 +424,11 @@ export default function OrderDetailsPage() {
         body: JSON.stringify({
           paymentStatus,
           orderStatus,
+          deliveryAssignment: {
+            deliveryManId,
+            note: deliveryNote,
+            status: deliveryStatus,
+          },
         }),
       });
 
@@ -317,7 +439,24 @@ export default function OrderDetailsPage() {
         return;
       }
 
-      router.push("/admin/orders");
+      const updated = (json as any)?.data;
+      if (updated) {
+        setOrder(updated);
+        setPaymentStatus((updated.paymentStatus || "Pending") as PaymentStatus);
+        setOrderStatus((updated.orderStatus || "Pending") as OrderStatus);
+        setDeliveryManId(
+          safeStr(updated?.deliveryAssignment?.deliveryManId || deliveryManId)
+        );
+        setDeliveryNote(
+          safeStr(updated?.deliveryAssignment?.note || deliveryNote)
+        );
+        setDeliveryStatus(
+          (updated?.deliveryAssignment?.status ||
+            deliveryStatus) as DeliveryAssignmentStatus
+        );
+      }
+
+      alert("Order updated successfully.");
     } catch {
       alert("Failed to save changes");
     } finally {
@@ -361,11 +500,21 @@ export default function OrderDetailsPage() {
       label: "Order Shipped",
       date: order.shippedAt ? formatDate(order.shippedAt) : "—",
       status:
-        orderStatus === "Delivered"
-          ? "done"
-          : orderStatus === "Shipped"
+        orderStatus === "Shipped"
           ? "current"
-          : "upcoming",
+          : orderStatus === "Transit" || orderStatus === "Delivered"
+            ? "done"
+            : "upcoming",
+    },
+    {
+      label: "Order In Transit",
+      date: order.inTransitAt ? formatDate(order.inTransitAt) : "—",
+      status:
+        orderStatus === "Transit"
+          ? "current"
+          : orderStatus === "Delivered"
+            ? "done"
+            : "upcoming",
     },
     {
       label: "Order Delivered",
@@ -380,9 +529,13 @@ export default function OrderDetailsPage() {
   const addrPhone = safeStr(addr?.phone);
   const addrStreet = safeStr(addr?.street);
   const addrArea =
-    safeStr(addr?.addressLine) || safeStr(addr?.area) || safeStr(addr?.district);
+    safeStr(addr?.addressLine) ||
+    safeStr(addr?.area) ||
+    safeStr(addr?.district);
   const addrCity =
-    safeStr(addr?.cityOrMunicipality) || safeStr(addr?.city) || safeStr(addr?.provinceId);
+    safeStr(addr?.cityOrMunicipality) ||
+    safeStr(addr?.city) ||
+    safeStr(addr?.provinceId);
 
   const customerId = order?.customer?.id || order?.customer?._id || "";
   const items = Array.isArray(order.items) ? order.items : [];
@@ -396,6 +549,14 @@ export default function OrderDetailsPage() {
   const shippingPaisa = Number(order?.shippingPaisa || 0);
   const discountPaisa = Number(order?.discountPaisa || 0);
   const totalPaisa = Number(order?.totalPaisa || 0);
+
+  const assignedRiderName =
+    safeStr(order?.deliveryAssignment?.name) || "Not assigned";
+  const assignedRiderPhone = safeStr(order?.deliveryAssignment?.phone);
+  const assignedRiderVehicle = safeStr(order?.deliveryAssignment?.vehicleType);
+  const assignedAt = order?.deliveryAssignment?.assignedAt
+    ? formatDateTime(order?.deliveryAssignment?.assignedAt)
+    : "-";
 
   return (
     <AdminPageGuard permission="orderView">
@@ -413,6 +574,9 @@ export default function OrderDetailsPage() {
                 </h1>
                 <StatusPill>{paymentStatus}</StatusPill>
                 <StatusPill>{orderStatus}</StatusPill>
+                {order?.deliveryAssignment?.status ? (
+                  <StatusPill>{order.deliveryAssignment.status}</StatusPill>
+                ) : null}
               </div>
 
               <p className="text-sm text-slate-400">
@@ -728,6 +892,130 @@ export default function OrderDetailsPage() {
 
             <section className="rounded-3xl border border-slate-700/50 bg-[#0A1324] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
               <h2 className="text-lg font-bold text-slate-100">
+                Delivery Assignment
+              </h2>
+              <p className="mt-1 text-sm text-slate-400">
+                Assign rider and manage delivery flow for this order
+              </p>
+
+              <div className="mt-5 space-y-5">
+                <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-slate-100">
+                      Current Rider
+                    </div>
+                    <div className="text-sm text-slate-300">{assignedRiderName}</div>
+                    <div className="text-sm text-slate-400">
+                      {assignedRiderPhone || "-"}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {assignedRiderVehicle || "-"}
+                    </div>
+                    <div className="pt-2">
+                      <LineItem label="Assigned At" value={assignedAt} />
+                      <LineItem
+                        label="Delivery Status"
+                        value={
+                          order?.deliveryAssignment?.status ? (
+                            <StatusPill>{order.deliveryAssignment.status}</StatusPill>
+                          ) : (
+                            "-"
+                          )
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="delivery-rider"
+                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
+                  >
+                    Delivery Rider
+                  </label>
+                  <select
+                    id="delivery-rider"
+                    value={deliveryManId}
+                    onChange={(e) => setDeliveryManId(e.target.value)}
+                    disabled={!canUpdate || ridersLoading}
+                    className="w-full rounded-2xl border border-slate-700/50 bg-slate-900/25 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-500/60 focus:ring-4 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="" className="bg-[#0A1324]">
+                      {ridersLoading ? "Loading riders..." : "Select delivery rider"}
+                    </option>
+                    {riders.map((rider) => (
+                      <option
+                        key={rider.id}
+                        value={rider.id}
+                        className="bg-[#0A1324]"
+                      >
+                        {rider.name || "Unnamed"}{" "}
+                        {rider.area ? `- ${rider.area}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="delivery-status"
+                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
+                  >
+                    Delivery Status
+                  </label>
+                  <select
+                    id="delivery-status"
+                    value={deliveryStatus}
+                    onChange={(e) =>
+                      setDeliveryStatus(e.target.value as DeliveryAssignmentStatus)
+                    }
+                    disabled={!canUpdate}
+                    className="w-full rounded-2xl border border-slate-700/50 bg-slate-900/25 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-500/60 focus:ring-4 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="Assigned" className="bg-[#0A1324]">
+                      Assigned
+                    </option>
+                    <option value="Picked Up" className="bg-[#0A1324]">
+                      Picked Up
+                    </option>
+                    <option value="Out for Delivery" className="bg-[#0A1324]">
+                      Out for Delivery
+                    </option>
+                    <option value="Delivered" className="bg-[#0A1324]">
+                      Delivered
+                    </option>
+                    <option value="Failed Delivery" className="bg-[#0A1324]">
+                      Failed Delivery
+                    </option>
+                    <option value="Returned" className="bg-[#0A1324]">
+                      Returned
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="delivery-note"
+                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
+                  >
+                    Delivery Note
+                  </label>
+                  <textarea
+                    id="delivery-note"
+                    value={deliveryNote}
+                    onChange={(e) => setDeliveryNote(e.target.value)}
+                    disabled={!canUpdate}
+                    rows={4}
+                    placeholder="Call customer before arrival, gate instructions, landmark, etc."
+                    className="w-full rounded-2xl border border-slate-700/50 bg-slate-900/25 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-sky-500/60 focus:ring-4 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-slate-700/50 bg-[#0A1324] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
+              <h2 className="text-lg font-bold text-slate-100">
                 Payment & Totals
               </h2>
               <p className="mt-1 text-sm text-slate-400">
@@ -767,7 +1055,7 @@ export default function OrderDetailsPage() {
                     Update Order
                   </h2>
                   <p className="mt-1 text-sm text-slate-400">
-                    Change payment and fulfillment status
+                    Change payment, fulfillment, and delivery assignment
                   </p>
                 </div>
 
@@ -830,6 +1118,9 @@ export default function OrderDetailsPage() {
                     </option>
                     <option value="Shipped" className="bg-[#0A1324]">
                       Shipped
+                    </option>
+                    <option value="Transit" className="bg-[#0A1324]">
+                      Transit
                     </option>
                     <option value="Delivered" className="bg-[#0A1324]">
                       Delivered

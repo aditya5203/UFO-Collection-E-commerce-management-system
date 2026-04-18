@@ -4,6 +4,7 @@ import { authController } from "../controllers/auth.controller";
 import {
   customerAuthMiddleware,
   adminAuthMiddleware,
+  deliveryAuthMiddleware,
 } from "../middleware/auth.middleware";
 import passport from "../../../config/passport";
 
@@ -145,6 +146,213 @@ router.post("/register", authController.register);
  *               $ref: '#/components/schemas/Error'
  */
 router.post("/login", authController.login);
+
+/* =========================================================
+ * Delivery Auth
+ * =======================================================*/
+
+/**
+ * @swagger
+ * /api/auth/delivery/login:
+ *   post:
+ *     summary: Login delivery rider
+ *     description: Authenticate a delivery rider (role = delivery) and return JWT token
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: rider@example.com
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: password123
+ *     responses:
+ *       200:
+ *         description: Delivery login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Delivery login successful
+ *                 token:
+ *                   type: string
+ *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *                 mustChangePassword:
+ *                   type: boolean
+ *                   example: true
+ *       401:
+ *         description: Invalid credentials
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - user is not a delivery rider
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post("/delivery/login", authController.deliveryLogin);
+
+/**
+ * @swagger
+ * /api/auth/delivery/logout:
+ *   post:
+ *     summary: Logout delivery rider
+ *     description: Logout the currently authenticated delivery rider (clears ONLY delivery cookie/token)
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Delivery logout successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Logout successful
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - user is not delivery
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post(
+  "/delivery/logout",
+  deliveryAuthMiddleware,
+  authController.deliveryLogout
+);
+
+/**
+ * @swagger
+ * /api/auth/delivery/me:
+ *   get:
+ *     summary: Get current delivery rider
+ *     description: Get the currently authenticated delivery rider information
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Delivery rider information retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - user is not delivery
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get("/delivery/me", deliveryAuthMiddleware, authController.deliveryMe);
+
+/**
+ * @swagger
+ * /api/auth/delivery/change-password:
+ *   post:
+ *     summary: Change delivery rider password
+ *     description: Change password for authenticated delivery rider. Useful for first login when mustChangePassword is true.
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword, newPassword]
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 format: password
+ *                 example: oldPassword123
+ *               newPassword:
+ *                 type: string
+ *                 format: password
+ *                 example: NewStrongPassword123
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Password changed successfully
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden - user is not delivery
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post(
+  "/delivery/change-password",
+  deliveryAuthMiddleware,
+  authController.deliveryChangePassword
+);
 
 /* =========================================================
  * Forgot / Reset Password
@@ -396,7 +604,7 @@ router.post("/logout", customerAuthMiddleware, authController.logout);
 router.get("/me", customerAuthMiddleware, authController.getMe);
 
 /* =========================================================
- * Delete Account (Customer) ✅ NEW
+ * Delete Account (Customer)
  * =======================================================*/
 
 /**
