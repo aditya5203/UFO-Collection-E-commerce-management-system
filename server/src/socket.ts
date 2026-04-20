@@ -48,10 +48,14 @@ export function initSocket(server: HTTPServer) {
 
       const adminCookieName = process.env.ADMIN_COOKIE_NAME || "adminToken";
       const customerCookieName = process.env.COOKIE_NAME || "token";
+      const deliveryCookieName =
+        process.env.DELIVERY_COOKIE_NAME || "deliveryToken";
 
       const adminToken = cookies[adminCookieName];
       const customerToken = cookies[customerCookieName];
-      const token = adminToken || customerToken;
+      const deliveryToken = cookies[deliveryCookieName];
+
+      const token = adminToken || customerToken || deliveryToken;
 
       if (!token) {
         return next(new Error("Unauthorized"));
@@ -96,6 +100,9 @@ export function initSocket(server: HTTPServer) {
       socket.join(`admin:${userId}`);
       socket.join("admins");
       console.log(`🔔 Admin socket connected: ${userId} (${role})`);
+    } else if (userId && role === "delivery") {
+      socket.join(`delivery:${userId}`);
+      console.log(`🔔 Delivery socket connected: ${userId}`);
     } else {
       console.log(`🔔 Customer socket connected: ${userId || "unknown"}`);
     }
@@ -103,6 +110,8 @@ export function initSocket(server: HTTPServer) {
     socket.on("disconnect", () => {
       if (role === "admin" || role === "superadmin") {
         console.log(`🔕 Admin socket disconnected: ${userId || "unknown"}`);
+      } else if (role === "delivery") {
+        console.log(`🔕 Delivery socket disconnected: ${userId || "unknown"}`);
       } else {
         console.log(`🔕 Customer socket disconnected: ${userId || "unknown"}`);
       }

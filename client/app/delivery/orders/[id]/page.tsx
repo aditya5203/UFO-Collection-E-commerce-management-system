@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   DELIVERY_ENDPOINTS,
   DeliveryOrder,
+  DeliveryOtpChannel,
   DeliveryStatus,
   formatDateLong,
   formatDateTime,
@@ -118,28 +119,15 @@ function getAllowedTransitions(currentStatus: string): DeliveryStatus[] {
   const s = safeStr(currentStatus).toLowerCase();
 
   if (!s || s === "assigned") {
-    return [
-      "Assigned",
-      "Picked Up",
-      "Out for Delivery",
-      "Delivered",
-      "Failed Delivery",
-      "Returned",
-    ];
+    return ["Assigned", "Picked Up", "Out for Delivery", "Failed Delivery", "Returned"];
   }
 
   if (s === "picked up") {
-    return [
-      "Picked Up",
-      "Out for Delivery",
-      "Delivered",
-      "Failed Delivery",
-      "Returned",
-    ];
+    return ["Picked Up", "Out for Delivery", "Failed Delivery", "Returned"];
   }
 
   if (s === "out for delivery") {
-    return ["Out for Delivery", "Delivered", "Failed Delivery", "Returned"];
+    return ["Out for Delivery", "Failed Delivery", "Returned"];
   }
 
   if (s === "delivered") {
@@ -154,14 +142,7 @@ function getAllowedTransitions(currentStatus: string): DeliveryStatus[] {
     return ["Returned"];
   }
 
-  return [
-    "Assigned",
-    "Picked Up",
-    "Out for Delivery",
-    "Delivered",
-    "Failed Delivery",
-    "Returned",
-  ];
+  return ["Assigned", "Picked Up", "Out for Delivery", "Failed Delivery", "Returned"];
 }
 
 export default function DeliveryOrderDetailsPage() {
@@ -171,6 +152,8 @@ export default function DeliveryOrderDetailsPage() {
 
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const [otpSending, setOtpSending] = React.useState(false);
+  const [otpVerifying, setOtpVerifying] = React.useState(false);
   const [order, setOrder] = React.useState<DeliveryOrder | null>(null);
   const [error, setError] = React.useState("");
 
@@ -178,45 +161,49 @@ export default function DeliveryOrderDetailsPage() {
     React.useState<DeliveryStatus>("Assigned");
   const [deliveryNote, setDeliveryNote] = React.useState("");
 
-  React.useEffect(() => {
+  const [otpChannel, setOtpChannel] = React.useState<DeliveryOtpChannel>("phone");
+  const [otpInput, setOtpInput] = React.useState("");
+  const [otpMessage, setOtpMessage] = React.useState("");
+  const [otpError, setOtpError] = React.useState("");
+
+  const loadOrder = React.useCallback(async () => {
     if (!id) return;
 
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError("");
+    try {
+      setLoading(true);
+      setError("");
 
-        const res = await fetch(`${DELIVERY_ENDPOINTS.orders}/${id}`, {
-          credentials: "include",
-          cache: "no-store",
-        });
+      const res = await fetch(`${DELIVERY_ENDPOINTS.orders}/${id}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
 
-        const json = await safeJson(res);
+      const json = await safeJson(res);
 
-        if (!res.ok) {
-          setError((json as any)?.message || "Order not found");
-          setOrder(null);
-          return;
-        }
-
-        const nextOrder = ((json as any)?.data || null) as DeliveryOrder | null;
-        setOrder(nextOrder);
-
-        setDeliveryStatus(
-          (safeStr(nextOrder?.deliveryAssignment?.status) ||
-            "Assigned") as DeliveryStatus
-        );
-        setDeliveryNote(safeStr(nextOrder?.deliveryAssignment?.note));
-      } catch {
-        setError("Failed to load order");
+      if (!res.ok) {
+        setError((json as any)?.message || "Order not found");
         setOrder(null);
-      } finally {
-        setLoading(false);
+        return;
       }
-    };
 
-    load();
+      const nextOrder = ((json as any)?.data || null) as DeliveryOrder | null;
+      setOrder(nextOrder);
+
+      setDeliveryStatus(
+        (safeStr(nextOrder?.deliveryAssignment?.status) || "Assigned") as DeliveryStatus
+      );
+      setDeliveryNote(safeStr(nextOrder?.deliveryAssignment?.note));
+    } catch {
+      setError("Failed to load order");
+      setOrder(null);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  React.useEffect(() => {
+    loadOrder();
+  }, [loadOrder]);
 
   const saveChanges = async () => {
     const orderId = pickId(order);
@@ -245,16 +232,96 @@ export default function DeliveryOrderDetailsPage() {
       const updatedOrder = ((json as any)?.data || order) as DeliveryOrder;
       setOrder(updatedOrder);
       setDeliveryStatus(
-        (safeStr(updatedOrder?.deliveryAssignment?.status) ||
-          deliveryStatus) as DeliveryStatus
+        (safeStr(updatedOrder?.deliveryAssignment?.status) || deliveryStatus) as DeliveryStatus
       );
       setDeliveryNote(safeStr(updatedOrder?.deliveryAssignment?.note));
+      setOtpMessage("");
+      setOtpError("");
       alert("Delivery status updated successfully");
       router.refresh();
     } catch {
       alert("Failed to update delivery status");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const sendOtp = async () => {
+    const orderId = pickId(order);
+    if (!orderId) return;
+
+    try {
+      setOtpSending(true);
+      setOtpError("");
+      setOtpMessage("");
+
+      const res = await fetch(`${DELIVERY_ENDPOINTS.orders}/${orderId}/send-otp`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: otpChannel }),
+      });
+
+      const json = await safeJson(res);
+
+      if (!res.ok) {
+        setOtpError((json as any)?.message || "Failed to send OTP");
+        return;
+      }
+
+      const data = (json as any)?.data || {};
+      let message = `OTP sent via ${otpChannel} to ${safeStr(data.sentTo) || "customer"}.`;
+
+      if (otpChannel === "phone" && safeStr(data.devOtpPreview)) {
+        message += ` Demo OTP: ${safeStr(data.devOtpPreview)}`;
+      }
+
+      setOtpMessage(message);
+      setOtpInput("");
+      await loadOrder();
+    } catch {
+      setOtpError("Failed to send OTP");
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const verifyOtp = async () => {
+    const orderId = pickId(order);
+    if (!orderId) return;
+
+    try {
+      setOtpVerifying(true);
+      setOtpError("");
+      setOtpMessage("");
+
+      const res = await fetch(`${DELIVERY_ENDPOINTS.orders}/${orderId}/verify-otp`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ otp: otpInput.trim() }),
+      });
+
+      const json = await safeJson(res);
+
+      if (!res.ok) {
+        setOtpError((json as any)?.message || "Failed to verify OTP");
+        return;
+      }
+
+      const updatedOrder = ((json as any)?.data || order) as DeliveryOrder;
+      setOrder(updatedOrder);
+      setDeliveryStatus(
+        (safeStr(updatedOrder?.deliveryAssignment?.status) || "Delivered") as DeliveryStatus
+      );
+      setDeliveryNote(safeStr(updatedOrder?.deliveryAssignment?.note));
+      setOtpInput("");
+      setOtpMessage("OTP verified successfully. Order marked as delivered.");
+      router.refresh();
+    } catch {
+      setOtpError("Failed to verify OTP");
+    } finally {
+      setOtpVerifying(false);
     }
   };
 
@@ -338,10 +405,8 @@ export default function DeliveryOrderDetailsPage() {
 
   const addr = order.address || null;
   const addrTitle = addr?.label ? safeStr(addr.label) : "Shipping Address";
-  const addrName =
-    safeStr(addr?.fullName) || safeStr(order?.customer?.name) || "-";
-  const addrPhone =
-    safeStr(addr?.phone) || safeStr(order?.customer?.phone) || "-";
+  const addrName = safeStr(addr?.fullName) || safeStr(order?.customer?.name) || "-";
+  const addrPhone = safeStr(addr?.phone) || safeStr(order?.customer?.phone) || "-";
   const addrStreet = safeStr(addr?.street);
   const addrArea =
     safeStr(addr?.addressLine) || safeStr(addr?.area) || safeStr(addr?.district);
@@ -362,12 +427,17 @@ export default function DeliveryOrderDetailsPage() {
   const discountPaisa = Number(order?.discountPaisa || 0);
   const totalPaisa = Number(order?.totalPaisa || 0);
 
-  const customerPhoneLink =
-    addrPhone && addrPhone !== "-" ? `tel:${addrPhone}` : "";
+  const customerPhoneLink = addrPhone && addrPhone !== "-" ? `tel:${addrPhone}` : "";
   const mapsLink = hasLatLng(addr) ? getGoogleMapsUrl(addr) : "";
 
   const isFinalState =
     currentStatus === "Delivered" || currentStatus === "Returned";
+
+  const canSendOtp = currentStatus === "Out for Delivery" && !isFinalState;
+  const otpVerified = Boolean(order?.deliveryAssignment?.isOtpVerified);
+  const otpExpiresAt = safeStr(order?.deliveryAssignment?.otpExpiresAt);
+  const otpSentTo = safeStr(order?.deliveryAssignment?.otpSentTo);
+  const otpChannelUsed = safeStr(order?.deliveryAssignment?.otpChannel);
 
   return (
     <div className="space-y-6">
@@ -773,6 +843,106 @@ export default function DeliveryOrderDetailsPage() {
                   {saving ? "Saving..." : "Save Status"}
                 </button>
               </div>
+            </div>
+          </section>
+
+          <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
+            <div className="flex flex-col gap-2">
+              <h2 className="text-[16px] font-medium text-white">
+                Delivery OTP Verification
+              </h2>
+              <p className="text-[12px] text-[#9ca3af]">
+                When order is Out for Delivery, send OTP to customer by phone or email and verify before completing delivery.
+              </p>
+            </div>
+
+            <div className="mt-5 space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="otp-channel"
+                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#9ca3af]"
+                  >
+                    OTP Channel
+                  </label>
+                  <select
+                    id="otp-channel"
+                    value={otpChannel}
+                    onChange={(e) =>
+                      setOtpChannel(e.target.value as DeliveryOtpChannel)
+                    }
+                    disabled={!canSendOtp || otpSending || isFinalState}
+                    className="w-full rounded-[14px] border border-[#111827] bg-[#020617] px-4 py-3 text-sm text-white outline-none transition focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <option value="phone" className="bg-[#020617]">
+                      Phone
+                    </option>
+                    <option value="email" className="bg-[#020617]">
+                      Email
+                    </option>
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    onClick={sendOtp}
+                    disabled={!canSendOtp || otpSending || isFinalState}
+                    className="w-full rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {otpSending ? "Sending OTP..." : "Send OTP"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-[14px] border border-[#111827] bg-[#0b1220] p-4">
+                <div className="grid gap-2 text-sm">
+                  <LineItem label="OTP Verified" value={otpVerified ? "Yes" : "No"} />
+                  <LineItem label="Last Channel" value={otpChannelUsed || "-"} />
+                  <LineItem label="Sent To" value={otpSentTo || "-"} />
+                  <LineItem
+                    label="Expires At"
+                    value={otpExpiresAt ? formatDateTime(otpExpiresAt) : "-"}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="otp-input"
+                  className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#9ca3af]"
+                >
+                  Enter Customer OTP
+                </label>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <input
+                    id="otp-input"
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value)}
+                    placeholder="Enter 4 digit OTP"
+                    disabled={isFinalState || otpVerifying}
+                    className="w-full rounded-[14px] border border-[#111827] bg-[#020617] px-4 py-3 text-sm text-white placeholder:text-[#6b7280] outline-none transition focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                  <button
+                    onClick={verifyOtp}
+                    disabled={isFinalState || otpVerifying || !otpInput.trim()}
+                    className="rounded-lg bg-emerald-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {otpVerifying ? "Verifying..." : "Verify & Deliver"}
+                  </button>
+                </div>
+              </div>
+
+              {otpMessage ? (
+                <div className="rounded-[14px] border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                  {otpMessage}
+                </div>
+              ) : null}
+
+              {otpError ? (
+                <div className="rounded-[14px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {otpError}
+                </div>
+              ) : null}
             </div>
           </section>
         </div>

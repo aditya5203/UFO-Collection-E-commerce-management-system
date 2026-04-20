@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
-export type NotificationAudience = "customer" | "admin";
+export type NotificationAudience = "customer" | "admin" | "delivery";
 
 export type NotificationType =
   | "order"
@@ -40,7 +40,7 @@ const NotificationSchema = new Schema<INotification>(
     },
     audience: {
       type: String,
-      enum: ["customer", "admin"],
+      enum: ["customer", "admin", "delivery"],
       default: "customer",
       index: true,
     },

@@ -66,6 +66,13 @@ function buildActiveCustomerFilter(userId: string) {
   };
 }
 
+function buildActiveDeliveryFilter(userId: string) {
+  return {
+    user: userId,
+    audience: "delivery",
+  };
+}
+
 function normalizeLink(link?: string) {
   return String(link || "").trim();
 }
@@ -133,12 +140,16 @@ function resolveCustomerAutoLink(
 
     case "order": {
       const orderId = extractOrderId(meta);
-      return orderId ? `/customerorderdetails/${String(orderId).replace(/^#/, "")}` : "/profile/orders";
+      return orderId
+        ? `/customerorderdetails/${String(orderId).replace(/^#/, "")}`
+        : "/profile/orders";
     }
 
     case "payment": {
       const orderId = extractOrderId(meta);
-      return orderId ? `/customerorderdetails/${String(orderId).replace(/^#/, "")}` : "/profile/orders";
+      return orderId
+        ? `/customerorderdetails/${String(orderId).replace(/^#/, "")}`
+        : "/profile/orders";
     }
 
     case "stock":
@@ -224,7 +235,47 @@ export const notificationService = {
 
     try {
       const io = getIO();
+
       io.to(`user:${String(payload.userId)}`).emit("notification:new", {
+        notification: serialized,
+      });
+    } catch {
+      // ignore socket failure
+    }
+
+    return serialized;
+  },
+
+  async createDelivery(payload: {
+    userId: string;
+    title: string;
+    message: string;
+    type?: NotificationType;
+    link?: string;
+    meta?: Record<string, any>;
+    expiresAt?: Date | null;
+  }) {
+    const doc = await Notification.create({
+      user: payload.userId,
+      audience: "delivery",
+      title: payload.title,
+      message: payload.message,
+      type: payload.type ?? "system",
+      link: payload.link ?? "",
+      meta: payload.meta ?? {},
+      expiresAt: payload.expiresAt ?? null,
+    });
+
+    const serialized = serialize(doc);
+
+    try {
+      const io = getIO();
+
+      io.to(`delivery:${String(payload.userId)}`).emit("delivery:notification:new", {
+        notification: serialized,
+      });
+
+      io.to(`user:${String(payload.userId)}`).emit("delivery:notification:new", {
         notification: serialized,
       });
     } catch {
@@ -243,7 +294,7 @@ export const notificationService = {
     expiresAt?: Date | null;
   }) {
     const customers = await User.find({
-      role: { $nin: ["admin", "superadmin"] },
+      role: { $nin: ["admin", "superadmin", "delivery"] },
     })
       .select("_id role")
       .lean();
@@ -278,6 +329,7 @@ export const notificationService = {
 
     try {
       const io = getIO();
+
       docs.forEach((doc: any) => {
         io.to(`user:${String(doc.user)}`).emit("notification:new", {
           notification: serialize(doc),
@@ -297,7 +349,7 @@ export const notificationService = {
     link?: string;
   }) {
     const users = await User.find({
-      role: { $nin: ["admin", "superadmin"] },
+      role: { $nin: ["admin", "superadmin", "delivery"] },
       email: { $exists: true, $ne: "" },
       isDeleted: { $ne: true },
       isBlocked: { $ne: true },
@@ -308,7 +360,10 @@ export const notificationService = {
     if (!users.length) return { sent: 0, failed: 0 };
 
     const resolvedLink = resolveCustomerAutoLink(payload.type, payload.link, {});
-    const clientBase = (process.env.CLIENT_BASE_URL || "http://localhost:3000").replace(/\/+$/, "");
+    const clientBase = (process.env.CLIENT_BASE_URL || "http://localhost:3000").replace(
+      /\/+$/,
+      ""
+    );
     const fullLink = resolvedLink ? `${clientBase}${resolvedLink}` : "";
     const subject = buildBroadcastEmailSubject(payload.type, payload.title);
     const cta = buildBroadcastEmailCTA(payload.type);
@@ -394,6 +449,7 @@ export const notificationService = {
 
     try {
       const io = getIO();
+
       docs.forEach((doc: any) => {
         io.to(`admin:${String(doc.user)}`).emit("admin:notification:new", {
           notification: serialize(doc),
@@ -430,6 +486,7 @@ export const notificationService = {
 
     try {
       const io = getIO();
+
       io.to(`admin:${String(payload.adminUserId)}`).emit(
         "admin:notification:new",
         {
@@ -629,6 +686,44 @@ export const notificationService = {
   async markAllAdminRead(adminUserId: string) {
     return Notification.updateMany(
       { user: adminUserId, audience: "admin", isRead: false },
+      { $set: { isRead: true } }
+    );
+  },
+
+  async listForDelivery(deliveryUserId: string, limit = 50) {
+    const docs = await Notification.find(buildActiveDeliveryFilter(deliveryUserId))
+      .sort({ createdAt: -1 })
+      .limit(Math.min(Math.max(limit, 1), 200));
+
+    return docs.map(serialize);
+  },
+
+  async unreadCountForDelivery(deliveryUserId: string) {
+    return Notification.countDocuments({
+      ...buildActiveDeliveryFilter(deliveryUserId),
+      isRead: false,
+    });
+  },
+
+  async markDeliveryRead(deliveryUserId: string, notificationId: string) {
+    const updated = await Notification.findOneAndUpdate(
+      {
+        _id: notificationId,
+        ...buildActiveDeliveryFilter(deliveryUserId),
+      },
+      { $set: { isRead: true } },
+      { new: true }
+    );
+
+    return updated ? serialize(updated) : null;
+  },
+
+  async markAllDeliveryRead(deliveryUserId: string) {
+    return Notification.updateMany(
+      {
+        ...buildActiveDeliveryFilter(deliveryUserId),
+        isRead: false,
+      },
       { $set: { isRead: true } }
     );
   },

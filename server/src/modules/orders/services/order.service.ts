@@ -126,6 +126,10 @@ function buildShippingAddressText(address: any) {
     .join("\n");
 }
 
+function deliveryOrderLink(orderId: string) {
+  return `/delivery/orders/${orderId}`;
+}
+
 export const orderService = {
   async createOrder(userId: string, body: CreateOrderBody) {
     if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
@@ -456,12 +460,15 @@ export const orderService = {
     return (orders as any[]).map((o: any) => ({
       id: String(o._id),
       orderCode: o.orderCode || "",
+      subtotalPaisa: Number(o.subtotalPaisa || 0),
+      shippingPaisa: Number(o.shippingPaisa || 0),
       totalPaisa: Number(o.totalPaisa || 0),
       discountPaisa: Number(o.discountPaisa || 0),
       coupon: o.coupon || null,
       paymentMethod: o.paymentMethod || "COD",
       paymentStatus: o.paymentStatus,
       orderStatus: o.orderStatus,
+      paymentRef: o.paymentRef || null,
       createdAt: o.createdAt,
       customer: o.customer
         ? {
@@ -547,6 +554,13 @@ export const orderService = {
 
     if (!found) return null;
 
+    const prevDeliveryManId = found?.deliveryAssignment?.deliveryManId
+      ? String(found.deliveryAssignment.deliveryManId)
+      : "";
+    const prevDeliveryStatus = String(
+      found?.deliveryAssignment?.status || ""
+    ).trim();
+
     const update: any = {};
     if (input.paymentStatus) update.paymentStatus = input.paymentStatus;
     if (input.orderStatus) update.orderStatus = input.orderStatus;
@@ -570,6 +584,7 @@ export const orderService = {
 
     if (input.deliveryAssignment) {
       const nextDeliveryAssignment = { ...(found.deliveryAssignment || {}) };
+      const now = new Date();
 
       if (input.deliveryAssignment.deliveryManId) {
         const deliveryManId = String(input.deliveryAssignment.deliveryManId);
@@ -632,6 +647,71 @@ export const orderService = {
 
       if (input.deliveryAssignment.status) {
         nextDeliveryAssignment.status = input.deliveryAssignment.status;
+
+        if (
+          input.deliveryAssignment.status === "Picked Up" &&
+          !nextDeliveryAssignment.pickedUpAt
+        ) {
+          nextDeliveryAssignment.pickedUpAt = now;
+        }
+
+        if (
+          input.deliveryAssignment.status === "Out for Delivery" &&
+          !nextDeliveryAssignment.outForDeliveryAt
+        ) {
+          nextDeliveryAssignment.outForDeliveryAt = now;
+          if (!nextDeliveryAssignment.pickedUpAt) {
+            nextDeliveryAssignment.pickedUpAt = now;
+          }
+          if (!found.inTransitAt) {
+            update.inTransitAt = now;
+          }
+          if (!found.shippedAt) {
+            update.shippedAt = now;
+          }
+          if (!update.orderStatus) {
+            update.orderStatus = "Transit";
+          }
+        }
+
+        if (
+          input.deliveryAssignment.status === "Delivered" &&
+          !nextDeliveryAssignment.deliveredAt
+        ) {
+          nextDeliveryAssignment.deliveredAt = now;
+          if (!nextDeliveryAssignment.outForDeliveryAt) {
+            nextDeliveryAssignment.outForDeliveryAt = now;
+          }
+          if (!nextDeliveryAssignment.pickedUpAt) {
+            nextDeliveryAssignment.pickedUpAt = now;
+          }
+          if (!found.deliveredAt) {
+            update.deliveredAt = now;
+          }
+          if (!found.inTransitAt) {
+            update.inTransitAt = now;
+          }
+          if (!found.shippedAt) {
+            update.shippedAt = now;
+          }
+          if (!update.orderStatus) {
+            update.orderStatus = "Delivered";
+          }
+        }
+
+        if (
+          input.deliveryAssignment.status === "Failed Delivery" &&
+          !nextDeliveryAssignment.failedAt
+        ) {
+          nextDeliveryAssignment.failedAt = now;
+        }
+
+        if (
+          input.deliveryAssignment.status === "Returned" &&
+          !nextDeliveryAssignment.returnedAt
+        ) {
+          nextDeliveryAssignment.returnedAt = now;
+        }
       }
 
       update.deliveryAssignment = nextDeliveryAssignment;
@@ -645,15 +725,25 @@ export const orderService = {
 
     if (!updated) return null;
 
+    const updatedOrderId = String(updated._id || found._id);
+    const customerId = String((updated as any)?.customer?._id || found.customer || "");
+    const orderCode = String(updated.orderCode || "");
+    const nextDeliveryManId = updated?.deliveryAssignment?.deliveryManId
+      ? String(updated.deliveryAssignment.deliveryManId)
+      : "";
+    const nextDeliveryStatus = String(
+      updated?.deliveryAssignment?.status || ""
+    ).trim();
+
     try {
       if (input.orderStatus) {
         await notificationService.createAdminForAll({
           title: "Order status updated",
           message: `Order ${updated.orderCode} marked as ${updated.orderStatus}.`,
           type: "order",
-          link: `/admin/orders/${String(updated._id || found._id)}`,
+          link: `/admin/orders/${updatedOrderId}`,
           meta: {
-            orderId: String(updated._id || found._id),
+            orderId: updatedOrderId,
             orderCode: updated.orderCode,
             orderStatus: updated.orderStatus,
           },
@@ -675,9 +765,9 @@ export const orderService = {
               ? `Payment received for order ${updated.orderCode}.`
               : `Payment failed for order ${updated.orderCode}.`,
           type: "payment",
-          link: `/admin/orders/${String(updated._id || found._id)}`,
+          link: `/admin/orders/${updatedOrderId}`,
           meta: {
-            orderId: String(updated._id || found._id),
+            orderId: updatedOrderId,
             orderCode: updated.orderCode,
             paymentStatus: input.paymentStatus,
           },
@@ -685,6 +775,140 @@ export const orderService = {
       }
     } catch (e: any) {
       console.log("Payment notification failed (ignored):", e?.message);
+    }
+
+    try {
+      if (nextDeliveryManId && nextDeliveryManId !== prevDeliveryManId) {
+        await notificationService.createDelivery({
+          userId: nextDeliveryManId,
+          title: prevDeliveryManId ? "Order Reassigned" : "New Delivery Assigned",
+          message: prevDeliveryManId
+            ? `Order ${orderCode} has been reassigned to you.`
+            : `Order ${orderCode} has been assigned to you for delivery.`,
+          type: "order",
+          link: deliveryOrderLink(updatedOrderId),
+          meta: {
+            orderId: updatedOrderId,
+            orderCode,
+            deliveryStatus: nextDeliveryStatus || "Assigned",
+            action: prevDeliveryManId ? "delivery_reassigned" : "delivery_assigned",
+          },
+        });
+
+        if (prevDeliveryManId) {
+          await notificationService.createDelivery({
+            userId: prevDeliveryManId,
+            title: "Order Reassigned",
+            message: `Order ${orderCode} is no longer assigned to you.`,
+            type: "order",
+            link: "/delivery/orders",
+            meta: {
+              orderId: updatedOrderId,
+              orderCode,
+              action: "delivery_reassigned_away",
+            },
+          });
+        }
+
+        if (customerId) {
+          await notificationService.createCustomer({
+            userId: customerId,
+            title: "Order Assigned to Delivery Rider",
+            message: `Your order ${orderCode} has been assigned to a delivery rider.`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: {
+              orderId: updatedOrderId,
+              orderCode,
+              action: "delivery_assigned",
+            },
+          });
+        }
+      }
+    } catch (e: any) {
+      console.log("Delivery assignment notification failed (ignored):", e?.message);
+    }
+
+    try {
+      if (
+        nextDeliveryStatus &&
+        nextDeliveryStatus !== prevDeliveryStatus &&
+        customerId
+      ) {
+        if (nextDeliveryStatus === "Picked Up") {
+          await notificationService.createCustomer({
+            userId: customerId,
+            title: "Order Picked Up",
+            message: `Your order ${orderCode} has been picked up by the delivery rider.`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: {
+              orderId: updatedOrderId,
+              orderCode,
+              deliveryStatus: nextDeliveryStatus,
+              action: "delivery_picked_up",
+            },
+          });
+        } else if (nextDeliveryStatus === "Out for Delivery") {
+          await notificationService.createCustomer({
+            userId: customerId,
+            title: "Out for Delivery",
+            message: `Your order ${orderCode} is out for delivery.`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: {
+              orderId: updatedOrderId,
+              orderCode,
+              deliveryStatus: nextDeliveryStatus,
+              action: "delivery_out_for_delivery",
+            },
+          });
+        } else if (nextDeliveryStatus === "Delivered") {
+          await notificationService.createCustomer({
+            userId: customerId,
+            title: "Order Delivered",
+            message: `Your order ${orderCode} has been delivered. Thank you for shopping with us!`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: {
+              orderId: updatedOrderId,
+              orderCode,
+              deliveryStatus: nextDeliveryStatus,
+              action: "delivery_delivered",
+            },
+          });
+        } else if (nextDeliveryStatus === "Failed Delivery") {
+          await notificationService.createCustomer({
+            userId: customerId,
+            title: "Delivery Failed",
+            message: `Delivery attempt failed for order ${orderCode}.`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: {
+              orderId: updatedOrderId,
+              orderCode,
+              deliveryStatus: nextDeliveryStatus,
+              action: "delivery_failed",
+            },
+          });
+        } else if (nextDeliveryStatus === "Returned") {
+          await notificationService.createCustomer({
+            userId: customerId,
+            title: "Order Returned",
+            message: `Your order ${orderCode} has been returned.`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: {
+              orderId: updatedOrderId,
+              orderCode,
+              deliveryStatus: nextDeliveryStatus,
+              action: "delivery_returned",
+            },
+          });
+        }
+      }
+    } catch (e: any) {
+      console.log("Customer delivery status notification failed (ignored):", e?.message);
     }
 
     try {
@@ -702,12 +926,15 @@ export const orderService = {
     return {
       id: String(o._id),
       orderCode: o.orderCode || "",
-      totalPaisa: Number(o.totalPaisa || 0),
+      subtotalPaisa: Number(o.subtotalPaisa || 0),
+      shippingPaisa: Number(o.shippingPaisa || 0),
       discountPaisa: Number(o.discountPaisa || 0),
+      totalPaisa: Number(o.totalPaisa || 0),
       coupon: o.coupon || null,
       paymentMethod: o.paymentMethod || "COD",
       paymentStatus: o.paymentStatus,
       orderStatus: o.orderStatus,
+      paymentRef: o.paymentRef || null,
       createdAt: o.createdAt,
       customer: o.customer
         ? {

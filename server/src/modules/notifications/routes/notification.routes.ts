@@ -3,6 +3,7 @@ import { notificationController } from "../controllers/notification.controller";
 import {
   customerAuthMiddleware,
   adminAuthMiddleware,
+  deliveryAuthMiddleware,
 } from "../../auth/middleware/auth.middleware";
 
 const router = Router();
@@ -51,6 +52,28 @@ router.get(
   "/admin/broadcast-history",
   adminAuthMiddleware,
   notificationController.adminBroadcastHistory
+);
+
+/* DELIVERY */
+router.get(
+  "/delivery",
+  deliveryAuthMiddleware,
+  notificationController.listDelivery
+);
+router.get(
+  "/delivery/unread-count",
+  deliveryAuthMiddleware,
+  notificationController.deliveryUnreadCount
+);
+router.patch(
+  "/delivery/read-all",
+  deliveryAuthMiddleware,
+  notificationController.deliveryMarkAllRead
+);
+router.patch(
+  "/delivery/:id/read",
+  deliveryAuthMiddleware,
+  notificationController.deliveryMarkRead
 );
 
 export default router;

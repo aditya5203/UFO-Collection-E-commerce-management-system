@@ -85,6 +85,19 @@ const deliveryAssignmentSchema = new Schema(
     deliveredAt: { type: Date, default: null },
     failedAt: { type: Date, default: null },
     returnedAt: { type: Date, default: null },
+
+    otpCode: { type: String, trim: true, default: "" },
+    otpChannel: {
+      type: String,
+      enum: ["", "phone", "email"],
+      default: "",
+    },
+    otpSentTo: { type: String, trim: true, default: "" },
+    otpExpiresAt: { type: Date, default: null },
+    otpLastSentAt: { type: Date, default: null },
+    otpVerifiedAt: { type: Date, default: null },
+    isOtpVerified: { type: Boolean, default: false },
+
     status: {
       type: String,
       enum: [

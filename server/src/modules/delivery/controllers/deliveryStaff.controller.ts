@@ -114,4 +114,52 @@ export const deliveryStaffController = {
       });
     }
   },
+
+  async sendMyOrderOtp(req: AuthRequest, res: Response) {
+    try {
+      const userId = String(req.user?.userId || "");
+      const channel = String(req.body?.channel || "").trim().toLowerCase();
+
+      const data = await deliveryStaffService.sendMyOrderOtp(
+        userId,
+        req.params.id,
+        channel
+      );
+
+      return res.json({
+        success: true,
+        message: "Delivery OTP sent successfully",
+        data,
+      });
+    } catch (e: any) {
+      return res.status(e?.statusCode || 400).json({
+        success: false,
+        message: e?.message || "Failed to send delivery OTP",
+      });
+    }
+  },
+
+  async verifyMyOrderOtp(req: AuthRequest, res: Response) {
+    try {
+      const userId = String(req.user?.userId || "");
+      const otp = String(req.body?.otp || "").trim();
+
+      const data = await deliveryStaffService.verifyMyOrderOtp(
+        userId,
+        req.params.id,
+        otp
+      );
+
+      return res.json({
+        success: true,
+        message: "Delivery OTP verified successfully",
+        data,
+      });
+    } catch (e: any) {
+      return res.status(e?.statusCode || 400).json({
+        success: false,
+        message: e?.message || "Failed to verify delivery OTP",
+      });
+    }
+  },
 };

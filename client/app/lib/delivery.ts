@@ -15,6 +15,10 @@ export const DELIVERY_ENDPOINTS = {
 
   dashboard: `${DELIVERY_API_BASE}/admin/delivery-staff/me/dashboard`,
   orders: `${DELIVERY_API_BASE}/admin/delivery-staff/me/orders`,
+
+  notifications: `${DELIVERY_API_BASE}/notifications/delivery`,
+  notificationUnreadCount: `${DELIVERY_API_BASE}/notifications/delivery/unread-count`,
+  notificationReadAll: `${DELIVERY_API_BASE}/notifications/delivery/read-all`,
 };
 
 export async function safeJson(res: Response) {
@@ -87,6 +91,8 @@ export type DeliveryStatus =
   | "Failed Delivery"
   | "Returned";
 
+export type DeliveryOtpChannel = "phone" | "email";
+
 export function getDeliveryStatusTone(status?: string) {
   const s = safeStr(status).toLowerCase();
 
@@ -120,6 +126,8 @@ export type DeliveryOrder = {
   paymentRef?: string;
   shippingPaisa?: number;
   discountPaisa?: number;
+  orderStatus?: string;
+  paymentStatus?: string;
   customer?: {
     id?: string;
     name?: string;
@@ -128,6 +136,7 @@ export type DeliveryOrder = {
   };
   address?: {
     label?: string;
+    email?: string;
     fullName?: string;
     phone?: string;
     city?: string;
@@ -153,6 +162,7 @@ export type DeliveryOrder = {
     deliveryManId?: string;
     name?: string;
     phone?: string;
+    email?: string;
     assignedAt?: string;
     pickedUpAt?: string;
     outForDeliveryAt?: string;
@@ -161,6 +171,12 @@ export type DeliveryOrder = {
     returnedAt?: string;
     status?: DeliveryStatus | string;
     note?: string;
+    otpChannel?: DeliveryOtpChannel | "";
+    otpSentTo?: string;
+    otpExpiresAt?: string;
+    otpLastSentAt?: string;
+    otpVerifiedAt?: string;
+    isOtpVerified?: boolean;
   };
 };
 
@@ -178,6 +194,47 @@ export type DeliveryProfile = {
   status?: string;
   createdAt?: string;
 };
+
+export type DeliveryNotification = {
+  _id?: string;
+  id?: string;
+  title?: string;
+  message?: string;
+  type?: string;
+  link?: string;
+  isRead?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  audience?: string;
+  meta?: Record<string, any>;
+  expiresAt?: string | null;
+};
+
+export function timeAgo(iso?: string) {
+  if (!iso) return "-";
+
+  try {
+    const now = Date.now();
+    const then = new Date(iso).getTime();
+    const diff = Math.max(0, now - then);
+
+    const sec = Math.floor(diff / 1000);
+    if (sec < 60) return `${sec}s ago`;
+
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+
+    const day = Math.floor(hr / 24);
+    if (day < 30) return `${day}d ago`;
+
+    return formatDateShort(iso);
+  } catch {
+    return "-";
+  }
+}
 
 export function pickId(item: any) {
   return safeStr(item?.id || item?._id);

@@ -176,6 +176,98 @@ export const notificationController = {
     }
   },
 
+  async listDelivery(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const userId = pickUserId(req);
+      if (!userId) throw new AppError("Unauthorized", 401);
+
+      const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50)));
+      const items = await notificationService.listForDelivery(
+        String(userId),
+        limit
+      );
+
+      res.json({
+        success: true,
+        data: items,
+        items,
+      });
+      return;
+    } catch (e) {
+      next(e);
+      return;
+    }
+  },
+
+  async deliveryUnreadCount(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const userId = pickUserId(req);
+      if (!userId) throw new AppError("Unauthorized", 401);
+
+      const count = await notificationService.unreadCountForDelivery(
+        String(userId)
+      );
+
+      res.json({ success: true, count });
+      return;
+    } catch (e) {
+      next(e);
+      return;
+    }
+  },
+
+  async deliveryMarkRead(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const userId = pickUserId(req);
+      if (!userId) throw new AppError("Unauthorized", 401);
+
+      const id = String(req.params.id || "");
+      if (!id) throw new AppError("Notification id is required", 400);
+
+      const updated = await notificationService.markDeliveryRead(
+        String(userId),
+        id
+      );
+
+      res.json({ success: true, data: updated });
+      return;
+    } catch (e) {
+      next(e);
+      return;
+    }
+  },
+
+  async deliveryMarkAllRead(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const userId = pickUserId(req);
+      if (!userId) throw new AppError("Unauthorized", 401);
+
+      await notificationService.markAllDeliveryRead(String(userId));
+
+      res.json({ success: true });
+      return;
+    } catch (e) {
+      next(e);
+      return;
+    }
+  },
+
   async adminBroadcast(
     req: Request,
     res: Response,
