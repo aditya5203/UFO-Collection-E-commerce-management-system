@@ -311,6 +311,38 @@ export const authController = {
     }
   },
 
+  changePassword: async (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const userId = (req.user as any)?.userId;
+      if (!userId) throw new AppError("User not authenticated", 401);
+
+      const { currentPassword, newPassword } = req.body as {
+        currentPassword?: string;
+        newPassword?: string;
+      };
+
+      const user = await authService.changePassword(
+        userId,
+        String(currentPassword || ""),
+        String(newPassword || "")
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Password changed successfully",
+        user,
+      });
+      return;
+    } catch (error) {
+      next(error);
+      return;
+    }
+  },
+
   forgotPassword: async (
     req: Request,
     res: Response,

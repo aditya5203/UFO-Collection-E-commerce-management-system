@@ -45,15 +45,13 @@ export default function DeliveryPageGuard({
           return;
         }
 
+        // allow logged-in delivery user to open change-password page
         if (mode === "change-password") {
-          if (!mustChangePassword && pathname === "/delivery/change-password") {
-            router.replace("/delivery/dashboard");
-            return;
-          }
           return;
         }
 
-        if (mustChangePassword) {
+        // block protected pages if password must be changed first
+        if (mustChangePassword && pathname !== "/delivery/change-password") {
           router.replace("/delivery/change-password");
           return;
         }

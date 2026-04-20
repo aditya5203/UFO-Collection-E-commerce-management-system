@@ -386,6 +386,17 @@ export default function ProfilePage() {
                   {t("nav.language")}
                 </button>
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    router.push("/change-password");
+                  }}
+                  className="w-full px-4 py-3 text-left text-[13px] text-white hover:bg-[#15182a]"
+                >
+                  Change Password
+                </button>
+
                 <div className="h-px bg-[#23253a]" />
 
                 <button

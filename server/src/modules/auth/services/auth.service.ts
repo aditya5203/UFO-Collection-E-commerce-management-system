@@ -296,6 +296,57 @@ export const authService = {
     return sanitizeUserForResponse(user);
   },
 
+  changePassword: async (
+    userId: string,
+    currentPassword: string,
+    newPassword: string
+  ) => {
+    const user = await User.findById(userId).select("+password");
+    if (!user) throw new AppError("User not found", 404);
+
+    if ((user as any).isDeleted) {
+      throw new AppError("This account has been deleted.", 403);
+    }
+
+    if ((user as any).isBlocked) {
+      throw new AppError("Your account has been blocked by admin.", 403);
+    }
+
+    if (String(user.role || "").toLowerCase() !== "customer") {
+      throw new AppError("Customer access only", 403);
+    }
+
+    if (!currentPassword || !newPassword) {
+      throw new AppError("Current password and new password are required", 400);
+    }
+
+    if (String(newPassword).trim().length < 6) {
+      throw new AppError("New password must be at least 6 characters", 400);
+    }
+
+    if (user.provider === "google") {
+      throw new AppError(
+        "This account uses Google login. Password change is not available.",
+        400
+      );
+    }
+
+    const ok = await user.comparePassword(String(currentPassword || ""));
+    if (!ok) throw new AppError("Current password is incorrect", 400);
+
+    if (String(currentPassword) === String(newPassword)) {
+      throw new AppError(
+        "New password must be different from current password",
+        400
+      );
+    }
+
+    (user as any).password = String(newPassword).trim();
+    await user.save();
+
+    return sanitizeUserForResponse(user);
+  },
+
   initializeSuperAdmin: async (userData: {
     email: string;
     password: string;

@@ -1,4 +1,3 @@
-// server/src/modules/auth/routes/auth.routes.ts
 import { Router } from "express";
 import { authController } from "../controllers/auth.controller";
 import {
@@ -146,6 +145,72 @@ router.post("/register", authController.register);
  *               $ref: '#/components/schemas/Error'
  */
 router.post("/login", authController.login);
+
+/**
+ * @swagger
+ * /api/auth/change-password:
+ *   patch:
+ *     summary: Change current customer password
+ *     description: Change password for the currently authenticated customer account.
+ *     tags: [Auth]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword, newPassword]
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 format: password
+ *                 example: oldPassword123
+ *               newPassword:
+ *                 type: string
+ *                 format: password
+ *                 example: NewStrongPassword123
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Password changed successfully
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Bad request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       401:
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.patch(
+  "/change-password",
+  customerAuthMiddleware,
+  authController.changePassword
+);
 
 /* =========================================================
  * Delivery Auth
