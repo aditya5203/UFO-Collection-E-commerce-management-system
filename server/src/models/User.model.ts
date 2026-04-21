@@ -90,6 +90,11 @@ export interface IUser extends Document {
   resetPasswordTokenHash?: string | null;
   resetPasswordExpires?: Date | null;
 
+  inviteTokenHash?: string | null;
+  inviteTokenExpires?: Date | null;
+  inviteAcceptedAt?: Date | null;
+  invitedBy?: mongoose.Types.ObjectId | null;
+
   isBlocked?: boolean;
   blockedAt?: Date | null;
 
@@ -303,6 +308,13 @@ const UserSchema = new Schema<IUser>(
       minlength: [6, "Password must be at least 6 characters"],
       select: false,
       required: function (this: IUser) {
+        const role = String(this.role || "").toLowerCase();
+        const status = String(this.status || "").toLowerCase();
+
+        if (role === "admin" || role === "delivery") {
+          return status !== "invited";
+        }
+
         return !this.provider || this.provider === "credentials";
       },
     },
@@ -361,6 +373,11 @@ const UserSchema = new Schema<IUser>(
     resetPasswordTokenHash: { type: String, default: null },
     resetPasswordExpires: { type: Date, default: null },
 
+    inviteTokenHash: { type: String, default: null, index: true },
+    inviteTokenExpires: { type: Date, default: null },
+    inviteAcceptedAt: { type: Date, default: null },
+    invitedBy: { type: Schema.Types.ObjectId, ref: "User", default: null },
+
     isBlocked: { type: Boolean, default: false, index: true },
     blockedAt: { type: Date, default: null },
 
@@ -397,6 +414,8 @@ UserSchema.methods.comparePassword = async function (
 UserSchema.methods.toJSON = function () {
   const userObject = this.toObject();
   delete userObject.password;
+  delete userObject.inviteTokenHash;
+  delete userObject.resetPasswordTokenHash;
   return userObject;
 };
 

@@ -7,13 +7,6 @@ import {
 
 const router = Router();
 
-/**
- * @swagger
- * tags:
- *   - name: Delivery Staff
- *     description: Delivery rider self-service and admin delivery staff management APIs
- */
-
 router.get(
   "/me/dashboard",
   deliveryAuthMiddleware,
@@ -50,9 +43,10 @@ router.post(
   deliveryStaffController.verifyMyOrderOtp
 );
 
-router.post("/", adminAuthMiddleware, deliveryStaffController.create);
+router.post("/invite", adminAuthMiddleware, deliveryStaffController.create);
 router.get("/", adminAuthMiddleware, deliveryStaffController.list);
 router.get("/:id", adminAuthMiddleware, deliveryStaffController.getById);
 router.put("/:id", adminAuthMiddleware, deliveryStaffController.update);
+router.delete("/:id", adminAuthMiddleware, deliveryStaffController.remove);
 
 export default router;

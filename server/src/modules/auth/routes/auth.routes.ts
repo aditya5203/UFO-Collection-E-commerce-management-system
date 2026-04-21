@@ -229,11 +229,16 @@ router.patch(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [email, password]
  *             properties:
  *               email:
  *                 type: string
  *                 format: email
+ *                 example: rider@example.com
+ *               phone:
+ *                 type: string
+ *                 example: 9800000000
+ *               emailOrPhone:
+ *                 type: string
  *                 example: rider@example.com
  *               password:
  *                 type: string
@@ -428,7 +433,7 @@ router.post(
  * /api/auth/forgot-password:
  *   post:
  *     summary: Forgot password
- *     description: Sends password reset link to email (always returns success to prevent user enumeration)
+ *     description: Sends password reset link to email for any existing account. Supports customer, admin, superadmin, and delivery accounts. Always returns success when possible to avoid user enumeration.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -441,7 +446,7 @@ router.post(
  *               email:
  *                 type: string
  *                 format: email
- *                 example: user@example.com
+ *                 example: admin@ufo.com
  *     responses:
  *       200:
  *         description: Reset link sent (if user exists)
@@ -455,7 +460,13 @@ router.post(
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: If that email exists, a reset link has been sent
+ *                   example: If your email exists, we sent a password reset link.
+ *       400:
+ *         description: Email is required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.post("/forgot-password", authController.forgotPassword);
 
@@ -464,7 +475,7 @@ router.post("/forgot-password", authController.forgotPassword);
  * /api/auth/reset-password:
  *   post:
  *     summary: Reset password
- *     description: Resets password using token from reset email
+ *     description: Resets account password using the token sent by email. Works for customer, admin, superadmin, and delivery accounts.
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -476,7 +487,7 @@ router.post("/forgot-password", authController.forgotPassword);
  *             properties:
  *               token:
  *                 type: string
- *                 example: 9c4f5d...
+ *                 example: 9c4f5d8e1a2b3c4d5e6f
  *               password:
  *                 type: string
  *                 format: password
@@ -494,15 +505,62 @@ router.post("/forgot-password", authController.forgotPassword);
  *                   example: true
  *                 message:
  *                   type: string
- *                   example: Password reset successful
+ *                   example: Password reset successful. Please login.
  *       400:
- *         description: Invalid or expired token
+ *         description: Invalid or expired token, or invalid password
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
 router.post("/reset-password", authController.resetPassword);
+
+/**
+ * @swagger
+ * /api/auth/accept-invite:
+ *   post:
+ *     summary: Accept invite
+ *     description: Accept an invitation for an invited admin or delivery account and set a password.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token, password]
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 example: invite_token_here
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: StrongPassword123
+ *     responses:
+ *       200:
+ *         description: Invitation accepted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Invitation accepted successfully. You can now log in.
+ *                 user:
+ *                   $ref: '#/components/schemas/User'
+ *       400:
+ *         description: Invalid or expired invitation link
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post("/accept-invite", authController.acceptInvite);
 
 /* =========================================================
  * Google (App-side upsert) + OAuth flow

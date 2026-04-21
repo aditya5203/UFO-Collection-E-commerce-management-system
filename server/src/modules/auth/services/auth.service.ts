@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { config } from "../../../config";
 import { AppError } from "../../../middleware/error.middleware";
 import { fullSuperadminPermissions } from "../../../models/User.model";
+import { hashInviteToken } from "../../../services/invite.service";
 
 const generateToken = (payload: JwtPayload): string => {
   return jwt.sign(payload, config.jwt.secret, {
@@ -407,6 +408,10 @@ export const authService = {
       throw new AppError("This admin account has been blocked.", 403);
     }
 
+    if ((user as any).status === "invited") {
+      throw new AppError("Please accept your email invitation first.", 403);
+    }
+
     if ((user as any).status === "inactive") {
       throw new AppError("This admin account is inactive.", 403);
     }
@@ -462,6 +467,10 @@ export const authService = {
 
     if ((user as any).isBlocked) {
       throw new AppError("This delivery account has been blocked.", 403);
+    }
+
+    if ((user as any).status === "invited") {
+      throw new AppError("Please accept your email invitation first.", 403);
     }
 
     if ((user as any).status === "inactive") {
@@ -551,5 +560,43 @@ export const authService = {
     }
 
     return sanitizeUserForResponse(user);
+  },
+
+  acceptInvite: async (token: string, password: string) => {
+    if (!token) {
+      throw new AppError("Invite token is required", 400);
+    }
+
+    if (!password || String(password).trim().length < 8) {
+      throw new AppError("Password must be at least 8 characters", 400);
+    }
+
+    const tokenHash = hashInviteToken(String(token).trim());
+
+    const user = await User.findOne({
+      inviteTokenHash: tokenHash,
+      inviteTokenExpires: { $gt: new Date() },
+      status: "invited",
+      role: { $in: ["admin", "delivery"] },
+    }).select("+password");
+
+    if (!user) {
+      throw new AppError("Invalid or expired invitation link", 400);
+    }
+
+    (user as any).password = String(password).trim();
+    (user as any).provider = "credentials";
+    (user as any).status = "active";
+    (user as any).mustChangePassword = false;
+    (user as any).inviteAcceptedAt = new Date();
+    (user as any).inviteTokenHash = null;
+    (user as any).inviteTokenExpires = null;
+
+    await user.save();
+
+    return {
+      message: "Invitation accepted successfully. You can now log in.",
+      user: sanitizeUserForResponse(user),
+    };
   },
 };

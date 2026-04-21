@@ -51,10 +51,25 @@ export default function DeliveryLayout({
   const [toasts, setToasts] = React.useState<ToastItem[]>([]);
 
   const notifRef = React.useRef<HTMLDivElement | null>(null);
+  const isUnauthorizedRef = React.useRef(false);
+
+  const isLoginPage = pathname === "/delivery/login";
+  const isChangePasswordPage = pathname === "/delivery/change-password";
+  const shouldRunNotificationEffects = !isLoginPage;
 
   React.useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  React.useEffect(() => {
+    if (isLoginPage) {
+      setNotifOpen(false);
+      setNotifError("");
+      setNotifications([]);
+      setUnreadCount(0);
+      isUnauthorizedRef.current = false;
+    }
+  }, [isLoginPage]);
 
   React.useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -73,24 +88,44 @@ export default function DeliveryLayout({
     };
   }, [notifOpen]);
 
+  const handleUnauthorized = React.useCallback(() => {
+    isUnauthorizedRef.current = true;
+    setUnreadCount(0);
+    setNotifications([]);
+    setNotifOpen(false);
+    setNotifError("");
+  }, []);
+
   const loadUnreadCount = React.useCallback(async () => {
+    if (!shouldRunNotificationEffects || isUnauthorizedRef.current) return;
+
     try {
       const res = await fetch(DELIVERY_ENDPOINTS.notificationUnreadCount, {
         method: "GET",
         credentials: "include",
         cache: "no-store",
       });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
+
       const json = await safeJson(res);
 
       if (!res.ok) return;
 
-      setUnreadCount(Number((json as any)?.count || 0));
+      setUnreadCount(
+        Number((json as any)?.count || (json as any)?.data?.count || 0)
+      );
     } catch {
-      // ignore
+      // ignore network noise
     }
-  }, []);
+  }, [handleUnauthorized, shouldRunNotificationEffects]);
 
   const loadNotifications = React.useCallback(async () => {
+    if (!shouldRunNotificationEffects || isUnauthorizedRef.current) return;
+
     try {
       setNotifLoading(true);
       setNotifError("");
@@ -100,6 +135,11 @@ export default function DeliveryLayout({
         credentials: "include",
         cache: "no-store",
       });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
 
       const json = await safeJson(res);
 
@@ -115,24 +155,28 @@ export default function DeliveryLayout({
     } finally {
       setNotifLoading(false);
     }
-  }, []);
+  }, [handleUnauthorized, shouldRunNotificationEffects]);
 
   React.useEffect(() => {
+    if (!shouldRunNotificationEffects) return;
     loadUnreadCount();
-  }, [loadUnreadCount]);
+  }, [loadUnreadCount, shouldRunNotificationEffects]);
 
   React.useEffect(() => {
-    if (!notifOpen) return;
+    if (!notifOpen || !shouldRunNotificationEffects || isUnauthorizedRef.current)
+      return;
     loadNotifications();
-  }, [notifOpen, loadNotifications]);
+  }, [notifOpen, loadNotifications, shouldRunNotificationEffects]);
 
   React.useEffect(() => {
-    const interval = setInterval(() => {
+    if (!shouldRunNotificationEffects || isUnauthorizedRef.current) return;
+
+    const interval = window.setInterval(() => {
       loadUnreadCount();
     }, 5000);
 
-    return () => clearInterval(interval);
-  }, [loadUnreadCount]);
+    return () => window.clearInterval(interval);
+  }, [loadUnreadCount, shouldRunNotificationEffects]);
 
   const removeToast = React.useCallback((id: string) => {
     setToasts((prev) => prev.filter((item) => item.id !== id));
@@ -163,6 +207,8 @@ export default function DeliveryLayout({
   );
 
   React.useEffect(() => {
+    if (!shouldRunNotificationEffects || isUnauthorizedRef.current) return;
+
     const socketBase =
       (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080").replace(
         /\/+$/,
@@ -183,6 +229,15 @@ export default function DeliveryLayout({
       });
 
       socket.on("connect_error", (err) => {
+        const msg = safeStr(err?.message).toLowerCase();
+        if (
+          msg.includes("unauthorized") ||
+          msg.includes("authentication") ||
+          msg.includes("token")
+        ) {
+          handleUnauthorized();
+          return;
+        }
         console.log("❌ Socket error:", err.message);
       });
 
@@ -214,18 +269,26 @@ export default function DeliveryLayout({
     return () => {
       if (socket) socket.disconnect();
     };
-  }, [pushToast]);
+  }, [handleUnauthorized, pushToast, shouldRunNotificationEffects]);
 
   const openNotifications = async () => {
+    if (isUnauthorizedRef.current) return;
     setNotifOpen((prev) => !prev);
   };
 
   const markAllRead = async () => {
+    if (isUnauthorizedRef.current) return;
+
     try {
       const res = await fetch(DELIVERY_ENDPOINTS.notificationReadAll, {
         method: "PATCH",
         credentials: "include",
       });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
 
       if (!res.ok) return;
 
@@ -239,11 +302,18 @@ export default function DeliveryLayout({
   };
 
   const markOneRead = async (id: string) => {
+    if (isUnauthorizedRef.current) return;
+
     try {
       const res = await fetch(`${DELIVERY_ENDPOINTS.notifications}/${id}/read`, {
         method: "PATCH",
         credentials: "include",
       });
+
+      if (res.status === 401) {
+        handleUnauthorized();
+        return;
+      }
 
       if (!res.ok) return;
 
@@ -258,9 +328,6 @@ export default function DeliveryLayout({
       // ignore
     }
   };
-
-  const isLoginPage = pathname === "/delivery/login";
-  const isChangePasswordPage = pathname === "/delivery/change-password";
 
   if (isLoginPage) {
     return <>{children}</>;

@@ -1,7 +1,7 @@
-// client/app/admin/adminlogin/page.tsx
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AdminPermissions } from "../_components/adminPermissions";
 
@@ -129,6 +129,15 @@ export default function AdminLoginPage() {
                 placeholder="Password"
                 required
               />
+            </div>
+
+            <div className="-mt-[4px] flex justify-end">
+              <Link
+                href="/admin/forgot-password"
+                className="text-[13px] font-medium text-[#c9b3ff] transition hover:text-white"
+              >
+                Forgot Password?
+              </Link>
             </div>
 
             {error && (

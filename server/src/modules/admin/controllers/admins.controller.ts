@@ -1,4 +1,3 @@
-// server/src/modules/admin/controllers/admin.controller.ts
 import { Response, NextFunction } from "express";
 import { AuthRequest } from "../../auth/middleware/auth.middleware";
 import { AppError } from "../../../middleware/error.middleware";
@@ -8,6 +7,10 @@ import {
   defaultAdminPermissions,
   fullSuperadminPermissions,
 } from "../../../models/User.model";
+import {
+  createInviteToken,
+  sendAdminInviteEmail,
+} from "../../../services/invite.service";
 
 function sanitizePermissions(input: any): IAdminPermissions {
   const base = defaultAdminPermissions();
@@ -114,7 +117,7 @@ export const adminsController = {
     }
   },
 
-  async create(
+  async invite(
     req: AuthRequest,
     res: Response,
     next: NextFunction
@@ -125,52 +128,57 @@ export const adminsController = {
         throw new AppError("Superadmin only", 403);
       }
 
+      const currentUserId = String(req.user?.userId || "");
+      const inviterName = String((req.user as any)?.name || "").trim();
+
       const name = String(req.body?.name || "").trim();
       const email = String(req.body?.email || "").trim().toLowerCase();
-      const password = String(req.body?.password || "");
       const newRole = String(req.body?.role || "admin").toLowerCase();
 
       if (!name) throw new AppError("Name is required", 400);
       if (!email) throw new AppError("Email is required", 400);
-      if (password.length < 8) {
-        throw new AppError("Password must be at least 8 characters", 400);
-      }
-      if (newRole !== "admin" && newRole !== "superadmin") {
-        throw new AppError("Invalid role", 400);
+      if (newRole !== "admin") {
+        throw new AppError("Only admin invitations are allowed here", 400);
       }
 
       const exists = await User.findOne({ email });
       if (exists) throw new AppError("Email already exists", 409);
 
-      const permissions =
-        newRole === "superadmin"
-          ? fullSuperadminPermissions()
-          : sanitizePermissions(req.body?.permissions);
+      const permissions = sanitizePermissions(req.body?.permissions);
+      const { rawToken, tokenHash, expiresAt } = createInviteToken();
 
       const user = await User.create({
         name,
         email,
-        password,
-        role: newRole,
-        status: "active",
+        role: "admin",
+        status: "invited",
         mustChangePassword: true,
         permissions,
         provider: "credentials",
+        inviteTokenHash: tokenHash,
+        inviteTokenExpires: expiresAt,
+        inviteAcceptedAt: null,
+        invitedBy: currentUserId || null,
+      });
+
+      await sendAdminInviteEmail({
+        to: user.email,
+        name: user.name,
+        invitedByName: inviterName || "Superadmin",
+        token: rawToken,
       });
 
       res.status(201).json({
         success: true,
+        message: "Admin invitation sent successfully",
         item: {
           _id: String(user._id),
           name: user.name,
           email: user.email,
           role: user.role,
-          status: user.status || "active",
+          status: user.status || "invited",
           mustChangePassword: !!user.mustChangePassword,
-          permissions:
-            user.role === "superadmin"
-              ? fullSuperadminPermissions()
-              : sanitizePermissions(user.permissions),
+          permissions: sanitizePermissions(user.permissions),
         },
       });
       return;
@@ -295,47 +303,6 @@ export const adminsController = {
     }
   },
 
-  async resetPassword(
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> {
-    try {
-      const currentRole = String(req.user?.role || "").toLowerCase();
-      if (currentRole !== "superadmin") {
-        throw new AppError("Superadmin only", 403);
-      }
-
-      const adminId = String(req.params?.id || "");
-      const newPassword = String(req.body?.newPassword || "");
-
-      if (!adminId) throw new AppError("Admin id is required", 400);
-      if (newPassword.length < 8) {
-        throw new AppError("New password must be at least 8 characters", 400);
-      }
-
-      const target: any = await User.findById(adminId).select("+password");
-      if (!target) throw new AppError("Admin not found", 404);
-
-      if (target.role !== "admin") {
-        throw new AppError("Only admin accounts can be reset here", 400);
-      }
-
-      target.password = newPassword;
-      target.mustChangePassword = true;
-      await target.save();
-
-      res.json({
-        success: true,
-        message: "Admin password reset successfully",
-      });
-      return;
-    } catch (e) {
-      next(e);
-      return;
-    }
-  },
-
   async remove(
     req: AuthRequest,
     res: Response,
@@ -367,13 +334,11 @@ export const adminsController = {
         throw new AppError("Only admin accounts can be deleted here", 400);
       }
 
-      targetUser.isDeleted = true;
-      targetUser.deletedAt = new Date();
-      await targetUser.save();
+      await User.findByIdAndDelete(targetId);
 
       res.json({
         success: true,
-        message: "Admin deleted successfully",
+        message: "Admin permanently deleted successfully",
       });
       return;
     } catch (e) {

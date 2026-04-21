@@ -1,89 +1,64 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import * as React from "react";
-import { DELIVERY_ENDPOINTS, safeJson } from "@/app/lib/delivery";
 
-type LoginForm = {
-  emailOrPhone: string;
-  password: string;
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+
+type ForgotPasswordResponse = {
+  success?: boolean;
+  message?: string;
 };
 
 function inputClassName() {
   return "w-full rounded-[14px] border border-[#111827] bg-[#020617] px-5 py-4 text-sm text-white placeholder:text-[#6b7280] outline-none transition focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10";
 }
 
-export default function DeliveryLoginPage() {
-  const router = useRouter();
-
-  const [form, setForm] = React.useState<LoginForm>({
-    emailOrPhone: "",
-    password: "",
-  });
-
+export default function DeliveryForgotPasswordPage() {
+  const [email, setEmail] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [success, setSuccess] = React.useState("");
 
-  const updateField = <K extends keyof LoginForm>(
-    key: K,
-    value: LoginForm[K]
-  ) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const validate = () => {
-    if (!form.emailOrPhone.trim()) return "Email or phone is required.";
-    if (!form.password.trim()) return "Password is required.";
-    return "";
-  };
-
-  const onSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
+    setSuccess("");
 
-    const validationMessage = validate();
-    if (validationMessage) {
-      setError(validationMessage);
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail) {
+      setError("Email is required.");
       return;
     }
 
     try {
       setLoading(true);
 
-      const res = await fetch(DELIVERY_ENDPOINTS.login, {
+      const res = await fetch(`${API_BASE}/api/auth/forgot-password`, {
         method: "POST",
-        credentials: "include",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          emailOrPhone: form.emailOrPhone.trim(),
-          password: form.password.trim(),
-        }),
+        credentials: "include",
+        body: JSON.stringify({ email: cleanEmail }),
       });
 
-      const json = await safeJson(res);
+      const data: ForgotPasswordResponse = await res.json();
 
       if (!res.ok) {
-        setError((json as any)?.message || "Login failed");
+        setError(data?.message || "Failed to send reset link.");
         return;
       }
 
-      const mustChangePassword =
-        Boolean((json as any)?.mustChangePassword) ||
-        Boolean((json as any)?.user?.mustChangePassword) ||
-        Boolean((json as any)?.data?.mustChangePassword);
-
-      if (mustChangePassword) {
-        router.replace("/delivery/change-password");
-        return;
-      }
-
-      router.replace("/delivery/dashboard");
-      router.refresh();
-    } catch {
-      setError("Login failed");
+      setSuccess(
+        "If your email exists, we sent a password reset link to your inbox."
+      );
+      setEmail("");
+    } catch (err) {
+      console.error(err);
+      setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -124,8 +99,12 @@ export default function DeliveryLoginPage() {
             <section className="w-full max-w-[560px]">
               <div className="text-center">
                 <h2 className="text-3xl font-extrabold tracking-tight text-white md:text-4xl">
-                  Delivery Login
+                  Forgot Password
                 </h2>
+                <p className="mt-3 text-sm text-[#94a3b8]">
+                  Enter your delivery account email and we’ll send you a reset
+                  link.
+                </p>
               </div>
 
               {error ? (
@@ -134,49 +113,39 @@ export default function DeliveryLoginPage() {
                 </div>
               ) : null}
 
-              <form onSubmit={onSubmit} className="mt-8 space-y-6">
-                <input
-                  type="text"
-                  value={form.emailOrPhone}
-                  onChange={(e) => updateField("emailOrPhone", e.target.value)}
-                  placeholder="Email Address or Phone"
-                  className={inputClassName()}
-                />
-
-                <input
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => updateField("password", e.target.value)}
-                  placeholder="Password"
-                  className={inputClassName()}
-                />
-
-                <div className="-mt-2 flex justify-end">
-                  <Link
-                    href="/delivery/forgot-password"
-                    className="text-sm font-semibold text-[#60a5fa] transition hover:text-[#93c5fd]"
-                  >
-                    Forgot Password?
-                  </Link>
+              {success ? (
+                <div className="mt-6 rounded-[14px] border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
+                  {success}
                 </div>
+              ) : null}
+
+              <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email Address"
+                  className={inputClassName()}
+                  required
+                />
 
                 <div className="flex justify-center pt-2">
                   <button
                     type="submit"
                     disabled={loading}
-                    className="min-w-[150px] rounded-[14px] bg-[#2563eb] px-8 py-3 text-sm font-bold text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="min-w-[170px] rounded-[14px] bg-[#2563eb] px-8 py-3 text-sm font-bold text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {loading ? "Signing in..." : "Login"}
+                    {loading ? "Sending..." : "Send Reset Link"}
                   </button>
                 </div>
               </form>
 
               <div className="mt-8 text-center">
                 <Link
-                  href="/"
+                  href="/delivery/login"
                   className="text-sm font-semibold text-[#60a5fa] transition hover:text-[#93c5fd]"
                 >
-                  Back to store
+                  Back to Delivery Login
                 </Link>
               </div>
             </section>

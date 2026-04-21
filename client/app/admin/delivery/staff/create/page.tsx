@@ -12,11 +12,9 @@ type FormState = {
   name: string;
   email: string;
   phone: string;
-  password: string;
   vehicleType: string;
   vehicleNumber: string;
   area: string;
-  isActive: boolean;
 };
 
 function Field({
@@ -64,11 +62,9 @@ export default function CreateDeliveryStaffPage() {
     name: "",
     email: "",
     phone: "",
-    password: "",
     vehicleType: "",
     vehicleNumber: "",
     area: "",
-    isActive: true,
   });
 
   const [saving, setSaving] = React.useState(false);
@@ -83,10 +79,6 @@ export default function CreateDeliveryStaffPage() {
     if (!form.name.trim()) return "Full name is required.";
     if (!form.email.trim()) return "Email is required.";
     if (!form.phone.trim()) return "Phone number is required.";
-    if (!form.password.trim()) return "Password is required.";
-    if (form.password.trim().length < 6) {
-      return "Password must be at least 6 characters.";
-    }
     if (!form.vehicleType.trim()) return "Vehicle type is required.";
     if (!form.area.trim()) return "Delivery area is required.";
     return "";
@@ -110,14 +102,12 @@ export default function CreateDeliveryStaffPage() {
         name: form.name.trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
-        password: form.password.trim(),
         vehicleType: form.vehicleType.trim(),
         vehicleNumber: form.vehicleNumber.trim(),
         area: form.area.trim(),
-        isActive: form.isActive,
       };
 
-      const res = await fetch(`${API_BASE}/api/admin/delivery-staff`, {
+      const res = await fetch(`${API_BASE}/api/admin/delivery-staff/invite`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -129,17 +119,17 @@ export default function CreateDeliveryStaffPage() {
       const json = await safeJson(res);
 
       if (!res.ok) {
-        setError((json as any)?.message || "Failed to create delivery man");
+        setError((json as any)?.message || "Failed to send delivery invitation");
         return;
       }
 
-      setSuccess("Delivery man created successfully.");
+      setSuccess("Delivery invitation sent successfully.");
 
       setTimeout(() => {
         router.push("/admin/delivery/staff");
       }, 700);
     } catch {
-      setError("Failed to create delivery man");
+      setError("Failed to send delivery invitation");
     } finally {
       setSaving(false);
     }
@@ -153,15 +143,15 @@ export default function CreateDeliveryStaffPage() {
             <div className="space-y-3">
               <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
                 Admin <span className="mx-2">/</span> Delivery Staff{" "}
-                <span className="mx-2">/</span> Create
+                <span className="mx-2">/</span> Invite
               </div>
 
               <h1 className="text-3xl font-extrabold tracking-tight text-white md:text-4xl">
-                Add Delivery Man
+                Invite Delivery Staff
               </h1>
 
               <p className="text-sm text-slate-400">
-                Create a new delivery rider account for order assignment and delivery tracking.
+                Invite a new delivery rider by email for order assignment and delivery tracking.
               </p>
             </div>
 
@@ -226,17 +216,6 @@ export default function CreateDeliveryStaffPage() {
               />
             </Field>
 
-            <Field label="Password" htmlFor="delivery-password" required>
-              <input
-                id="delivery-password"
-                type="password"
-                value={form.password}
-                onChange={(e) => updateField("password", e.target.value)}
-                placeholder="Enter login password"
-                className={inputClassName()}
-              />
-            </Field>
-
             <Field label="Vehicle Type" htmlFor="delivery-vehicle-type" required>
               <select
                 id="delivery-vehicle-type"
@@ -285,36 +264,11 @@ export default function CreateDeliveryStaffPage() {
                 />
               </Field>
             </div>
-
-            <div className="md:col-span-2">
-              <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold text-slate-100">
-                      Rider Status
-                    </div>
-                    <div className="mt-1 text-sm text-slate-400">
-                      Mark this delivery man as active and available for order assignment.
-                    </div>
-                  </div>
-
-                  <label className="inline-flex items-center gap-3">
-                    <span className="text-sm text-slate-300">Active</span>
-                    <input
-                      type="checkbox"
-                      checked={form.isActive}
-                      onChange={(e) => updateField("isActive", e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-sky-500 focus:ring-sky-500/40"
-                    />
-                  </label>
-                </div>
-              </div>
-            </div>
           </div>
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-700/50 pt-6">
             <div className="text-sm text-slate-400">
-              After creation, this rider can be selected while assigning orders.
+              After the invitation is accepted and password is set, this rider can be selected while assigning orders.
             </div>
 
             <div className="flex items-center gap-3">
@@ -330,7 +284,7 @@ export default function CreateDeliveryStaffPage() {
                 disabled={saving}
                 className="rounded-xl bg-sky-500 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {saving ? "Creating..." : "Create Delivery Man"}
+                {saving ? "Sending..." : "Send Invite"}
               </button>
             </div>
           </div>

@@ -370,7 +370,8 @@ export const authController = {
       await user.save();
 
       const clientBase = process.env.CLIENT_BASE_URL || "http://localhost:3000";
-      const resetLink = `${clientBase}/reset-password?token=${rawToken}`;
+      const role = String((user as any).role || "").toLowerCase();
+      const resetLink = `${clientBase}/reset-password?token=${rawToken}&role=${role}`;
 
       await emailService.sendMail({
         to: user.email,
@@ -439,6 +440,34 @@ export const authController = {
       res.status(200).json({
         success: true,
         message: "Password reset successful. Please login.",
+      });
+      return;
+    } catch (error) {
+      next(error);
+      return;
+    }
+  },
+
+  acceptInvite: async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const { token, password } = req.body as {
+        token?: string;
+        password?: string;
+      };
+
+      const result = await authService.acceptInvite(
+        String(token || ""),
+        String(password || "")
+      );
+
+      res.status(200).json({
+        success: true,
+        message: result.message,
+        user: result.user,
       });
       return;
     } catch (error) {

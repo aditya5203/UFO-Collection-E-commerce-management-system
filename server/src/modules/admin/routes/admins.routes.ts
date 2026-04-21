@@ -12,17 +12,16 @@ router.use(adminAuthMiddleware);
 router.use(authorize("admin", "superadmin"));
 
 router.get("/", authorizePermission("adminsView"), adminsController.list);
-router.post("/", authorizePermission("adminsCreate"), adminsController.create);
+router.post(
+  "/invite",
+  authorizePermission("adminsCreate"),
+  adminsController.invite
+);
 router.put("/:id", authorizePermission("adminsEdit"), adminsController.update);
 router.patch(
   "/:id/status",
   authorizePermission("adminsStatus"),
   adminsController.toggleStatus
-);
-router.patch(
-  "/:id/reset-password",
-  authorizePermission("adminsResetPassword"),
-  adminsController.resetPassword
 );
 router.delete("/:id", authorizePermission("adminsDelete"), adminsController.remove);
 

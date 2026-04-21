@@ -107,17 +107,15 @@ router.use("/admin/dashboard", adminAuthMiddleware, dashboardRoutes);
 // ADMIN ANALYTICS
 router.use("/admin/analytics", adminAuthMiddleware, analyticsRoutes);
 
+/*
+  IMPORTANT:
+  Mount delivery staff routes BEFORE generic /admin middleware routes.
+  Otherwise /admin/delivery-staff/* will be matched by /admin first.
+*/
+router.use("/admin/delivery-staff", deliveryStaffRoutes);
+
 // ADMIN SETTINGS + ADMINS
 router.use("/admin", adminAuthMiddleware, adminSettingsRoutes);
 router.use("/admins", adminAuthMiddleware, adminsRoutes);
-
-/*
-  IMPORTANT:
-  Do NOT wrap deliveryStaffRoutes here with adminAuthMiddleware,
-  because the router itself already protects:
-  - admin-only routes with adminAuthMiddleware
-  - rider self-service routes with deliveryAuthMiddleware
-*/
-router.use("/admin/delivery-staff", deliveryStaffRoutes);
 
 export default router;

@@ -1,14 +1,23 @@
-// client/app/admin/layout.tsx
 "use client";
 
 import AdminSidebar from "./_components/AdminSidebar";
 import React from "react";
+import { usePathname } from "next/navigation";
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
+  const isPublicAdminPage =
+    pathname === "/admin/adminlogin" || pathname === "/admin/forgot-password";
+
+  if (isPublicAdminPage) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar-fixed">

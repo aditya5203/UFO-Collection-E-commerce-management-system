@@ -209,9 +209,8 @@ export default function AdminSettingsPage() {
   const [currentRole, setCurrentRole] = React.useState<"admin" | "superadmin">(
     "admin"
   );
-  const [currentPermissions, setCurrentPermissions] = React.useState<AdminPermissions>(
-    defaultAdminPermissions()
-  );
+  const [currentPermissions, setCurrentPermissions] =
+    React.useState<AdminPermissions>(defaultAdminPermissions());
 
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
@@ -229,13 +228,11 @@ export default function AdminSettingsPage() {
   const [openCreate, setOpenCreate] = React.useState(false);
   const [openEdit, setOpenEdit] = React.useState(false);
   const [openPass, setOpenPass] = React.useState(false);
-  const [openResetPass, setOpenResetPass] = React.useState(false);
 
   const [selectedAdmin, setSelectedAdmin] = React.useState<AdminRow | null>(null);
 
   const [aName, setAName] = React.useState("");
   const [aEmail, setAEmail] = React.useState("");
-  const [aPass, setAPass] = React.useState("");
   const [permissions, setPermissions] = React.useState<AdminPermissions>(
     defaultAdminPermissions()
   );
@@ -253,11 +250,6 @@ export default function AdminSettingsPage() {
   const [editErr, setEditErr] = React.useState("");
   const [updating, setUpdating] = React.useState(false);
 
-  const [resetPass, setResetPass] = React.useState("");
-  const [resetConfirmPass, setResetConfirmPass] = React.useState("");
-  const [resetErr, setResetErr] = React.useState("");
-  const [resetting, setResetting] = React.useState(false);
-
   const [oldPass, setOldPass] = React.useState("");
   const [newPass, setNewPass] = React.useState("");
   const [confirmPass, setConfirmPass] = React.useState("");
@@ -269,11 +261,6 @@ export default function AdminSettingsPage() {
   const canEditAdmins = hasPermission(currentRole, currentPermissions, "adminsEdit");
   const canDeleteAdmins = hasPermission(currentRole, currentPermissions, "adminsDelete");
   const canToggleAdminsStatus = hasPermission(currentRole, currentPermissions, "adminsStatus");
-  const canResetAdminsPassword = hasPermission(
-    currentRole,
-    currentPermissions,
-    "adminsResetPassword"
-  );
 
   const togglePermission = (key: AdminPermissionKey) => {
     setPermissions((prev) => ({
@@ -293,7 +280,6 @@ export default function AdminSettingsPage() {
     setCreateErr("");
     setAName("");
     setAEmail("");
-    setAPass("");
     setPermissions(defaultAdminPermissions());
   };
 
@@ -305,14 +291,6 @@ export default function AdminSettingsPage() {
     setEditStatus((admin.status || "active") as "active" | "inactive" | "invited");
     setEditPermissions(normalizeAdminPermissions("admin", admin.permissions));
     setOpenEdit(true);
-  };
-
-  const openResetPasswordModal = (admin: AdminRow) => {
-    setSelectedAdmin(admin);
-    setResetErr("");
-    setResetPass("");
-    setResetConfirmPass("");
-    setOpenResetPass(true);
   };
 
   const loadAdmins = React.useCallback(async () => {
@@ -416,7 +394,7 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const onCreateAdmin = async () => {
+  const onInviteAdmin = async () => {
     setCreateErr("");
 
     const n = aName.trim();
@@ -424,20 +402,16 @@ export default function AdminSettingsPage() {
 
     if (!n) return setCreateErr("Name is required");
     if (!e) return setCreateErr("Email is required");
-    if (aPass.length < 8) {
-      return setCreateErr("Password must be at least 8 characters");
-    }
 
     try {
       setCreating(true);
-      const res = await fetch(`${API_BASE_URL}/api/admins`, {
+      const res = await fetch(`${API_BASE_URL}/api/admins/invite`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: n,
           email: e,
-          password: aPass,
           role: "admin",
           permissions,
         }),
@@ -445,14 +419,14 @@ export default function AdminSettingsPage() {
 
       const j = await safeJson(res);
       if (!res.ok) {
-        setCreateErr(j?.message || "Failed to create admin");
+        setCreateErr(j?.message || "Failed to send admin invitation");
         return;
       }
 
       setOpenCreate(false);
       resetCreateForm();
       await loadAdmins();
-      alert("Admin created ✅");
+      alert("Admin invitation sent ✅");
     } catch {
       setCreateErr("Network error. Please try again.");
     } finally {
@@ -539,51 +513,6 @@ export default function AdminSettingsPage() {
     }
   };
 
-  const onResetAdminPassword = async () => {
-    if (!selectedAdmin) return;
-
-    setResetErr("");
-
-    if (resetPass.length < 8) {
-      return setResetErr("New password must be at least 8 characters");
-    }
-
-    if (resetPass !== resetConfirmPass) {
-      return setResetErr("Passwords do not match");
-    }
-
-    try {
-      setResetting(true);
-
-      const res = await fetch(
-        `${API_BASE_URL}/api/admins/${selectedAdmin._id}/reset-password`,
-        {
-          method: "PATCH",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ newPassword: resetPass }),
-        }
-      );
-
-      const j = await safeJson(res);
-      if (!res.ok) {
-        setResetErr(j?.message || "Failed to reset password");
-        return;
-      }
-
-      setOpenResetPass(false);
-      setSelectedAdmin(null);
-      setResetPass("");
-      setResetConfirmPass("");
-      await loadAdmins();
-      alert("Admin password reset ✅");
-    } catch {
-      setResetErr("Network error. Please try again.");
-    } finally {
-      setResetting(false);
-    }
-  };
-
   const onDeleteAdmin = async (admin: AdminRow) => {
     if (!canDeleteAdmins) {
       alert("You do not have permission to delete admin.");
@@ -596,7 +525,7 @@ export default function AdminSettingsPage() {
     }
 
     const ok = window.confirm(
-      `Are you sure you want to delete ${admin.name} (${admin.email})?`
+      `Are you sure you want to delete ${admin.name} (${admin.email})? This will permanently delete the account from the database.`
     );
     if (!ok) return;
 
@@ -759,20 +688,19 @@ export default function AdminSettingsPage() {
                     setOpenCreate(true);
                   }}
                 >
-                  Create New Admin
+                  Invite Admin
                 </Button>
               ) : null}
             </div>
 
             <div className="mt-[12px] overflow-x-auto rounded-[12px] border border-[#111827]">
-              <table className="w-full min-w-[1180px] border-collapse text-[13px]">
+              <table className="w-full min-w-[1040px] border-collapse text-[13px]">
                 <thead>
                   <tr className="bg-[#0b1220] text-left text-[12px] text-[#9ca3af]">
                     <th className="px-[12px] py-[10px]">Name</th>
                     <th className="px-[12px] py-[10px]">Email</th>
                     <th className="px-[12px] py-[10px]">Role</th>
                     <th className="px-[12px] py-[10px]">Status</th>
-                    <th className="px-[12px] py-[10px]">Password Reset</th>
                     <th className="px-[12px] py-[10px]">Actions</th>
                   </tr>
                 </thead>
@@ -780,13 +708,13 @@ export default function AdminSettingsPage() {
                 <tbody>
                   {loadingAdmins ? (
                     <tr>
-                      <td colSpan={6} className="px-[12px] py-[12px] text-[#9ca3af]">
+                      <td colSpan={5} className="px-[12px] py-[12px] text-[#9ca3af]">
                         Loading admins...
                       </td>
                     </tr>
                   ) : admins.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-[12px] py-[12px] text-[#9ca3af]">
+                      <td colSpan={5} className="px-[12px] py-[12px] text-[#9ca3af]">
                         No admins found.
                       </td>
                     </tr>
@@ -795,7 +723,6 @@ export default function AdminSettingsPage() {
                       const canDelete = canDeleteAdmins && a.role !== "superadmin";
                       const canEdit = canEditAdmins && a.role !== "superadmin";
                       const canStatus = canToggleAdminsStatus && a.role !== "superadmin";
-                      const canReset = canResetAdminsPassword && a.role !== "superadmin";
 
                       return (
                         <tr key={a._id} className="border-t border-[#111827]">
@@ -807,13 +734,16 @@ export default function AdminSettingsPage() {
                             <Pill tone="neutral">{a.role}</Pill>
                           </td>
                           <td className="px-[12px] py-[12px]">
-                            <Pill tone={a.status === "inactive" ? "red" : "green"}>
+                            <Pill
+                              tone={
+                                a.status === "inactive"
+                                  ? "red"
+                                  : a.status === "invited"
+                                  ? "neutral"
+                                  : "green"
+                              }
+                            >
                               {a.status || "active"}
-                            </Pill>
-                          </td>
-                          <td className="px-[12px] py-[12px]">
-                            <Pill tone={a.mustChangePassword ? "red" : "green"}>
-                              {a.mustChangePassword ? "Required" : "Done"}
                             </Pill>
                           </td>
                           <td className="px-[12px] py-[12px]">
@@ -843,16 +773,6 @@ export default function AdminSettingsPage() {
                                 </Button>
                               ) : null}
 
-                              {canReset ? (
-                                <Button
-                                  variant="ghost"
-                                  onClick={() => openResetPasswordModal(a)}
-                                  className="h-[34px] px-[12px] text-[12px]"
-                                >
-                                  Reset Password
-                                </Button>
-                              ) : null}
-
                               {canDelete ? (
                                 <Button
                                   variant="danger"
@@ -864,7 +784,7 @@ export default function AdminSettingsPage() {
                                 </Button>
                               ) : null}
 
-                              {!canEdit && !canStatus && !canReset && !canDelete ? (
+                              {!canEdit && !canStatus && !canDelete ? (
                                 <span className="text-[12px] text-[#6b7280]">—</span>
                               ) : null}
                             </div>
@@ -878,15 +798,15 @@ export default function AdminSettingsPage() {
             </div>
 
             <div className="mt-[10px] text-[12px] text-[#6b7280]">
-              Superadmin can create multiple admins, edit permissions later, activate/deactivate
-              them, reset their password, and delete them.
+              Superadmin can invite admins by email, edit permissions later, activate/deactivate
+              them, and delete them permanently.
             </div>
           </section>
         ) : null}
 
         <Modal
           open={openCreate}
-          title="Create New Admin"
+          title="Invite Admin"
           onClose={() => setOpenCreate(false)}
         >
           <div className="space-y-4">
@@ -910,15 +830,6 @@ export default function AdminSettingsPage() {
                 />
               </Field>
             </div>
-
-            <Field label="Password">
-              <Input
-                type="password"
-                value={aPass}
-                onChange={(e) => setAPass(e.target.value)}
-                placeholder="Min 8 characters"
-              />
-            </Field>
 
             <div className="space-y-3">
               <div className="text-[12px] font-medium text-[#9ca3af]">
@@ -956,8 +867,8 @@ export default function AdminSettingsPage() {
               >
                 Cancel
               </Button>
-              <Button onClick={onCreateAdmin} disabled={creating}>
-                {creating ? "Creating..." : "Create Admin"}
+              <Button onClick={onInviteAdmin} disabled={creating}>
+                {creating ? "Sending..." : "Send Invite"}
               </Button>
             </div>
           </div>
@@ -1042,47 +953,6 @@ export default function AdminSettingsPage() {
               </Button>
               <Button onClick={onUpdateAdmin} disabled={updating}>
                 {updating ? "Updating..." : "Update Admin"}
-              </Button>
-            </div>
-          </div>
-        </Modal>
-
-        <Modal
-          open={openResetPass}
-          title="Reset Admin Password"
-          onClose={() => setOpenResetPass(false)}
-        >
-          <div className="space-y-[12px]">
-            {resetErr ? <ErrBox text={resetErr} /> : null}
-
-            <Field label="New Password">
-              <Input
-                type="password"
-                value={resetPass}
-                onChange={(e) => setResetPass(e.target.value)}
-                placeholder="Min 8 characters"
-              />
-            </Field>
-
-            <Field label="Confirm New Password">
-              <Input
-                type="password"
-                value={resetConfirmPass}
-                onChange={(e) => setResetConfirmPass(e.target.value)}
-                placeholder="Re-enter new password"
-              />
-            </Field>
-
-            <div className="flex justify-end gap-[10px] pt-[4px]">
-              <Button
-                variant="ghost"
-                onClick={() => setOpenResetPass(false)}
-                disabled={resetting}
-              >
-                Cancel
-              </Button>
-              <Button onClick={onResetAdminPassword} disabled={resetting}>
-                {resetting ? "Resetting..." : "Reset Password"}
               </Button>
             </div>
           </div>

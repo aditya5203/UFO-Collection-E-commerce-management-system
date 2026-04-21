@@ -1,7 +1,7 @@
-// client/app/admin/_components/AdminPageGuard.tsx
 "use client";
 
 import * as React from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
   AdminPermissionKey,
   AdminPermissions,
@@ -31,8 +31,12 @@ export default function AdminPageGuard({
   permission: AdminPermissionKey;
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+
   const [loading, setLoading] = React.useState(true);
   const [allowed, setAllowed] = React.useState(false);
+  const [isUnauthorized, setIsUnauthorized] = React.useState(false);
 
   React.useEffect(() => {
     let mounted = true;
@@ -40,6 +44,7 @@ export default function AdminPageGuard({
     const load = async () => {
       try {
         setLoading(true);
+        setIsUnauthorized(false);
 
         const res = await fetch(`${API_BASE_URL}/api/admin/settings`, {
           method: "GET",
@@ -48,6 +53,14 @@ export default function AdminPageGuard({
         });
 
         if (!res.ok) {
+          if (res.status === 401) {
+            if (mounted) {
+              setAllowed(false);
+              setIsUnauthorized(true);
+            }
+            return;
+          }
+
           if (mounted) setAllowed(false);
           return;
         }
@@ -76,10 +89,25 @@ export default function AdminPageGuard({
     };
   }, [permission]);
 
+  React.useEffect(() => {
+    if (!loading && isUnauthorized) {
+      const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
+      router.replace(`/admin/adminlogin${next}`);
+    }
+  }, [isUnauthorized, loading, pathname, router]);
+
   if (loading) {
     return (
       <div className="rounded-[14px] border border-[#111827] bg-[#020617] p-6 text-sm text-[#9ca3af]">
         Checking access...
+      </div>
+    );
+  }
+
+  if (isUnauthorized) {
+    return (
+      <div className="rounded-[14px] border border-[#111827] bg-[#020617] p-6 text-sm text-[#9ca3af]">
+        Redirecting to admin login...
       </div>
     );
   }

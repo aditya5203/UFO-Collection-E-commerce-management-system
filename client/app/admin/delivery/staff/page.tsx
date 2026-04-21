@@ -94,6 +94,7 @@ export default function DeliveryStaffPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   const load = React.useCallback(async (search: string) => {
     setLoading(true);
@@ -155,6 +156,36 @@ export default function DeliveryStaffPage() {
     const t = setTimeout(() => load(q), 300);
     return () => clearTimeout(t);
   }, [q, load]);
+
+  const onDelete = async (item: DeliveryStaffRow) => {
+    const ok = window.confirm(
+      `Are you sure you want to delete ${item.name || "this delivery staff"} (${item.email || "-"})? This will permanently delete the account from the database.`
+    );
+    if (!ok) return;
+
+    try {
+      setDeletingId(item.id);
+
+      const res = await fetch(`${API_BASE}/api/admin/delivery-staff/${item.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+
+      const json = await safeJson(res);
+
+      if (!res.ok) {
+        alert((json as any)?.message || "Failed to delete delivery staff");
+        return;
+      }
+
+      await load(q);
+      alert((json as any)?.message || "Delivery staff deleted successfully");
+    } catch {
+      alert("Network error while deleting delivery staff");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const filteredRows = React.useMemo(() => {
     if (statusFilter === "all") return rows;
@@ -343,19 +374,34 @@ export default function DeliveryStaffPage() {
                       </td>
 
                       <td className="px-6 py-5 text-right">
-                        <Link
-                          href={`/admin/delivery/staff/${item.id}`}
-                          className="font-semibold text-slate-200 hover:text-slate-100"
-                        >
-                          View
-                        </Link>
-                        <span className="mx-2 text-slate-500">/</span>
-                        <Link
-                          href={`/admin/delivery/staff/${item.id}/edit`}
-                          className="font-semibold text-slate-200 hover:text-slate-100"
-                        >
-                          Edit
-                        </Link>
+                        <div className="inline-flex items-center gap-3">
+                          <Link
+                            href={`/admin/delivery/staff/${item.id}`}
+                            className="font-semibold text-slate-200 hover:text-slate-100"
+                          >
+                            View
+                          </Link>
+
+                          <span className="text-slate-500">/</span>
+
+                          <Link
+                            href={`/admin/delivery/staff/${item.id}/edit`}
+                            className="font-semibold text-slate-200 hover:text-slate-100"
+                          >
+                            Edit
+                          </Link>
+
+                          <span className="text-slate-500">/</span>
+
+                          <button
+                            type="button"
+                            onClick={() => onDelete(item)}
+                            disabled={deletingId === item.id}
+                            className="font-semibold text-red-300 transition hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {deletingId === item.id ? "Deleting..." : "Delete"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

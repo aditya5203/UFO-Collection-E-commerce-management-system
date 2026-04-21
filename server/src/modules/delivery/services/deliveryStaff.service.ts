@@ -6,6 +6,10 @@ import orderService from "../../orders/services/order.service";
 import { getIO } from "../../../socket";
 import { notificationService } from "../../notifications/services/notification.service";
 import { emailService } from "../../../services/email.services";
+import {
+  createInviteToken,
+  sendDeliveryInviteEmail,
+} from "../../../services/invite.service";
 
 function mapDeliveryOrder(o: any) {
   return {
@@ -316,23 +320,17 @@ async function notifyDeliveryStatus(
 }
 
 export const deliveryStaffService = {
-  async create(data: any) {
+  async create(data: any, invitedBy?: { userId?: string; name?: string }) {
     const email = String(data?.email || "").trim().toLowerCase();
     const name = String(data?.name || "").trim();
     const phone = String(data?.phone || "").trim();
-    const password = String(data?.password || "").trim();
     const vehicleType = String(data?.vehicleType || "").trim();
     const vehicleNumber = String(data?.vehicleNumber || "").trim();
     const area = String(data?.area || "").trim();
-    const isActive = Boolean(data?.isActive);
 
     if (!name) throw new AppError("Full name is required", 400);
     if (!email) throw new AppError("Email is required", 400);
     if (!phone) throw new AppError("Phone number is required", 400);
-    if (!password) throw new AppError("Password is required", 400);
-    if (password.length < 6) {
-      throw new AppError("Password must be at least 6 characters", 400);
-    }
     if (!vehicleType) throw new AppError("Vehicle type is required", 400);
     if (!area) throw new AppError("Delivery area is required", 400);
 
@@ -342,18 +340,23 @@ export const deliveryStaffService = {
       throw new AppError("User with this email already exists", 409);
     }
 
+    const { rawToken, tokenHash, expiresAt } = createInviteToken();
+
     const user = new User({
       name,
       email,
       phone,
-      password,
       role: "delivery",
-      status: isActive ? "active" : "inactive",
+      status: "invited",
       mustChangePassword: true,
       provider: "credentials",
       vehicleType,
       vehicleNumber,
       deliveryArea: area,
+      inviteTokenHash: tokenHash,
+      inviteTokenExpires: expiresAt,
+      inviteAcceptedAt: null,
+      invitedBy: invitedBy?.userId || null,
       isBlocked: false,
       blockedAt: null,
       isDeleted: false,
@@ -363,6 +366,13 @@ export const deliveryStaffService = {
 
     await user.save();
 
+    await sendDeliveryInviteEmail({
+      to: user.email,
+      name: user.name,
+      invitedByName: invitedBy?.name || "Admin",
+      token: rawToken,
+    });
+
     return {
       id: String(user._id),
       name: user.name,
@@ -371,7 +381,8 @@ export const deliveryStaffService = {
       vehicleType: user.vehicleType || "",
       vehicleNumber: user.vehicleNumber || "",
       area: user.deliveryArea || "",
-      isActive: String(user.status || "").toLowerCase() === "active",
+      status: user.status || "invited",
+      isActive: false,
       mustChangePassword: !!user.mustChangePassword,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
@@ -563,6 +574,47 @@ export const deliveryStaffService = {
       mustChangePassword: !!user.mustChangePassword,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+    };
+  },
+
+  async remove(id: string, currentUserId?: string) {
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new AppError("Invalid delivery staff id", 400);
+    }
+
+    if (currentUserId && id === currentUserId) {
+      throw new AppError("You cannot delete your own account", 400);
+    }
+
+    const user = await User.findOne({
+      _id: new mongoose.Types.ObjectId(id),
+      role: "delivery",
+    }).lean();
+
+    if (!user) {
+      throw new AppError("Delivery staff not found", 404);
+    }
+
+    const activeAssignments = await Order.countDocuments({
+      "deliveryAssignment.deliveryManId": user._id,
+      "deliveryAssignment.status": {
+        $in: ["Assigned", "Picked Up", "Out for Delivery"],
+      },
+    });
+
+    if (activeAssignments > 0) {
+      throw new AppError(
+        "This delivery staff has active assigned orders. Reassign or complete them before deleting.",
+        400
+      );
+    }
+
+    await User.findByIdAndDelete(user._id);
+
+    return {
+      id: String(user._id),
+      name: String((user as any).name || ""),
+      email: String((user as any).email || ""),
     };
   },
 
