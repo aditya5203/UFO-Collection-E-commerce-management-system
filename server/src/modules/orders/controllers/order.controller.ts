@@ -99,9 +99,9 @@ export const orderController = {
       res.status(200).json({ data });
       return;
     } catch (err: any) {
-      res.status(500).json({
-        message: err?.message || "Failed to fetch orders",
-      });
+      res.status(400).json({
+  message: err?.message || "Failed to create order",
+});
       return;
     }
   },

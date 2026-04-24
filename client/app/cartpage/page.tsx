@@ -14,6 +14,7 @@ type CartItem = {
   price: number;
   qty: number;
   image: string;
+  stock?: number;
 };
 
 type CollectedCouponRow = {
@@ -107,6 +108,22 @@ function getColorSwatchClass(color: string) {
   return map[c] || "bg-neutral-800";
 }
 
+function isCustomerLoggedIn() {
+  if (typeof window === "undefined") return false;
+
+  const token =
+    localStorage.getItem("token") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("ufo_token");
+
+  const user =
+    localStorage.getItem("user") ||
+    localStorage.getItem("ufo_user") ||
+    localStorage.getItem("ufo_customer");
+
+  return Boolean(token || user);
+}
+
 export default function CartPage() {
   const router = useRouter();
 
@@ -117,6 +134,7 @@ export default function CartPage() {
   const [appliedCouponLabel, setAppliedCouponLabel] = React.useState("");
   const [couponMessage, setCouponMessage] = React.useState("");
   const [isApplyingCoupon, setIsApplyingCoupon] = React.useState(false);
+  const [stockMessage, setStockMessage] = React.useState("");
 
   const shipping = 100;
 
@@ -145,6 +163,13 @@ export default function CartPage() {
     [items]
   );
 
+  const hasStockIssue = React.useMemo(() => {
+    return items.some((it) => {
+      const stock = Number(it.stock ?? 0);
+      return stock <= 0 || Number(it.qty || 0) > stock;
+    });
+  }, [items]);
+
   const total = Math.max(
     0,
     subtotal + (items.length ? shipping : 0) - discountAmount
@@ -156,12 +181,27 @@ export default function CartPage() {
     color: string,
     qty: number
   ) => {
-    const safe = Math.max(1, Math.min(99, qty || 1));
+    const item = items.find(
+      (it) => it.id === id && it.size === size && it.color === color
+    );
+
+    const maxStock = Number(item?.stock ?? 0);
+    const safe = Math.max(1, Math.min(maxStock > 0 ? maxStock : 1, qty || 1));
+
+    if (maxStock <= 0) {
+      setStockMessage("This item is out of stock. Please remove it from cart.");
+    } else if (qty > maxStock) {
+      setStockMessage(`Only ${maxStock} item(s) available in stock.`);
+    } else {
+      setStockMessage("");
+    }
+
     const next = items.map((it) =>
       it.id === id && it.size === size && it.color === color
         ? { ...it, qty: safe }
         : it
     );
+
     saveCart(next);
   };
 
@@ -170,6 +210,7 @@ export default function CartPage() {
       (it) => !(it.id === id && it.size === size && it.color === color)
     );
     saveCart(next);
+    setStockMessage("");
   };
 
   const buildValidatePayload = React.useCallback(
@@ -240,7 +281,9 @@ export default function CartPage() {
       });
 
       const collectedJson = await safeJson(collectedRes);
-      const collectedRows: CollectedCouponRow[] = Array.isArray(collectedJson?.data)
+      const collectedRows: CollectedCouponRow[] = Array.isArray(
+        collectedJson?.data
+      )
         ? collectedJson.data
         : [];
 
@@ -365,6 +408,35 @@ export default function CartPage() {
     } finally {
       setIsApplyingCoupon(false);
     }
+  };
+
+  const proceedToCheckout = () => {
+    if (hasStockIssue) {
+      setStockMessage(
+        "Some cart items are out of stock or exceed available stock. Please update your cart."
+      );
+      return;
+    }
+
+    const orderSummary = {
+      subtotal,
+      shipping: items.length ? shipping : 0,
+      discount: discountAmount,
+      total,
+      currency: "NPR",
+      updatedAt: new Date().toISOString(),
+      couponCode: appliedCouponCode || discount.trim() || null,
+    };
+
+    localStorage.setItem("ufo_order_summary", JSON.stringify(orderSummary));
+
+    if (!isCustomerLoggedIn()) {
+      localStorage.setItem("ufo_redirect_after_login", "/checkout");
+      router.push("/login");
+      return;
+    }
+
+    router.push("/checkout");
   };
 
   return (
@@ -496,127 +568,74 @@ export default function CartPage() {
                   <div />
                 </div>
 
-                {items.map((it) => (
-                  <div
-                    key={`${it.id}-${it.size}-${it.color}`}
-                    className="border-b border-[#1b2034] px-4 py-5 last:border-0 sm:px-5 md:px-6 md:py-6"
-                  >
-                    <div className="hidden grid-cols-[1.5fr_0.7fr_0.9fr_0.9fr_0.6fr_0.25fr] items-center gap-4 md:grid">
-                      <div className="flex min-w-0 items-center gap-4">
-                        <div className="relative h-[56px] w-[56px] shrink-0 overflow-hidden rounded-full border border-[#2b2f45]">
-                          <Image
-                            src={it.image}
-                            alt={it.name}
-                            fill
-                            className="object-cover"
-                          />
-                        </div>
-                        <span className="truncate">{it.name}</span>
-                      </div>
+                {items.map((it) => {
+                  const stock = Number(it.stock ?? 0);
+                  const itemHasStockIssue = stock <= 0 || it.qty > stock;
 
-                      <span>{it.size}</span>
-
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`h-4 w-4 rounded-full border border-[#3a3f58] ${getColorSwatchClass(
-                            it.color
-                          )}`}
-                        />
-                        <span className="truncate">
-                          {it.colorLabel || "Color"}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-center">
-                        <label
-                          htmlFor={`qty-${it.id}-${it.size}-${it.color}`}
-                          className="sr-only"
-                        >
-                          Quantity for {it.name}
-                        </label>
-                        <input
-                          id={`qty-${it.id}-${it.size}-${it.color}`}
-                          type="number"
-                          min={1}
-                          max={99}
-                          value={it.qty}
-                          onChange={(e) =>
-                            updateQty(
-                              it.id,
-                              it.size,
-                              it.color,
-                              Number(e.target.value)
-                            )
-                          }
-                          className="w-[82px] rounded-[10px] border border-[#3a3f58] bg-transparent px-3 py-2 text-white outline-none transition focus:border-[#d6c7ff]"
-                        />
-                      </div>
-
-                      <span>Rs. {it.price}</span>
-
-                      <button
-                        type="button"
-                        onClick={() => removeItem(it.id, it.size, it.color)}
-                        className="flex justify-center"
-                        aria-label={`Remove ${it.name} from cart`}
-                        title={`Remove ${it.name}`}
-                      >
-                        <Image
-                          src="/images/delete.png"
-                          width={24}
-                          height={24}
-                          alt="Remove icon"
-                          className="brightness-0 invert"
-                        />
-                      </button>
-                    </div>
-
-                    <div className="flex gap-4 md:hidden">
-                      <div className="relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-[12px] border border-[#2b2f45] sm:h-[88px] sm:w-[88px]">
-                        <Image
-                          src={it.image}
-                          alt={it.name}
-                          fill
-                          className="object-cover"
-                        />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[15px] font-medium sm:text-base">
-                          {it.name}
-                        </div>
-
-                        <div className="mt-2 grid gap-1 text-sm text-[#a7aec4]">
-                          <div>Size: {it.size}</div>
-
-                          <div className="flex items-center gap-2">
-                            <span>Color:</span>
-                            <span
-                              className={`h-4 w-4 rounded-full border border-[#3a3f58] ${getColorSwatchClass(
-                                it.color
-                              )}`}
+                  return (
+                    <div
+                      key={`${it.id}-${it.size}-${it.color}`}
+                      className={`border-b px-4 py-5 last:border-0 sm:px-5 md:px-6 md:py-6 ${
+                        itemHasStockIssue
+                          ? "border-red-400/20 bg-red-500/5"
+                          : "border-[#1b2034]"
+                      }`}
+                    >
+                      <div className="hidden grid-cols-[1.5fr_0.7fr_0.9fr_0.9fr_0.6fr_0.25fr] items-center gap-4 md:grid">
+                        <div className="flex min-w-0 items-center gap-4">
+                          <div className="relative h-[56px] w-[56px] shrink-0 overflow-hidden rounded-full border border-[#2b2f45]">
+                            <Image
+                              src={it.image}
+                              alt={it.name}
+                              fill
+                              className={`object-cover ${
+                                itemHasStockIssue ? "opacity-50 grayscale" : ""
+                              }`}
                             />
-                            <span className="truncate">
-                              {it.colorLabel || "Color"}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="block truncate">{it.name}</span>
+                            <span
+                              className={`mt-1 block text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                                itemHasStockIssue
+                                  ? "text-red-300"
+                                  : "text-emerald-300"
+                              }`}
+                            >
+                              {stock <= 0
+                                ? "Out of Stock"
+                                : `${stock} in stock`}
                             </span>
                           </div>
-
-                          <div>Price: Rs. {it.price}</div>
                         </div>
 
-                        <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <span>{it.size}</span>
+
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`h-4 w-4 rounded-full border border-[#3a3f58] ${getColorSwatchClass(
+                              it.color
+                            )}`}
+                          />
+                          <span className="truncate">
+                            {it.colorLabel || "Color"}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-center">
                           <label
-                            htmlFor={`mobile-qty-${it.id}-${it.size}-${it.color}`}
+                            htmlFor={`qty-${it.id}-${it.size}-${it.color}`}
                             className="sr-only"
                           >
                             Quantity for {it.name}
                           </label>
                           <input
-                            id={`mobile-qty-${it.id}-${it.size}-${it.color}`}
+                            id={`qty-${it.id}-${it.size}-${it.color}`}
                             type="number"
                             min={1}
-                            max={99}
+                            max={stock > 0 ? stock : 1}
                             value={it.qty}
+                            disabled={stock <= 0}
                             onChange={(e) =>
                               updateQty(
                                 it.id,
@@ -625,29 +644,137 @@ export default function CartPage() {
                                 Number(e.target.value)
                               )
                             }
-                            className="w-[92px] rounded-[10px] border border-[#3a3f58] bg-transparent px-3 py-2 text-white outline-none transition focus:border-[#d6c7ff]"
+                            className="w-[82px] rounded-[10px] border border-[#3a3f58] bg-transparent px-3 py-2 text-white outline-none transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-50"
                           />
+                        </div>
 
-                          <button
-                            type="button"
-                            onClick={() => removeItem(it.id, it.size, it.color)}
-                            className="rounded-[10px] border border-[#2b2f45] px-3 py-2 text-sm text-white transition hover:bg-white/5"
-                            aria-label={`Remove ${it.name} from cart`}
-                            title={`Remove ${it.name}`}
+                        <span>Rs. {it.price}</span>
+
+                        <button
+                          type="button"
+                          onClick={() => removeItem(it.id, it.size, it.color)}
+                          className="flex justify-center"
+                          aria-label={`Remove ${it.name} from cart`}
+                          title={`Remove ${it.name}`}
+                        >
+                          <Image
+                            src="/images/delete.png"
+                            width={24}
+                            height={24}
+                            alt="Remove icon"
+                            className="brightness-0 invert"
+                          />
+                        </button>
+                      </div>
+
+                      <div className="flex gap-4 md:hidden">
+                        <div className="relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-[12px] border border-[#2b2f45] sm:h-[88px] sm:w-[88px]">
+                          <Image
+                            src={it.image}
+                            alt={it.name}
+                            fill
+                            className={`object-cover ${
+                              itemHasStockIssue ? "opacity-50 grayscale" : ""
+                            }`}
+                          />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-[15px] font-medium sm:text-base">
+                            {it.name}
+                          </div>
+
+                          <div
+                            className={`mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                              itemHasStockIssue
+                                ? "text-red-300"
+                                : "text-emerald-300"
+                            }`}
                           >
-                            Remove
-                          </button>
+                            {stock <= 0
+                              ? "Out of Stock"
+                              : `${stock} in stock`}
+                          </div>
+
+                          <div className="mt-2 grid gap-1 text-sm text-[#a7aec4]">
+                            <div>Size: {it.size}</div>
+
+                            <div className="flex items-center gap-2">
+                              <span>Color:</span>
+                              <span
+                                className={`h-4 w-4 rounded-full border border-[#3a3f58] ${getColorSwatchClass(
+                                  it.color
+                                )}`}
+                              />
+                              <span className="truncate">
+                                {it.colorLabel || "Color"}
+                              </span>
+                            </div>
+
+                            <div>Price: Rs. {it.price}</div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center gap-3">
+                            <label
+                              htmlFor={`mobile-qty-${it.id}-${it.size}-${it.color}`}
+                              className="sr-only"
+                            >
+                              Quantity for {it.name}
+                            </label>
+                            <input
+                              id={`mobile-qty-${it.id}-${it.size}-${it.color}`}
+                              type="number"
+                              min={1}
+                              max={stock > 0 ? stock : 1}
+                              value={it.qty}
+                              disabled={stock <= 0}
+                              onChange={(e) =>
+                                updateQty(
+                                  it.id,
+                                  it.size,
+                                  it.color,
+                                  Number(e.target.value)
+                                )
+                              }
+                              className="w-[92px] rounded-[10px] border border-[#3a3f58] bg-transparent px-3 py-2 text-white outline-none transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-50"
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeItem(it.id, it.size, it.color)
+                              }
+                              className="rounded-[10px] border border-[#2b2f45] px-3 py-2 text-sm text-white transition hover:bg-white/5"
+                              aria-label={`Remove ${it.name} from cart`}
+                              title={`Remove ${it.name}`}
+                            >
+                              Remove
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </section>
 
               <aside className="xl:sticky xl:top-[104px]">
                 <h2 className="text-[22px] font-semibold">Order Summary</h2>
 
                 <div className="mt-5 rounded-[18px] border border-[#26293a] bg-[#11121a] p-5 sm:p-6">
+                  {hasStockIssue ? (
+                    <div className="mb-5 rounded-[12px] border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      Some cart items are out of stock or exceed available
+                      stock. Please update or remove them before checkout.
+                    </div>
+                  ) : null}
+
+                  {stockMessage ? (
+                    <div className="mb-5 rounded-[12px] border border-yellow-400/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
+                      {stockMessage}
+                    </div>
+                  ) : null}
+
                   <div className="flex flex-col gap-3 sm:flex-row">
                     <label htmlFor="discount-code" className="sr-only">
                       Discount code
@@ -655,7 +782,9 @@ export default function CartPage() {
                     <input
                       id="discount-code"
                       value={discount}
-                      onChange={(e) => setDiscount(e.target.value.toUpperCase())}
+                      onChange={(e) =>
+                        setDiscount(e.target.value.toUpperCase())
+                      }
                       placeholder="Discount code (optional)"
                       className="w-full rounded-[12px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none transition focus:border-[#d6c7ff]"
                     />
@@ -702,7 +831,9 @@ export default function CartPage() {
                   <div className="mt-8 space-y-4 text-sm text-[#a7aec4] sm:text-[15px]">
                     <div className="flex items-center justify-between gap-4">
                       <span>Subtotal</span>
-                      <span className="text-right text-white">Rs. {subtotal}</span>
+                      <span className="text-right text-white">
+                        Rs. {subtotal}
+                      </span>
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
@@ -729,27 +860,15 @@ export default function CartPage() {
 
                   <button
                     type="button"
-                    onClick={() => {
-                      const orderSummary = {
-                        subtotal,
-                        shipping: items.length ? shipping : 0,
-                        discount: discountAmount,
-                        total,
-                        currency: "NPR",
-                        updatedAt: new Date().toISOString(),
-                        couponCode: appliedCouponCode || discount.trim() || null,
-                      };
-
-                      localStorage.setItem(
-                        "ufo_order_summary",
-                        JSON.stringify(orderSummary)
-                      );
-
-                      router.push("/checkout");
-                    }}
-                    className="mt-8 w-full rounded-[12px] bg-[#1f7cff] py-3 text-sm font-semibold text-white transition hover:opacity-90 sm:text-base"
+                    onClick={proceedToCheckout}
+                    disabled={hasStockIssue}
+                    className={`mt-8 w-full rounded-[12px] py-3 text-sm font-semibold text-white transition sm:text-base ${
+                      hasStockIssue
+                        ? "cursor-not-allowed bg-gray-600 opacity-60"
+                        : "bg-[#1f7cff] hover:opacity-90"
+                    }`}
                   >
-                    Proceed to Checkout
+                    {hasStockIssue ? "Fix Stock Issues" : "Proceed to Checkout"}
                   </button>
                 </div>
               </aside>

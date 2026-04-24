@@ -20,6 +20,7 @@ type Product = {
   longDesc?: string;
   sizes?: Size[];
   colors?: string[];
+  stock?: number;
 };
 
 type RelatedProduct = {
@@ -64,6 +65,7 @@ type CartItem = {
   price: number;
   qty: number;
   image: string;
+  stock?: number;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
@@ -202,9 +204,7 @@ function getProductImageSrc(image: any): string {
 
 function normalizeImageList(rawImages: any): string[] {
   if (!Array.isArray(rawImages)) return [];
-  return rawImages
-    .map((img) => getProductImageSrc(img))
-    .filter((img) => Boolean(img));
+  return rawImages.map((img) => getProductImageSrc(img)).filter(Boolean);
 }
 
 function readCart(): CartItem[] {
@@ -260,7 +260,9 @@ export default function ProductPage() {
     avgRating: number;
   }>({ count: 0, avgRating: 0 });
 
-  const [relatedProducts, setRelatedProducts] = React.useState<RelatedProduct[]>([]);
+  const [relatedProducts, setRelatedProducts] = React.useState<
+    RelatedProduct[]
+  >([]);
   const [relatedLoading, setRelatedLoading] = React.useState(false);
   const [relatedError, setRelatedError] = React.useState<string | null>(null);
 
@@ -362,6 +364,7 @@ export default function ProductPage() {
     const onStorage = (e: StorageEvent) => {
       if (e.key === "ufo_cart") update();
     };
+
     window.addEventListener("storage", onStorage);
 
     return () => {
@@ -404,6 +407,7 @@ export default function ProductPage() {
           longDesc: toStr(raw.longDesc, toStr(raw.description, "")),
           sizes: normalizeSizes(raw.sizes),
           colors: normalizeColors(raw),
+          stock: toNumber(raw.stock ?? raw.quantity ?? raw.inventory, 0),
         };
 
         setProduct(mapped);
@@ -414,11 +418,13 @@ export default function ProductPage() {
         const gallery = (mapped.images || []).filter(
           (img) => img && img !== mapped.image
         );
+
         const allImages = [mapped.image, ...gallery];
         setSelectedImage(allImages[0] || mapped.image);
 
         const normalizedColors = (mapped.colors || []).map((c) => toHex(c));
         setSelectedColor(normalizedColors[0] || "");
+
         setZoomLevel(1);
         setPan({ x: 0, y: 0 });
       } catch (e: any) {
@@ -506,13 +512,15 @@ export default function ProductPage() {
   const allImages = product ? [product.image, ...galleryImages] : [];
 
   const currentImage = selectedImage || product?.image || PRODUCT_PLACEHOLDER;
+
   const currentImageIndex = Math.max(
     0,
     allImages.findIndex((img) => img === currentImage)
   );
 
-const displayRating = Number(reviewSummary.avgRating || product?.rating || 0);
-const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
+  const displayRating = Number(reviewSummary.avgRating || product?.rating || 0);
+  const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
+  const isOutOfStock = Number(product?.stock || 0) <= 0;
 
   const selectImage = (img: string) => {
     setSelectedImage(img);
@@ -522,15 +530,19 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
 
   const goToPrevImage = () => {
     if (!allImages.length) return;
+
     const nextIndex =
       currentImageIndex <= 0 ? allImages.length - 1 : currentImageIndex - 1;
+
     selectImage(allImages[nextIndex]);
   };
 
   const goToNextImage = () => {
     if (!allImages.length) return;
+
     const nextIndex =
       currentImageIndex >= allImages.length - 1 ? 0 : currentImageIndex + 1;
+
     selectImage(allImages[nextIndex]);
   };
 
@@ -541,9 +553,11 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
   const zoomOut = () => {
     setZoomLevel((prev) => {
       const next = Math.max(1, Number((prev - 0.25).toFixed(2)));
+
       if (next === 1) {
         setPan({ x: 0, y: 0 });
       }
+
       return next;
     });
   };
@@ -560,6 +574,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
       panX: pan.x,
       panY: pan.y,
     };
+
     setDragging(true);
   };
 
@@ -604,9 +619,11 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
 
     setZoomLevel((prev) => {
       const next = Math.max(1, Number((prev - 0.15).toFixed(2)));
+
       if (next === 1) {
         setPan({ x: 0, y: 0 });
       }
+
       return next;
     });
   };
@@ -614,27 +631,33 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
   const addToCart = () => {
     if (!product) return;
 
+    if (Number(product.stock || 0) <= 0) {
+      setAddedMsg("This product is out of stock.");
+      window.setTimeout(() => setAddedMsg(null), 1400);
+      return;
+    }
+
     const currentColorLabel =
       product.colors?.find((c) => toHex(c) === selectedColor) ||
       toColorLabel(selectedColor);
 
     const item: CartItem = {
-      id: product.id,
-      name: product.name,
-      size: selectedSize,
-      color: selectedColor,
-      colorLabel: toColorLabel(currentColorLabel),
-      price: product.price,
-      qty: 1,
-      image: selectedImage || product.image,
-    };
+  id: product.id,
+  name: product.name,
+  size: selectedSize,
+  color: selectedColor,
+  colorLabel: toColorLabel(currentColorLabel),
+  price: product.price,
+  qty: 1,
+  image: selectedImage || product.image,
+  stock: product.stock,
+};
 
     const cart = readCart();
+
     const idx = cart.findIndex(
       (it) =>
-        it.id === item.id &&
-        it.size === item.size &&
-        it.color === item.color
+        it.id === item.id && it.size === item.size && it.color === item.color
     );
 
     if (idx !== -1) {
@@ -664,6 +687,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
         <div className="text-center text-red-300">
           {error || "Product not found."}
         </div>
+
         <button
           type="button"
           onClick={() => router.push("/collection")}
@@ -710,6 +734,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                   priority
                 />
               </div>
+
               <div className="text-[22px] font-bold uppercase tracking-[0.18em] text-white sm:text-[26px]">
                 UFO Collection
               </div>
@@ -723,18 +748,21 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
             >
               HOME
             </Link>
+
             <Link
               href="/collection"
               className="text-[15px] font-medium uppercase tracking-[0.16em] text-white hover:text-[#c9b9ff]"
             >
               COLLECTION
             </Link>
+
             <Link
               href="/about"
               className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
             >
               ABOUT
             </Link>
+
             <Link
               href="/contact"
               className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
@@ -757,6 +785,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
               alt="Cart icon"
               className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
             />
+
             {cartCount > 0 ? (
               <span className="absolute -bottom-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-black px-[5px] text-[11px] font-bold text-white">
                 {cartCount}
@@ -773,18 +802,21 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
             >
               HOME
             </Link>
+
             <Link
               href="/collection"
               className="text-[13px] font-medium uppercase tracking-[0.16em] text-white hover:text-[#c9b9ff]"
             >
               COLLECTION
             </Link>
+
             <Link
               href="/about"
               className="text-[13px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
             >
               ABOUT
             </Link>
+
             <Link
               href="/contact"
               className="text-[13px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
@@ -811,8 +843,10 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                   <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-white">
                     Live Product Preview
                   </h3>
+
                   <p className="mt-1 text-xs text-[#94a3b8]">
-                    Drag to explore • Scroll to zoom • Swipe left/right to change image
+                    Drag to explore • Scroll to zoom • Swipe left/right to
+                    change image
                   </p>
                 </div>
 
@@ -826,6 +860,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                   >
                     Prev
                   </button>
+
                   <button
                     type="button"
                     onClick={goToNextImage}
@@ -835,6 +870,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                   >
                     Next
                   </button>
+
                   <button
                     type="button"
                     onClick={zoomOut}
@@ -844,6 +880,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                   >
                     -
                   </button>
+
                   <button
                     type="button"
                     onClick={zoomIn}
@@ -853,6 +890,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                   >
                     +
                   </button>
+
                   <button
                     type="button"
                     onClick={resetPreview}
@@ -867,7 +905,9 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
 
               <div
                 className={`relative h-[520px] w-full overflow-hidden rounded-[12px] border border-[#111827] bg-[#0b1020] ${
-                  zoomLevel > 1 ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+                  zoomLevel > 1
+                    ? "cursor-grab active:cursor-grabbing"
+                    : "cursor-pointer"
                 }`}
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
@@ -883,6 +923,12 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                   {currentImageIndex + 1} / {allImages.length}
                 </div>
 
+                {isOutOfStock ? (
+                  <div className="pointer-events-none absolute right-4 top-4 z-20 rounded-full border border-red-400/30 bg-red-500/15 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-red-100 backdrop-blur">
+                    Out of Stock
+                  </div>
+                ) : null}
+
                 <div
                   className="relative h-full w-full transition-transform duration-200 ease-out"
                   style={{
@@ -894,7 +940,9 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                     src={currentImage}
                     alt={product.name}
                     fill
-                    className="object-cover object-center select-none"
+                    className={`select-none object-cover object-center ${
+                      isOutOfStock ? "opacity-60 grayscale" : ""
+                    }`}
                     priority
                     draggable={false}
                     unoptimized={currentImage.startsWith("http")}
@@ -924,7 +972,9 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                           src={img}
                           alt={`${product.name} ${index + 1}`}
                           fill
-                          className="object-cover"
+                          className={`object-cover ${
+                            isOutOfStock ? "opacity-60 grayscale" : ""
+                          }`}
                           unoptimized={img.startsWith("http")}
                         />
                       </button>
@@ -942,9 +992,13 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                   {displayRating.toFixed(1)}
                 </span>
 
-                <div className="flex items-center gap-[2px]" aria-label="Rating stars">
+                <div
+                  className="flex items-center gap-[2px]"
+                  aria-label="Rating stars"
+                >
                   {Array.from({ length: 5 }).map((_, i) => {
                     const filled = i < Math.round(displayRating);
+
                     return (
                       <Image
                         key={i}
@@ -967,6 +1021,18 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                 Rs. {product.price}
               </div>
 
+              <div
+                className={`mt-2 inline-flex rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
+                  isOutOfStock
+                    ? "border-red-400/30 bg-red-500/10 text-red-200"
+                    : "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
+                }`}
+              >
+                {isOutOfStock
+                  ? "Out of Stock"
+                  : `${Number(product.stock || 0)} in stock`}
+              </div>
+
               {product.shortDesc ? (
                 <p className="mt-3 max-w-[460px] text-[14px] leading-[1.7] text-[#d1d5db]">
                   {product.shortDesc}
@@ -980,15 +1046,19 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
               <div className="mt-2 flex flex-wrap gap-2">
                 {sizes.map((s) => {
                   const active = selectedSize === s;
+
                   return (
                     <button
                       key={s}
                       type="button"
                       onClick={() => setSelectedSize(s)}
+                      disabled={isOutOfStock}
                       aria-label={`Select size ${s}`}
                       title={`Select size ${s}`}
                       className={`min-w-[40px] rounded-[6px] border px-3 py-[6px] text-[13px] ${
-                        active
+                        isOutOfStock
+                          ? "cursor-not-allowed border-[#374151] bg-[#111827] text-[#6b7280]"
+                          : active
                           ? "border-[#1d9bf0] bg-[#1d9bf0] text-white"
                           : "border-[#4b5563] bg-transparent text-[#e5e7eb]"
                       }`}
@@ -1014,8 +1084,11 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                           key={`${color.value}-${color.label}`}
                           type="button"
                           onClick={() => setSelectedColor(color.value)}
+                          disabled={isOutOfStock}
                           className={`flex items-center gap-2 rounded-full border px-4 py-2 ${
-                            active
+                            isOutOfStock
+                              ? "cursor-not-allowed border-[#374151] bg-[#111827] opacity-60"
+                              : active
                               ? "border-[#1d9bf0] bg-[#0f172a]"
                               : "border-[#2b2f45] bg-transparent"
                           }`}
@@ -1027,6 +1100,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                             className="h-5 w-5 rounded-full border border-[#111827]"
                             style={{ backgroundColor: color.value }}
                           />
+
                           <span className="text-[13px] font-semibold text-white">
                             {color.label}
                           </span>
@@ -1040,11 +1114,20 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
               <button
                 type="button"
                 onClick={addToCart}
-                className="mt-5 rounded-[4px] bg-[#1d9bf0] px-6 py-[10px] text-[14px] font-semibold text-white hover:bg-[#1580c5]"
-                aria-label="Add product to cart"
-                title="Add product to cart"
+                disabled={isOutOfStock}
+                className={`mt-5 rounded-[4px] px-6 py-[10px] text-[14px] font-semibold text-white ${
+                  isOutOfStock
+                    ? "cursor-not-allowed bg-gray-600 opacity-60"
+                    : "bg-[#1d9bf0] hover:bg-[#1580c5]"
+                }`}
+                aria-label={
+                  isOutOfStock ? "Product out of stock" : "Add product to cart"
+                }
+                title={
+                  isOutOfStock ? "Product out of stock" : "Add product to cart"
+                }
               >
-                ADD TO CART
+                {isOutOfStock ? "OUT OF STOCK" : "ADD TO CART"}
               </button>
 
               <button
@@ -1058,7 +1141,11 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
               </button>
 
               {addedMsg ? (
-                <div className="mt-3 text-sm font-medium text-[#86efac]">
+                <div
+                  className={`mt-3 text-sm font-medium ${
+                    isOutOfStock ? "text-red-300" : "text-[#86efac]"
+                  }`}
+                >
                   {addedMsg}
                 </div>
               ) : null}
@@ -1098,7 +1185,8 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                 aria-label="Show reviews tab"
                 title="Show reviews tab"
               >
-                Reviews <span className="text-[13px]">({displayReviewCount})</span>
+                Reviews{" "}
+                <span className="text-[13px]">({displayReviewCount})</span>
               </button>
             </div>
 
@@ -1178,6 +1266,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                 <h2 className="text-[24px] font-semibold text-white">
                   Related Products
                 </h2>
+
                 <p className="mt-1 text-sm text-[#9ca3af]">
                   Products you may also like
                 </p>
@@ -1218,6 +1307,7 @@ const displayReviewCount = Number(reviewSummary.count || product?.reviews || 0);
                       <h3 className="line-clamp-2 min-h-[48px] text-[15px] font-semibold text-white">
                         {item.name}
                       </h3>
+
                       <div className="mt-2 text-[16px] font-semibold text-[#7dd3fc]">
                         Rs. {item.price}
                       </div>

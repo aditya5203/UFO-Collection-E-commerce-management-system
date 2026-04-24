@@ -17,6 +17,7 @@ type Product = {
   gender?: "Male" | "Female";
   colors?: string[];
   categoryId?: string;
+  stock?: number;
 };
 
 const API_BASE =
@@ -63,6 +64,7 @@ function mapBackendProduct(p: any): Product {
     gender: p.gender,
     colors: Array.isArray(p.colors) ? p.colors : [],
     categoryId: p.categoryId || undefined,
+    stock: Number(p.stock ?? p.quantity ?? p.inventory ?? 0),
   };
 }
 
@@ -97,7 +99,8 @@ export default function CollectionPage() {
       setError(null);
 
       const res = await fetch(`${API_BASE}/products`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`Failed to load products (status ${res.status})`);
+      if (!res.ok)
+        throw new Error(`Failed to load products (status ${res.status})`);
 
       const raw = await res.json();
       const arr =
@@ -127,6 +130,7 @@ export default function CollectionPage() {
       if (window.innerWidth >= 640) setMobileMenuOpen(false);
       if (window.innerWidth >= 1024) setMobileFiltersOpen(false);
     };
+
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -135,7 +139,8 @@ export default function CollectionPage() {
     if (typeof window === "undefined") return;
 
     const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       setVoiceSupported(false);
@@ -167,9 +172,16 @@ export default function CollectionPage() {
       setSelectedCustomers([]);
       setSelectedTypes([]);
 
-      if (cmd.includes("t-shirt") || cmd.includes("t shirt") || cmd === "tshirt") {
+      if (
+        cmd.includes("t-shirt") ||
+        cmd.includes("t shirt") ||
+        cmd === "tshirt"
+      ) {
         setSelectedTypes(["T-Shirt"]);
-      } else if (cmd.includes("windcheater") || cmd.includes("wind cheater")) {
+      } else if (
+        cmd.includes("windcheater") ||
+        cmd.includes("wind cheater")
+      ) {
         setSelectedTypes(["Jacket"]);
       } else if (cmd.includes("jeans") || cmd.includes("jean")) {
         setSelectedTypes(["Jean"]);
@@ -196,6 +208,7 @@ export default function CollectionPage() {
 
   const startListening = () => {
     if (!voiceSupported) return;
+
     try {
       recognitionRef.current?.start?.();
     } catch {
@@ -206,6 +219,7 @@ export default function CollectionPage() {
   const focusSearch = () => {
     setMobileMenuOpen(false);
     setMobileFiltersOpen(true);
+
     setTimeout(() => {
       searchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       searchRef.current?.focus();
@@ -214,13 +228,17 @@ export default function CollectionPage() {
 
   const toggleCustomer = (value: CustomerType) => {
     setSelectedCustomers((prev) =>
-      prev.includes(value) ? prev.filter((c) => c !== value) : [...prev, value]
+      prev.includes(value)
+        ? prev.filter((c) => c !== value)
+        : [...prev, value]
     );
   };
 
   const toggleType = (value: string) => {
     setSelectedTypes((prev) =>
-      prev.includes(value) ? prev.filter((t) => t !== value) : [...prev, value]
+      prev.includes(value)
+        ? prev.filter((t) => t !== value)
+        : [...prev, value]
     );
   };
 
@@ -235,8 +253,11 @@ export default function CollectionPage() {
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
+
       list = list.filter((p) => {
-        const haystack = `${p.name || ""} ${p.subCategory || ""} ${p.customer || ""}`.toLowerCase();
+        const haystack =
+          `${p.name || ""} ${p.subCategory || ""} ${p.customer || ""}`.toLowerCase();
+
         return haystack.includes(q);
       });
     }
@@ -249,6 +270,7 @@ export default function CollectionPage() {
 
     if (selectedTypes.length > 0) {
       const lowerTypes = selectedTypes.map((t) => t.toLowerCase());
+
       list = list.filter((p) => {
         const typeSource = `${p.subCategory || ""} ${p.name || ""}`.toLowerCase();
         return lowerTypes.some((t) => typeSource.includes(t));
@@ -281,6 +303,7 @@ export default function CollectionPage() {
     <>
       <style jsx global>{`
         @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
+
         html,
         body {
           font-family: Poppins, system-ui, -apple-system, BlinkMacSystemFont,
@@ -314,18 +337,21 @@ export default function CollectionPage() {
             >
               Home
             </Link>
+
             <Link
               href="/collection"
               className="text-[14px] font-medium uppercase tracking-[0.16em] text-[#d6c7ff]"
             >
               Collection
             </Link>
+
             <Link
               href="/about"
               className="text-[14px] font-medium uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
             >
               About
             </Link>
+
             <Link
               href="/contact"
               className="text-[14px] font-medium uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
@@ -399,6 +425,7 @@ export default function CollectionPage() {
               >
                 Home
               </Link>
+
               <Link
                 onClick={() => setMobileMenuOpen(false)}
                 href="/collection"
@@ -406,6 +433,7 @@ export default function CollectionPage() {
               >
                 Collection
               </Link>
+
               <Link
                 onClick={() => setMobileMenuOpen(false)}
                 href="/about"
@@ -413,6 +441,7 @@ export default function CollectionPage() {
               >
                 About
               </Link>
+
               <Link
                 onClick={() => setMobileMenuOpen(false)}
                 href="/contact"
@@ -459,9 +488,11 @@ export default function CollectionPage() {
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4] sm:text-[12px]">
                   Explore the Range
                 </div>
+
                 <h1 className="mt-3 text-[28px] font-semibold leading-[1.15] text-white sm:text-[38px] lg:text-[48px]">
                   All Collections
                 </h1>
+
                 <p className="mt-3 max-w-[560px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
                   Browse clothing and footwear across categories, use filters,
                   search by product name, and sort by newest or price to find
@@ -494,7 +525,9 @@ export default function CollectionPage() {
                   fill
                   className="object-cover opacity-70"
                 />
+
                 <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/20 to-transparent" />
+
                 <div className="absolute bottom-5 left-5 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-white backdrop-blur">
                   Premium streetwear & essentials
                 </div>
@@ -508,6 +541,7 @@ export default function CollectionPage() {
                 <div className="text-[18px] font-semibold text-white sm:text-[22px]">
                   Filter & Discover
                 </div>
+
                 <div className="mt-1 text-[12px] text-[#a7aec4] sm:text-[13px]">
                   Search, filter by category or type, and use voice commands.
                 </div>
@@ -519,7 +553,8 @@ export default function CollectionPage() {
                   onClick={() => setMobileFiltersOpen(true)}
                   className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:bg-white/10 lg:hidden"
                 >
-                  Filters {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ""}
+                  Filters{" "}
+                  {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ""}
                 </button>
 
                 <button
@@ -542,13 +577,16 @@ export default function CollectionPage() {
                 <label htmlFor="sort" className="sr-only">
                   Sort products
                 </label>
+
                 <select
                   id="sort"
                   aria-label="Sort products"
                   className="min-w-[190px] rounded-full border border-white/15 bg-[#0d0f17] px-4 py-2 text-[12px] text-[#f5f7fb] outline-none"
                   value={sortValue}
                   onChange={(e) =>
-                    setSortValue(e.target.value as "low-high" | "high-low" | "newest")
+                    setSortValue(
+                      e.target.value as "low-high" | "high-low" | "newest"
+                    )
                   }
                 >
                   <option value="low-high">Price: Low to High</option>
@@ -573,6 +611,7 @@ export default function CollectionPage() {
                 <label htmlFor="search" className="sr-only">
                   Search products
                 </label>
+
                 <input
                   id="search"
                   ref={searchRef}
@@ -601,9 +640,11 @@ export default function CollectionPage() {
                     <span className="text-[#f5f7fb]">jacket</span>,{" "}
                     <span className="text-[#f5f7fb]">clear</span>
                   </span>
+
                   {lastHeard ? (
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                      Heard: <span className="text-[#f5f7fb]">{lastHeard}</span>
+                      Heard:{" "}
+                      <span className="text-[#f5f7fb]">{lastHeard}</span>
                     </span>
                   ) : null}
                 </>
@@ -621,6 +662,7 @@ export default function CollectionPage() {
                 <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white">
                   Filters
                 </div>
+
                 {activeFiltersCount > 0 ? (
                   <button
                     type="button"
@@ -636,18 +678,21 @@ export default function CollectionPage() {
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
                   Categories
                 </div>
+
                 <div className="grid gap-3 text-[13px] text-[#d6dbeb]">
-                  {(["Men", "Women", "Boys", "Girls"] as CustomerType[]).map((c) => (
-                    <label key={c} className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        className="accent-white"
-                        checked={selectedCustomers.includes(c)}
-                        onChange={() => toggleCustomer(c)}
-                      />
-                      <span>{c}</span>
-                    </label>
-                  ))}
+                  {(["Men", "Women", "Boys", "Girls"] as CustomerType[]).map(
+                    (c) => (
+                      <label key={c} className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          className="accent-white"
+                          checked={selectedCustomers.includes(c)}
+                          onChange={() => toggleCustomer(c)}
+                        />
+                        <span>{c}</span>
+                      </label>
+                    )
+                  )}
                 </div>
               </div>
 
@@ -655,6 +700,7 @@ export default function CollectionPage() {
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
                   Types
                 </div>
+
                 <div className="grid gap-3 text-[13px] text-[#d6dbeb]">
                   {filterTypes.map((t) => (
                     <label key={t} className="flex items-center gap-3">
@@ -692,6 +738,7 @@ export default function CollectionPage() {
                       className="overflow-hidden rounded-[18px] border border-[#26293a] bg-[#161824]"
                     >
                       <div className="aspect-[4/5] animate-pulse bg-white/5" />
+
                       <div className="p-3 sm:p-4">
                         <div className="h-3 w-20 animate-pulse rounded bg-white/5" />
                         <div className="mt-3 h-4 w-full animate-pulse rounded bg-white/5" />
@@ -710,44 +757,80 @@ export default function CollectionPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-5">
-                  {filteredAndSortedProducts.map((p) => (
-                    <Link key={p.id} href={`/product/${p.id}`} className="group block">
-                      <div className="overflow-hidden rounded-[18px] border border-[#26293a] bg-[#161824] transition duration-300 hover:-translate-y-1 hover:border-[#3a3f58]">
-                        <div className="relative aspect-[4/5] w-full overflow-hidden">
-                          <Image
-                            src={resolveMediaSrc(p.image)}
-                            alt={p.name}
-                            fill
-                            className="object-cover transition duration-500 group-hover:scale-[1.05]"
-                          />
-                        </div>
+                  {filteredAndSortedProducts.map((p) => {
+                    const isOutOfStock = Number(p.stock || 0) <= 0;
 
-                        <div className="p-3 sm:p-4">
-                          <div className="mb-2 flex flex-wrap gap-2">
-                            {p.customer ? (
-                              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-[#c8cde0]">
-                                {p.customer}
-                              </span>
+                    return (
+                      <Link
+                        key={p.id}
+                        href={`/product/${p.id}`}
+                        className="group block"
+                      >
+                        <div
+                          className={`overflow-hidden rounded-[18px] border bg-[#161824] transition duration-300 hover:-translate-y-1 ${
+                            isOutOfStock
+                              ? "border-red-400/20"
+                              : "border-[#26293a] hover:border-[#3a3f58]"
+                          }`}
+                        >
+                          <div className="relative aspect-[4/5] w-full overflow-hidden">
+                            <Image
+                              src={resolveMediaSrc(p.image)}
+                              alt={p.name}
+                              fill
+                              className={`object-cover transition duration-500 group-hover:scale-[1.05] ${
+                                isOutOfStock ? "opacity-45 grayscale" : ""
+                              }`}
+                            />
+
+                            {isOutOfStock ? (
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/35">
+                                <span className="rounded-full border border-red-300/40 bg-red-500/20 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-red-100 backdrop-blur">
+                                  Out of Stock
+                                </span>
+                              </div>
                             ) : null}
-
-                            {p.subCategory ? (
-                              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-[#c8cde0]">
-                                {p.subCategory}
-                              </span>
-                            ) : null}
                           </div>
 
-                          <div className="line-clamp-2 text-[14px] font-medium text-[#f5f7fb] sm:text-[15px]">
-                            {p.name}
-                          </div>
+                          <div className="p-3 sm:p-4">
+                            <div className="mb-2 flex flex-wrap gap-2">
+                              {p.customer ? (
+                                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-[#c8cde0]">
+                                  {p.customer}
+                                </span>
+                              ) : null}
 
-                          <div className="mt-2 text-[13px] font-semibold text-[#d6c7ff] sm:text-[14px]">
-                            Rs. {Number(p.price || 0).toFixed(2)}
+                              {p.subCategory ? (
+                                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-[#c8cde0]">
+                                  {p.subCategory}
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="line-clamp-2 text-[14px] font-medium text-[#f5f7fb] sm:text-[15px]">
+                              {p.name}
+                            </div>
+
+                            <div className="mt-2 text-[13px] font-semibold text-[#d6c7ff] sm:text-[14px]">
+                              Rs. {Number(p.price || 0).toFixed(2)}
+                            </div>
+
+                            <div
+                              className={`mt-2 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+                                isOutOfStock
+                                  ? "text-red-300"
+                                  : "text-emerald-300"
+                              }`}
+                            >
+                              {isOutOfStock
+                                ? "Out of Stock"
+                                : `${Number(p.stock || 0)} in stock`}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </Link>
-                  ))}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -767,6 +850,7 @@ export default function CollectionPage() {
                 <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white">
                   Filters
                 </div>
+
                 <button
                   type="button"
                   onClick={() => setMobileFiltersOpen(false)}
@@ -790,18 +874,21 @@ export default function CollectionPage() {
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
                   Categories
                 </div>
+
                 <div className="grid gap-3 text-[13px] text-[#d6dbeb]">
-                  {(["Men", "Women", "Boys", "Girls"] as CustomerType[]).map((c) => (
-                    <label key={c} className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        className="accent-white"
-                        checked={selectedCustomers.includes(c)}
-                        onChange={() => toggleCustomer(c)}
-                      />
-                      <span>{c}</span>
-                    </label>
-                  ))}
+                  {(["Men", "Women", "Boys", "Girls"] as CustomerType[]).map(
+                    (c) => (
+                      <label key={c} className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          className="accent-white"
+                          checked={selectedCustomers.includes(c)}
+                          onChange={() => toggleCustomer(c)}
+                        />
+                        <span>{c}</span>
+                      </label>
+                    )
+                  )}
                 </div>
               </div>
 
@@ -809,6 +896,7 @@ export default function CollectionPage() {
                 <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
                   Types
                 </div>
+
                 <div className="grid gap-3 text-[13px] text-[#d6dbeb]">
                   {filterTypes.map((t) => (
                     <label key={t} className="flex items-center gap-3">
@@ -842,6 +930,7 @@ export default function CollectionPage() {
             <div className="text-[18px] font-semibold uppercase tracking-[0.12em] text-white">
               UFO Collection
             </div>
+
             <p className="mt-3 max-w-[420px] text-[13px] leading-7 text-[#a7aec4]">
               UFO Collection brings modern, minimal, and premium fashion to your
               everyday wardrobe with a shopping experience designed for Nepal.
@@ -852,6 +941,7 @@ export default function CollectionPage() {
             <div className="mb-3 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
               Company
             </div>
+
             <ul className="grid gap-2 text-[13px] text-[#d6dbeb]">
               <li>
                 <Link href="/homepage" className="hover:text-white">
@@ -880,6 +970,7 @@ export default function CollectionPage() {
             <div className="mb-3 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
               Support
             </div>
+
             <ul className="grid gap-2 text-[13px] text-[#d6dbeb]">
               <li>Delivery Information</li>
               <li>Return Policy</li>
@@ -892,6 +983,7 @@ export default function CollectionPage() {
             <div className="mb-3 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
               Get In Touch
             </div>
+
             <ul className="grid gap-2 text-[13px] text-[#d6dbeb]">
               <li>+977 9804880758</li>
               <li>ufocollection@gmail.com</li>
