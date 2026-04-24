@@ -106,6 +106,7 @@ function getStatusTone(status?: string) {
 
 function StatusPill({ children }: { children: React.ReactNode }) {
   const tone = getStatusTone(String(children));
+
   return (
     <span
       className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}
@@ -179,7 +180,7 @@ export default function AdminDeliveryPage() {
   const [riderFilter, setRiderFilter] = React.useState("all");
   const [dateFilter, setDateFilter] = React.useState("all");
 
-  const canView = hasPermission(role, permissions, "orderView");
+  const canView = hasPermission(role, permissions, "deliveryView");
 
   React.useEffect(() => {
     let mounted = true;
@@ -204,6 +205,7 @@ export default function AdminDeliveryPage() {
         );
 
         if (!mounted) return;
+
         setRole(nextRole);
         setPermissions(nextPermissions);
       } catch {
@@ -280,6 +282,7 @@ export default function AdminDeliveryPage() {
 
       filtered = filtered.filter((item) => {
         if (!item.createdAt) return false;
+
         const created = new Date(item.createdAt);
         if (Number.isNaN(created.getTime())) return false;
 
@@ -289,12 +292,15 @@ export default function AdminDeliveryPage() {
         if (dateFilter === "today") {
           return created.toDateString() === now.toDateString();
         }
+
         if (dateFilter === "7days") {
           return diffDays <= 7;
         }
+
         if (dateFilter === "30days") {
           return diffDays <= 30;
         }
+
         return true;
       });
     }
@@ -323,22 +329,25 @@ export default function AdminDeliveryPage() {
   }, [rows]);
 
   const totalAssigned = deliveryRows.length;
+
   const outForDelivery = deliveryRows.filter(
     (item) =>
       safeStr(item.deliveryAssignment?.status).toLowerCase() ===
       "out for delivery"
   ).length;
+
   const delivered = deliveryRows.filter(
     (item) =>
       safeStr(item.deliveryAssignment?.status).toLowerCase() === "delivered"
   ).length;
+
   const failed = deliveryRows.filter((item) => {
     const s = safeStr(item.deliveryAssignment?.status).toLowerCase();
     return s === "failed delivery" || s === "returned";
   }).length;
 
   return (
-    <AdminPageGuard permission="orderView">
+    <AdminPageGuard permission="deliveryView">
       <div className="space-y-8">
         <section className="overflow-hidden rounded-[32px] border border-slate-700/50 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_35%),linear-gradient(180deg,rgba(10,19,36,1),rgba(7,14,27,1))] p-6 shadow-[0_25px_100px_rgba(0,0,0,0.32)] md:p-8">
           <div className="flex flex-wrap items-start justify-between gap-5">
@@ -480,10 +489,12 @@ export default function AdminDeliveryPage() {
                 ) : deliveryRows.length ? (
                   deliveryRows.map((o) => {
                     const code = o.orderCode || o.id;
+
                     const customerName =
                       safeStr(o.customer?.name) ||
                       safeStr(o.address?.fullName) ||
                       "-";
+
                     const customerContact =
                       safeStr(o.customer?.phone) ||
                       safeStr(o.address?.phone) ||
@@ -503,8 +514,10 @@ export default function AdminDeliveryPage() {
 
                     const riderName =
                       safeStr(o.deliveryAssignment?.name) || "Unassigned";
+
                     const riderPhone =
                       safeStr(o.deliveryAssignment?.phone) || "-";
+
                     const riderVehicle =
                       safeStr(o.deliveryAssignment?.vehicleType) || "-";
 
@@ -523,7 +536,9 @@ export default function AdminDeliveryPage() {
                             <div className="font-semibold text-slate-200">
                               {customerName}
                             </div>
-                            <div className="text-slate-400">{customerContact}</div>
+                            <div className="text-slate-400">
+                              {customerContact}
+                            </div>
                           </div>
                         </td>
 

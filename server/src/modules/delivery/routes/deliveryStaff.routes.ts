@@ -4,9 +4,11 @@ import {
   adminAuthMiddleware,
   deliveryAuthMiddleware,
 } from "../../auth/middleware/auth.middleware";
+import { authorizePermission } from "../../auth/middleware/permission.middleware";
 
 const router = Router();
 
+/* DELIVERY STAFF SELF ROUTES */
 router.get(
   "/me/dashboard",
   deliveryAuthMiddleware,
@@ -43,10 +45,40 @@ router.post(
   deliveryStaffController.verifyMyOrderOtp
 );
 
-router.post("/invite", adminAuthMiddleware, deliveryStaffController.create);
-router.get("/", adminAuthMiddleware, deliveryStaffController.list);
-router.get("/:id", adminAuthMiddleware, deliveryStaffController.getById);
-router.put("/:id", adminAuthMiddleware, deliveryStaffController.update);
-router.delete("/:id", adminAuthMiddleware, deliveryStaffController.remove);
+/* ADMIN DELIVERY STAFF MANAGEMENT ROUTES */
+router.post(
+  "/invite",
+  adminAuthMiddleware,
+  authorizePermission("deliveryStaffCreate"),
+  deliveryStaffController.create
+);
+
+router.get(
+  "/",
+  adminAuthMiddleware,
+  authorizePermission("deliveryStaffView"),
+  deliveryStaffController.list
+);
+
+router.get(
+  "/:id",
+  adminAuthMiddleware,
+  authorizePermission("deliveryStaffView"),
+  deliveryStaffController.getById
+);
+
+router.put(
+  "/:id",
+  adminAuthMiddleware,
+  authorizePermission("deliveryStaffEdit"),
+  deliveryStaffController.update
+);
+
+router.delete(
+  "/:id",
+  adminAuthMiddleware,
+  authorizePermission("deliveryStaffDelete"),
+  deliveryStaffController.remove
+);
 
 export default router;

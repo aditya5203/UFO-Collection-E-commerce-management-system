@@ -28,6 +28,14 @@ function sanitizePermissions(input: any): IAdminPermissions {
     orderUpdate: !!input.orderUpdate,
     orderDelete: !!input.orderDelete,
 
+    deliveryView: !!input.deliveryView,
+    deliveryUpdate: !!input.deliveryUpdate,
+
+    deliveryStaffView: !!input.deliveryStaffView,
+    deliveryStaffCreate: !!input.deliveryStaffCreate,
+    deliveryStaffEdit: !!input.deliveryStaffEdit,
+    deliveryStaffDelete: !!input.deliveryStaffDelete,
+
     categoryView: !!input.categoryView,
     categoryCreate: !!input.categoryCreate,
     categoryEdit: !!input.categoryEdit,
@@ -58,6 +66,7 @@ function sanitizePermissions(input: any): IAdminPermissions {
     adminsResetPassword: !!input.adminsResetPassword,
 
     notificationView: !!input.notificationView,
+    notificationSend: !!input.notificationSend,
 
     ticketView: !!input.ticketView,
     ticketReply: !!input.ticketReply,
@@ -137,6 +146,7 @@ export const adminsController = {
 
       if (!name) throw new AppError("Name is required", 400);
       if (!email) throw new AppError("Email is required", 400);
+
       if (newRole !== "admin") {
         throw new AppError("Only admin invitations are allowed here", 400);
       }
@@ -230,9 +240,11 @@ export const adminsController = {
 
       if (req.body?.status !== undefined) {
         const nextStatus = String(req.body.status || "").toLowerCase();
+
         if (!["active", "inactive", "invited"].includes(nextStatus)) {
           throw new AppError("Invalid status", 400);
         }
+
         target.status = nextStatus;
       }
 

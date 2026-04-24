@@ -6,6 +6,12 @@ export type AdminPermissionKey =
   | "orderView"
   | "orderUpdate"
   | "orderDelete"
+  | "deliveryView"
+  | "deliveryUpdate"
+  | "deliveryStaffView"
+  | "deliveryStaffCreate"
+  | "deliveryStaffEdit"
+  | "deliveryStaffDelete"
   | "categoryView"
   | "categoryCreate"
   | "categoryEdit"
@@ -29,6 +35,7 @@ export type AdminPermissionKey =
   | "adminsStatus"
   | "adminsResetPassword"
   | "notificationView"
+  | "notificationSend"
   | "ticketView"
   | "ticketReply"
   | "ticketClose"
@@ -55,6 +62,14 @@ export const defaultAdminPermissions = (): AdminPermissions => ({
   orderView: false,
   orderUpdate: false,
   orderDelete: false,
+
+  deliveryView: false,
+  deliveryUpdate: false,
+
+  deliveryStaffView: false,
+  deliveryStaffCreate: false,
+  deliveryStaffEdit: false,
+  deliveryStaffDelete: false,
 
   categoryView: false,
   categoryCreate: false,
@@ -86,6 +101,7 @@ export const defaultAdminPermissions = (): AdminPermissions => ({
   adminsResetPassword: false,
 
   notificationView: false,
+  notificationSend: false,
 
   ticketView: false,
   ticketReply: false,
@@ -113,6 +129,14 @@ export const fullSuperadminPermissions = (): AdminPermissions => ({
   orderView: true,
   orderUpdate: true,
   orderDelete: true,
+
+  deliveryView: true,
+  deliveryUpdate: true,
+
+  deliveryStaffView: true,
+  deliveryStaffCreate: true,
+  deliveryStaffEdit: true,
+  deliveryStaffDelete: true,
 
   categoryView: true,
   categoryCreate: true,
@@ -144,6 +168,7 @@ export const fullSuperadminPermissions = (): AdminPermissions => ({
   adminsResetPassword: true,
 
   notificationView: true,
+  notificationSend: true,
 
   ticketView: true,
   ticketReply: true,
@@ -231,6 +256,22 @@ export const ADMIN_PERMISSION_GROUPS: {
     ],
   },
   {
+    title: "Delivery",
+    items: [
+      { key: "deliveryView", label: "Delivery View" },
+      { key: "deliveryUpdate", label: "Delivery Update / Assign Orders" },
+    ],
+  },
+  {
+    title: "Delivery Staff",
+    items: [
+      { key: "deliveryStaffView", label: "Delivery Staff View" },
+      { key: "deliveryStaffCreate", label: "Delivery Staff Create" },
+      { key: "deliveryStaffEdit", label: "Delivery Staff Edit" },
+      { key: "deliveryStaffDelete", label: "Delivery Staff Delete" },
+    ],
+  },
+  {
     title: "Categories",
     items: [
       { key: "categoryView", label: "Category View" },
@@ -285,7 +326,10 @@ export const ADMIN_PERMISSION_GROUPS: {
   },
   {
     title: "Notifications",
-    items: [{ key: "notificationView", label: "Notification View" }],
+    items: [
+      { key: "notificationView", label: "Notification View" },
+      { key: "notificationSend", label: "Notification Send" },
+    ],
   },
   {
     title: "Tickets",

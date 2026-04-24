@@ -44,17 +44,17 @@ const NAV_ITEMS: NavItem[] = [
     viewPermission: "orderView",
   },
   {
-  label: "Delivery",
-  href: "/admin/delivery",
-  icon: "/images/admin/order.png",
-  viewPermission: "orderView",
-},
-{
-  label: "Delivery Staff",
-  href: "/admin/delivery/staff",
-  icon: "/images/admin/customers.png",
-  viewPermission: "orderView",
-},
+    label: "Delivery",
+    href: "/admin/delivery",
+    icon: "/images/admin/order.png",
+    viewPermission: "deliveryView",
+  },
+  {
+    label: "Delivery Staff",
+    href: "/admin/delivery/staff",
+    icon: "/images/admin/customers.png",
+    viewPermission: "deliveryStaffView",
+  },
   {
     label: "Customers",
     href: "/admin/customers",
@@ -101,7 +101,7 @@ const NAV_ITEMS: NavItem[] = [
     label: "Notifications",
     href: "/admin/notifications/send",
     icon: "/images/admin/notification.png",
-    viewPermission: "advertisementView",
+    viewPermission: "notificationView",
   },
   {
     label: "Analytics",
@@ -120,6 +120,7 @@ const NAV_ITEMS: NavItem[] = [
 const BASE = (
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
 ).replace(/\/+$/, "");
+
 const API_BASE = `${BASE}/api`;
 
 async function safeJson(res: Response) {
@@ -134,6 +135,7 @@ async function safeJson(res: Response) {
 export default function AdminSidebar() {
   const pathname = usePathname();
   const router = useRouter();
+
   const [loggingOut, setLoggingOut] = React.useState(false);
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
   const [allowedItems, setAllowedItems] = React.useState<NavItem[]>([]);
@@ -155,6 +157,7 @@ export default function AdminSidebar() {
         }
 
         const json = (await safeJson(res)) as AdminSettingsResponse;
+
         const nextRole = (json?.profile?.role || "admin") as
           | "admin"
           | "superadmin";

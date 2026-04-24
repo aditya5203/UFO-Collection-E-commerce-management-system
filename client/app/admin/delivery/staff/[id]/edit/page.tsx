@@ -78,7 +78,10 @@ export default function EditDeliveryStaffPage() {
     forcePasswordChange: false,
   });
 
-  const updateField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+  const updateField = <K extends keyof FormState>(
+    key: K,
+    value: FormState[K]
+  ) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -96,6 +99,21 @@ export default function EditDeliveryStaffPage() {
         });
 
         const json = await safeJson(res);
+
+        if (res.status === 401) {
+          router.replace("/admin/adminlogin");
+          return;
+        }
+
+        if (res.status === 403) {
+          if (mounted) {
+            setError(
+              (json as any)?.message ||
+                "You do not have permission to view this delivery rider."
+            );
+          }
+          return;
+        }
 
         if (!res.ok) {
           if (mounted) {
@@ -137,7 +155,7 @@ export default function EditDeliveryStaffPage() {
     return () => {
       mounted = false;
     };
-  }, [id]);
+  }, [id, router]);
 
   const validate = () => {
     if (!form.name.trim()) return "Full name is required.";
@@ -184,6 +202,19 @@ export default function EditDeliveryStaffPage() {
 
       const json = await safeJson(res);
 
+      if (res.status === 401) {
+        router.replace("/admin/adminlogin");
+        return;
+      }
+
+      if (res.status === 403) {
+        setError(
+          (json as any)?.message ||
+            "You do not have permission to edit delivery staff."
+        );
+        return;
+      }
+
       if (!res.ok) {
         setError((json as any)?.message || "Failed to update delivery rider");
         return;
@@ -202,7 +233,7 @@ export default function EditDeliveryStaffPage() {
   };
 
   return (
-    <AdminPageGuard permission="orderUpdate">
+    <AdminPageGuard permission="deliveryStaffEdit">
       <div className="max-w-5xl space-y-8">
         <section className="overflow-hidden rounded-[32px] border border-slate-700/50 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_35%),linear-gradient(180deg,rgba(10,19,36,1),rgba(7,14,27,1))] p-6 shadow-[0_25px_100px_rgba(0,0,0,0.32)] md:p-8">
           <div className="flex flex-wrap items-start justify-between gap-5">
@@ -288,7 +319,11 @@ export default function EditDeliveryStaffPage() {
                   />
                 </Field>
 
-                <Field label="Vehicle Type" htmlFor="delivery-vehicle-type" required>
+                <Field
+                  label="Vehicle Type"
+                  htmlFor="delivery-vehicle-type"
+                  required
+                >
                   <select
                     id="delivery-vehicle-type"
                     value={form.vehicleType}
@@ -318,7 +353,9 @@ export default function EditDeliveryStaffPage() {
                     id="delivery-vehicle-number"
                     type="text"
                     value={form.vehicleNumber}
-                    onChange={(e) => updateField("vehicleNumber", e.target.value)}
+                    onChange={(e) =>
+                      updateField("vehicleNumber", e.target.value)
+                    }
                     placeholder="Optional vehicle number"
                     className={inputClassName()}
                   />
@@ -345,7 +382,8 @@ export default function EditDeliveryStaffPage() {
                           Rider Status
                         </div>
                         <div className="mt-1 text-sm text-slate-400">
-                          Mark this delivery rider as active and available for order assignment.
+                          Mark this delivery rider as active and available for
+                          order assignment.
                         </div>
                       </div>
 
@@ -354,7 +392,9 @@ export default function EditDeliveryStaffPage() {
                         <input
                           type="checkbox"
                           checked={form.isActive}
-                          onChange={(e) => updateField("isActive", e.target.checked)}
+                          onChange={(e) =>
+                            updateField("isActive", e.target.checked)
+                          }
                           className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-sky-500 focus:ring-sky-500/40"
                         />
                       </label>
@@ -380,7 +420,10 @@ export default function EditDeliveryStaffPage() {
                           type="checkbox"
                           checked={form.forcePasswordChange}
                           onChange={(e) =>
-                            updateField("forcePasswordChange", e.target.checked)
+                            updateField(
+                              "forcePasswordChange",
+                              e.target.checked
+                            )
                           }
                           className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-sky-500 focus:ring-sky-500/40"
                         />

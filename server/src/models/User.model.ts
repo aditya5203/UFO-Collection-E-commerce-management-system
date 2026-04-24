@@ -16,6 +16,14 @@ export interface IAdminPermissions {
   orderUpdate: boolean;
   orderDelete: boolean;
 
+  deliveryView: boolean;
+  deliveryUpdate: boolean;
+
+  deliveryStaffView: boolean;
+  deliveryStaffCreate: boolean;
+  deliveryStaffEdit: boolean;
+  deliveryStaffDelete: boolean;
+
   categoryView: boolean;
   categoryCreate: boolean;
   categoryEdit: boolean;
@@ -46,6 +54,7 @@ export interface IAdminPermissions {
   adminsResetPassword: boolean;
 
   notificationView: boolean;
+  notificationSend: boolean;
 
   ticketView: boolean;
   ticketReply: boolean;
@@ -120,6 +129,14 @@ export const defaultAdminPermissions = (): IAdminPermissions => ({
   orderUpdate: false,
   orderDelete: false,
 
+  deliveryView: false,
+  deliveryUpdate: false,
+
+  deliveryStaffView: false,
+  deliveryStaffCreate: false,
+  deliveryStaffEdit: false,
+  deliveryStaffDelete: false,
+
   categoryView: false,
   categoryCreate: false,
   categoryEdit: false,
@@ -150,6 +167,7 @@ export const defaultAdminPermissions = (): IAdminPermissions => ({
   adminsResetPassword: false,
 
   notificationView: false,
+  notificationSend: false,
 
   ticketView: false,
   ticketReply: false,
@@ -177,6 +195,14 @@ export const fullSuperadminPermissions = (): IAdminPermissions => ({
   orderView: true,
   orderUpdate: true,
   orderDelete: true,
+
+  deliveryView: true,
+  deliveryUpdate: true,
+
+  deliveryStaffView: true,
+  deliveryStaffCreate: true,
+  deliveryStaffEdit: true,
+  deliveryStaffDelete: true,
 
   categoryView: true,
   categoryCreate: true,
@@ -208,6 +234,7 @@ export const fullSuperadminPermissions = (): IAdminPermissions => ({
   adminsResetPassword: true,
 
   notificationView: true,
+  notificationSend: true,
 
   ticketView: true,
   ticketReply: true,
@@ -236,6 +263,14 @@ const AdminPermissionsSchema = new Schema<IAdminPermissions>(
     orderView: { type: Boolean, default: false },
     orderUpdate: { type: Boolean, default: false },
     orderDelete: { type: Boolean, default: false },
+
+    deliveryView: { type: Boolean, default: false },
+    deliveryUpdate: { type: Boolean, default: false },
+
+    deliveryStaffView: { type: Boolean, default: false },
+    deliveryStaffCreate: { type: Boolean, default: false },
+    deliveryStaffEdit: { type: Boolean, default: false },
+    deliveryStaffDelete: { type: Boolean, default: false },
 
     categoryView: { type: Boolean, default: false },
     categoryCreate: { type: Boolean, default: false },
@@ -267,6 +302,7 @@ const AdminPermissionsSchema = new Schema<IAdminPermissions>(
     adminsResetPassword: { type: Boolean, default: false },
 
     notificationView: { type: Boolean, default: false },
+    notificationSend: { type: Boolean, default: false },
 
     ticketView: { type: Boolean, default: false },
     ticketReply: { type: Boolean, default: false },

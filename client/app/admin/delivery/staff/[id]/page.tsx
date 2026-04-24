@@ -65,19 +65,32 @@ function StatusPill({
   );
 }
 
-function StatCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
+function StatCard({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
         {label}
       </div>
       <div className="mt-2 text-2xl font-extrabold text-white">{value}</div>
+    </div>
+  );
+}
+
+function InfoBlock({
+  label,
+  value,
+}: {
+  label: string;
+  value?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-4">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+        {label}
+      </div>
+      <div className="mt-2 text-sm font-medium text-slate-100">
+        {value || "-"}
+      </div>
     </div>
   );
 }
@@ -168,7 +181,7 @@ export default function DeliveryStaffDetailsPage() {
   }, [id]);
 
   return (
-    <AdminPageGuard permission="orderView">
+    <AdminPageGuard permission="deliveryStaffView">
       <div className="space-y-8">
         <section className="overflow-hidden rounded-[32px] border border-slate-700/50 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_35%),linear-gradient(180deg,rgba(10,19,36,1),rgba(7,14,27,1))] p-6 shadow-[0_25px_100px_rgba(0,0,0,0.32)] md:p-8">
           <div className="flex flex-wrap items-start justify-between gap-5">
@@ -271,8 +284,14 @@ export default function DeliveryStaffDetailsPage() {
                     </StatusPill>
                   </div>
 
-                  <InfoBlock label="Created At" value={formatDateTime(data.createdAt)} />
-                  <InfoBlock label="Updated At" value={formatDateTime(data.updatedAt)} />
+                  <InfoBlock
+                    label="Created At"
+                    value={formatDateTime(data.createdAt)}
+                  />
+                  <InfoBlock
+                    label="Updated At"
+                    value={formatDateTime(data.updatedAt)}
+                  />
                 </div>
               </div>
             </section>
@@ -284,24 +303,5 @@ export default function DeliveryStaffDetailsPage() {
         )}
       </div>
     </AdminPageGuard>
-  );
-}
-
-function InfoBlock({
-  label,
-  value,
-}: {
-  label: string;
-  value?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-4">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-        {label}
-      </div>
-      <div className="mt-2 text-sm font-medium text-slate-100">
-        {value || "-"}
-      </div>
-    </div>
   );
 }

@@ -159,8 +159,11 @@ export default function DeliveryStaffPage() {
 
   const onDelete = async (item: DeliveryStaffRow) => {
     const ok = window.confirm(
-      `Are you sure you want to delete ${item.name || "this delivery staff"} (${item.email || "-"})? This will permanently delete the account from the database.`
+      `Are you sure you want to delete ${
+        item.name || "this delivery staff"
+      } (${item.email || "-"})? This will permanently delete the account from the database.`
     );
+
     if (!ok) return;
 
     try {
@@ -203,7 +206,7 @@ export default function DeliveryStaffPage() {
   );
 
   return (
-    <AdminPageGuard permission="orderView">
+    <AdminPageGuard permission="deliveryStaffView">
       <div className="space-y-8">
         <section className="overflow-hidden rounded-[32px] border border-slate-700/50 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_35%),linear-gradient(180deg,rgba(10,19,36,1),rgba(7,14,27,1))] p-6 shadow-[0_25px_100px_rgba(0,0,0,0.32)] md:p-8">
           <div className="flex flex-wrap items-start justify-between gap-5">

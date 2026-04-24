@@ -5,21 +5,25 @@ import {
   adminAuthMiddleware,
   deliveryAuthMiddleware,
 } from "../../auth/middleware/auth.middleware";
+import { authorizePermission } from "../../auth/middleware/permission.middleware";
 
 const router = Router();
 
 /* CUSTOMER */
 router.get("/", customerAuthMiddleware, notificationController.list);
+
 router.get(
   "/unread-count",
   customerAuthMiddleware,
   notificationController.unreadCount
 );
+
 router.patch(
   "/read-all",
   customerAuthMiddleware,
   notificationController.markAllRead
 );
+
 router.patch(
   "/:id/read",
   customerAuthMiddleware,
@@ -27,30 +31,45 @@ router.patch(
 );
 
 /* ADMIN */
-router.get("/admin", adminAuthMiddleware, notificationController.listAdmin);
+router.get(
+  "/admin",
+  adminAuthMiddleware,
+  authorizePermission("notificationView"),
+  notificationController.listAdmin
+);
+
 router.get(
   "/admin/unread-count",
   adminAuthMiddleware,
+  authorizePermission("notificationView"),
   notificationController.adminUnreadCount
 );
+
 router.patch(
   "/admin/read-all",
   adminAuthMiddleware,
+  authorizePermission("notificationView"),
   notificationController.adminMarkAllRead
 );
+
 router.patch(
   "/admin/:id/read",
   adminAuthMiddleware,
+  authorizePermission("notificationView"),
   notificationController.adminMarkRead
 );
+
 router.post(
   "/admin/broadcast",
   adminAuthMiddleware,
+  authorizePermission("notificationSend"),
   notificationController.adminBroadcast
 );
+
 router.get(
   "/admin/broadcast-history",
   adminAuthMiddleware,
+  authorizePermission("notificationView"),
   notificationController.adminBroadcastHistory
 );
 
@@ -60,16 +79,19 @@ router.get(
   deliveryAuthMiddleware,
   notificationController.listDelivery
 );
+
 router.get(
   "/delivery/unread-count",
   deliveryAuthMiddleware,
   notificationController.deliveryUnreadCount
 );
+
 router.patch(
   "/delivery/read-all",
   deliveryAuthMiddleware,
   notificationController.deliveryMarkAllRead
 );
+
 router.patch(
   "/delivery/:id/read",
   deliveryAuthMiddleware,

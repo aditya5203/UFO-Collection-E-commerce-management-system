@@ -71,7 +71,10 @@ export default function CreateDeliveryStaffPage() {
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
 
-  const updateField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
+  const updateField = <K extends keyof FormState>(
+    key: K,
+    value: FormState[K]
+  ) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -118,6 +121,19 @@ export default function CreateDeliveryStaffPage() {
 
       const json = await safeJson(res);
 
+      if (res.status === 401) {
+        router.replace("/admin/adminlogin");
+        return;
+      }
+
+      if (res.status === 403) {
+        setError(
+          (json as any)?.message ||
+            "You do not have permission to create delivery staff."
+        );
+        return;
+      }
+
       if (!res.ok) {
         setError((json as any)?.message || "Failed to send delivery invitation");
         return;
@@ -136,7 +152,7 @@ export default function CreateDeliveryStaffPage() {
   };
 
   return (
-    <AdminPageGuard permission="orderUpdate">
+    <AdminPageGuard permission="deliveryStaffCreate">
       <div className="max-w-5xl space-y-8">
         <section className="overflow-hidden rounded-[32px] border border-slate-700/50 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_35%),linear-gradient(180deg,rgba(10,19,36,1),rgba(7,14,27,1))] p-6 shadow-[0_25px_100px_rgba(0,0,0,0.32)] md:p-8">
           <div className="flex flex-wrap items-start justify-between gap-5">
@@ -151,7 +167,8 @@ export default function CreateDeliveryStaffPage() {
               </h1>
 
               <p className="text-sm text-slate-400">
-                Invite a new delivery rider by email for order assignment and delivery tracking.
+                Invite a new delivery rider by email for order assignment and
+                delivery tracking.
               </p>
             </div>
 
@@ -268,7 +285,8 @@ export default function CreateDeliveryStaffPage() {
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-700/50 pt-6">
             <div className="text-sm text-slate-400">
-              After the invitation is accepted and password is set, this rider can be selected while assigning orders.
+              After the invitation is accepted and password is set, this rider
+              can be selected while assigning orders.
             </div>
 
             <div className="flex items-center gap-3">
