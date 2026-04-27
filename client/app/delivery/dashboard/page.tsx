@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   DELIVERY_ENDPOINTS,
   DeliveryOrder,
@@ -15,6 +16,15 @@ import {
   safeJson,
   safeStr,
 } from "@/app/lib/delivery";
+
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
+const softPanelClass =
+  "rounded-[20px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)]";
+
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
 
 function StatusPill({ children }: { children: React.ReactNode }) {
   const tone = getDeliveryStatusTone(String(children));
@@ -31,16 +41,34 @@ function StatCard({
   label,
   value,
   hint,
+  iconSrc,
 }: {
   label: string;
   value: React.ReactNode;
   hint?: string;
+  iconSrc: string;
 }) {
   return (
-    <div className="flex flex-col gap-[6px] rounded-[14px] border border-[#111827] bg-[#020617] px-[16px] py-[14px]">
-      <div className="text-[12px] text-[#9ca3af]">{label}</div>
-      <div className="text-[20px] font-semibold text-[#f9fafb]">{value}</div>
-      {hint ? <div className="text-[12px] text-[#6b7280]">{hint}</div> : null}
+    <div
+      className={`${softPanelClass} group p-5 transition duration-300 hover:-translate-y-1 hover:border-[#4a506b] hover:shadow-[0_24px_70px_rgba(0,0,0,0.38)]`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+            {label}
+          </div>
+          <div className="mt-3 text-[26px] font-semibold tracking-[-0.03em] text-white">
+            {value}
+          </div>
+          {hint ? (
+            <div className="mt-2 text-[12px] text-[#7f879f]">{hint}</div>
+          ) : null}
+        </div>
+
+        <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5 transition group-hover:bg-white/10">
+          <Image src={iconSrc} alt={label} width={22} height={22} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -133,224 +161,243 @@ export default function DeliveryDashboardPage() {
   const recentOrders = rows.slice(0, 5);
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-        <div className="flex flex-wrap items-start justify-between gap-5">
-          <div className="space-y-2">
-            <div className="text-[12px] text-[#9ca3af]">Delivery Panel</div>
-            <h1 className="text-[22px] font-semibold text-white">
-              Delivery Dashboard
-            </h1>
-            <p className="text-[13px] text-[#9ca3af]">
-              Manage assigned deliveries, update status, and track daily work.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/delivery/orders"
-              className="rounded-lg border border-[#111827] bg-[#020617] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#0b1220]"
-            >
-              My Orders
-            </Link>
-
-            <Link
-              href="/delivery/profile"
-              className="rounded-lg border border-[#111827] bg-[#020617] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#0b1220]"
-            >
-              My Profile
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Assigned"
-          value={String(assignedCount)}
-          hint="Ready to process"
-        />
-        <StatCard
-          label="Out for Delivery"
-          value={String(outForDeliveryCount)}
-          hint="Currently on the way"
-        />
-        <StatCard
-          label="Delivered"
-          value={String(deliveredCount)}
-          hint="Completed orders"
-        />
-        <StatCard
-          label="Failed / Returned"
-          value={String(failedCount)}
-          hint="Needs follow-up"
-        />
-      </section>
-
-      {error ? (
-        <div className="rounded-[14px] border border-red-500/30 bg-red-500/10 p-4 text-[13px] text-red-200">
-          {error}
-        </div>
-      ) : null}
-
-      <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-        <div className="mb-2 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-[16px] font-medium text-white">
-              Recent Assigned Orders
+    <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+      <div className="space-y-6">
+        <section
+          className={`${panelClass} relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+        >
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4] sm:text-[12px]">
+                Delivery Panel
+              </div>
+              <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                Delivery Dashboard
+              </h1>
+              <p className="mt-2 max-w-[620px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                Manage assigned deliveries, update order status, and track your
+                daily delivery workflow from one premium panel.
+              </p>
             </div>
-            <div className="text-[12px] text-[#9ca3af]">
-              Quick overview of your latest delivery tasks
+
+            <div className="flex flex-wrap items-center gap-3">
+              <Link href="/delivery/orders" className={secondaryBtnClass}>
+                My Orders
+              </Link>
+
+              <Link href="/delivery/profile" className={secondaryBtnClass}>
+                My Profile
+              </Link>
             </div>
           </div>
+        </section>
 
-          <Link
-            href="/delivery/orders"
-            className="rounded-lg border border-[#111827] bg-[#020617] px-4 py-2 text-center text-[13px] font-medium text-white hover:bg-[#0b1220]"
-          >
-            View All
-          </Link>
-        </div>
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Assigned"
+            value={String(assignedCount)}
+            hint="Ready to process"
+            iconSrc="/images/admin/orders.png"
+          />
+          <StatCard
+            label="Out for Delivery"
+            value={String(outForDeliveryCount)}
+            hint="Currently on the way"
+            iconSrc="/images/admin/delivery.png"
+          />
+          <StatCard
+            label="Delivered"
+            value={String(deliveredCount)}
+            hint="Completed orders"
+            iconSrc="/images/admin/active.png"
+          />
+          <StatCard
+            label="Failed / Returned"
+            value={String(failedCount)}
+            hint="Needs follow-up"
+            iconSrc="/images/admin/cancel.png"
+          />
+        </section>
 
-        <div className="mt-[10px] overflow-x-auto">
-          <table className="w-full min-w-[1100px] border-collapse text-[13px]">
-            <thead>
-              <tr className="border-b border-[#111827] text-left text-[12px] text-[#9ca3af]">
-                <th className="px-[12px] py-[10px]">Order ID</th>
-                <th className="px-[12px] py-[10px]">Customer</th>
-                <th className="px-[12px] py-[10px]">Address</th>
-                <th className="px-[12px] py-[10px]">Status</th>
-                <th className="px-[12px] py-[10px]">Total</th>
-                <th className="px-[12px] py-[10px]">Assigned</th>
-                <th className="px-[12px] py-[10px] text-right">Action</th>
-              </tr>
-            </thead>
+        {error ? (
+          <div className="rounded-[20px] border border-red-400/20 bg-red-500/10 p-4 text-[13px] text-red-200">
+            {error}
+          </div>
+        ) : null}
 
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-[12px] py-[18px] text-center text-[13px] text-[#9ca3af]"
-                  >
-                    Loading...
-                  </td>
+        <section className={`${panelClass} overflow-hidden`}>
+          <div className="flex flex-col gap-4 border-b border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                Orders
+              </div>
+              <div className="mt-1 text-[20px] font-semibold text-white">
+                Recent Assigned Orders
+              </div>
+              <div className="mt-1 text-[13px] text-[#a7aec4]">
+                Quick overview of your latest delivery tasks
+              </div>
+            </div>
+
+            <Link href="/delivery/orders" className={secondaryBtnClass}>
+              View All
+            </Link>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1100px] border-collapse text-[13px]">
+              <thead>
+                <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                  <th className="px-5 py-4 font-medium">Order ID</th>
+                  <th className="px-5 py-4 font-medium">Customer</th>
+                  <th className="px-5 py-4 font-medium">Address</th>
+                  <th className="px-5 py-4 font-medium">Status</th>
+                  <th className="px-5 py-4 font-medium">Total</th>
+                  <th className="px-5 py-4 font-medium">Assigned</th>
+                  <th className="px-5 py-4 text-right font-medium">Action</th>
                 </tr>
-              ) : recentOrders.length ? (
-                recentOrders.map((item) => {
-                  const orderId = item.id || item._id || "";
-                  const status =
-                    safeStr(item.deliveryAssignment?.status) || "Assigned";
+              </thead>
 
-                  return (
-                    <tr key={orderId} className="border-t border-[#111827]">
-                      <td className="px-[12px] py-[12px] text-white">
-                        {item.orderCode || orderId}
-                      </td>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-5 py-8 text-center text-[13px] text-[#a7aec4]"
+                    >
+                      Loading delivery dashboard...
+                    </td>
+                  </tr>
+                ) : recentOrders.length ? (
+                  recentOrders.map((item) => {
+                    const orderId = item.id || item._id || "";
+                    const status =
+                      safeStr(item.deliveryAssignment?.status) || "Assigned";
 
-                      <td className="px-[12px] py-[12px]">
-                        <div className="space-y-1">
+                    return (
+                      <tr
+                        key={orderId}
+                        className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                      >
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-white">
+                            {item.orderCode || orderId}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4">
                           <div className="font-medium text-white">
                             {getCustomerName(item)}
                           </div>
-                          <div className="text-[#9ca3af]">
+                          <div className="mt-1 text-[12px] text-[#7f879f]">
                             {getCustomerContact(item)}
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="px-[12px] py-[12px]">
-                        <div className="space-y-1">
+                        <td className="px-5 py-4">
                           <div className="text-white">{getArea(item)}</div>
-                          <div className="text-[#9ca3af]">{getCity(item)}</div>
-                        </div>
-                      </td>
+                          <div className="mt-1 text-[12px] text-[#7f879f]">
+                            {getCity(item)}
+                          </div>
+                        </td>
 
-                      <td className="px-[12px] py-[12px]">
-                        <StatusPill>{status}</StatusPill>
-                      </td>
+                        <td className="px-5 py-4">
+                          <StatusPill>{status}</StatusPill>
+                        </td>
 
-                      <td className="px-[12px] py-[12px] text-white">
-                        {formatNPR(item.totalPaisa, item.total)}
-                      </td>
+                        <td className="px-5 py-4 font-semibold text-[#d6c7ff]">
+                          {formatNPR(item.totalPaisa, item.total)}
+                        </td>
 
-                      <td className="px-[12px] py-[12px] text-[#9ca3af]">
-                        {formatDateShort(item.deliveryAssignment?.assignedAt)}
-                      </td>
+                        <td className="px-5 py-4 text-[#a7aec4]">
+                          {formatDateShort(item.deliveryAssignment?.assignedAt)}
+                        </td>
 
-                      <td className="px-[12px] py-[12px] text-right">
-                        <Link
-                          href={`/delivery/orders/${orderId}`}
-                          className="text-[#60a5fa] hover:underline"
-                        >
-                          Open
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-[12px] py-[18px] text-center text-[13px] text-[#9ca3af]"
-                  >
-                    No assigned delivery orders found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                        <td className="px-5 py-4 text-right">
+                          <Link
+                            href={`/delivery/orders/${orderId}`}
+                            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[12px] font-semibold text-white transition hover:bg-white/10"
+                          >
+                            Open
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-5 py-8 text-center text-[13px] text-[#a7aec4]"
+                    >
+                      No assigned delivery orders found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <div className="grid gap-5 xl:grid-cols-2">
+          <InfoCard title="Today’s Focus" eyebrow="Workflow">
+            <div className="grid gap-3">
+              <SmallItem text="Check newly assigned orders and confirm pickup." />
+              <SmallItem text="Update status to Out for Delivery when you start the trip." />
+              <SmallItem text="Mark failed orders clearly with the reason in the delivery note." />
+            </div>
+          </InfoCard>
+
+          <InfoCard title="Quick Links" eyebrow="Actions">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <QuickLink href="/delivery/orders" label="My Delivery Orders" />
+              <QuickLink href="/delivery/profile" label="Delivery Profile" />
+            </div>
+          </InfoCard>
         </div>
-      </section>
-
-      <div className="grid gap-[18px] xl:grid-cols-2">
-        <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-          <div className="text-[16px] font-medium text-white">Today’s Focus</div>
-          <div className="mt-1 text-[12px] text-[#9ca3af]">
-            Prioritize active deliveries before marking them completed.
-          </div>
-
-          <div className="mt-5 space-y-3">
-            <div className="rounded-[14px] border border-[#111827] bg-[#0b1220] p-4 text-[13px] text-[#d1d5db]">
-              Check newly assigned orders and confirm pickup.
-            </div>
-            <div className="rounded-[14px] border border-[#111827] bg-[#0b1220] p-4 text-[13px] text-[#d1d5db]">
-              Update status to{" "}
-              <span className="font-semibold text-white">
-                Out for Delivery
-              </span>{" "}
-              when you start the trip.
-            </div>
-            <div className="rounded-[14px] border border-[#111827] bg-[#0b1220] p-4 text-[13px] text-[#d1d5db]">
-              Mark failed orders clearly with the reason in the delivery note.
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-          <div className="text-[16px] font-medium text-white">Quick Links</div>
-          <div className="mt-1 text-[12px] text-[#9ca3af]">
-            Open common delivery actions faster.
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <Link
-              href="/delivery/orders"
-              className="rounded-[14px] border border-[#111827] bg-[#0b1220] p-4 text-[13px] font-medium text-white transition hover:bg-[#111827]"
-            >
-              My Delivery Orders
-            </Link>
-
-            <Link
-              href="/delivery/profile"
-              className="rounded-[14px] border border-[#111827] bg-[#0b1220] p-4 text-[13px] font-medium text-white transition hover:bg-[#111827]"
-            >
-              Delivery Profile
-            </Link>
-          </div>
-        </section>
       </div>
     </div>
+  );
+}
+
+function InfoCard({
+  eyebrow,
+  title,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={`${panelClass} p-5 sm:p-6`}>
+      <div className="mb-5">
+        <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+          {eyebrow}
+        </div>
+        <div className="mt-1 text-[20px] font-semibold text-white">{title}</div>
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+function SmallItem({ text }: { text: string }) {
+  return (
+    <div className="rounded-[16px] border border-white/10 bg-white/[0.03] px-4 py-3 text-[13px] leading-6 text-[#d1d5db]">
+      {text}
+    </div>
+  );
+}
+
+function QuickLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4 text-[13px] font-semibold text-white transition hover:-translate-y-0.5 hover:bg-white/[0.07]"
+    >
+      {label}
+    </Link>
   );
 }

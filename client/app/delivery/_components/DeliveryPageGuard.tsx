@@ -6,6 +6,12 @@ import { DELIVERY_ENDPOINTS, safeJson, safeStr } from "@/app/lib/delivery";
 
 type GuardMode = "protected" | "change-password";
 
+const PUBLIC_DELIVERY_ROUTES = [
+  "/delivery/login",
+  "/delivery/forgot-password",
+  "/delivery/reset-password",
+];
+
 export default function DeliveryPageGuard({
   children,
   mode = "protected",
@@ -15,9 +21,19 @@ export default function DeliveryPageGuard({
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [checking, setChecking] = React.useState(true);
+
+  const isPublicRoute = PUBLIC_DELIVERY_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
+
+  const [checking, setChecking] = React.useState(!isPublicRoute);
 
   React.useEffect(() => {
+    if (isPublicRoute) {
+      setChecking(false);
+      return;
+    }
+
     let mounted = true;
 
     const verify = async () => {
@@ -45,12 +61,10 @@ export default function DeliveryPageGuard({
           return;
         }
 
-        // allow logged-in delivery user to open change-password page
         if (mode === "change-password") {
           return;
         }
 
-        // block protected pages if password must be changed first
         if (mustChangePassword && pathname !== "/delivery/change-password") {
           router.replace("/delivery/change-password");
           return;
@@ -68,7 +82,7 @@ export default function DeliveryPageGuard({
     return () => {
       mounted = false;
     };
-  }, [mode, pathname, router]);
+  }, [isPublicRoute, mode, pathname, router]);
 
   if (checking) {
     return (

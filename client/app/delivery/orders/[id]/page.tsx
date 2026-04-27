@@ -25,19 +25,37 @@ type TimelineStep = {
   status: "done" | "current" | "upcoming";
 };
 
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
+const softPanelClass =
+  "rounded-[20px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)]";
+
+const secondaryBtnClass =
+  "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+
+const primaryBtnClass =
+  "inline-flex items-center justify-center rounded-full bg-white px-6 py-2.5 text-[12px] font-bold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+
+const inputClass =
+  "w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-sm text-white placeholder:text-[#7f879f] outline-none transition focus:border-[#8b5cf6] focus:ring-4 focus:ring-[#8b5cf6]/10 disabled:cursor-not-allowed disabled:opacity-60";
+
 function getInitials(name?: string) {
   const safe = safeStr(name).trim();
   if (!safe) return "CU";
+
   const parts = safe.split(/\s+/).filter(Boolean);
   const initials = parts
     .slice(0, 2)
     .map((x) => x[0]?.toUpperCase())
     .join("");
+
   return initials || "CU";
 }
 
 function StatusPill({ children }: { children: React.ReactNode }) {
   const tone = getDeliveryStatusTone(String(children));
+
   return (
     <span
       className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}
@@ -54,7 +72,7 @@ function Dot({ status }: { status: TimelineStep["status"] }) {
   if (status === "done") {
     return (
       <div
-        className={`${base} border-emerald-500/30 bg-emerald-500/10 text-emerald-200`}
+        className={`${base} border-emerald-400/20 bg-emerald-500/15 text-emerald-300`}
       >
         ✓
       </div>
@@ -63,14 +81,16 @@ function Dot({ status }: { status: TimelineStep["status"] }) {
 
   if (status === "current") {
     return (
-      <div className={`${base} border-[#2563eb]/40 bg-[#2563eb]/10 text-[#93c5fd]`}>
+      <div
+        className={`${base} border-[#8b5cf6]/40 bg-[#8b5cf6]/15 text-[#d6c7ff]`}
+      >
         •
       </div>
     );
   }
 
   return (
-    <div className={`${base} border-[#111827] bg-[#020617] text-[#6b7280]`}>
+    <div className={`${base} border-white/10 bg-white/[0.03] text-[#7f879f]`}>
       •
     </div>
   );
@@ -86,12 +106,18 @@ function SummaryCard({
   hint?: string;
 }) {
   return (
-    <div className="rounded-[14px] border border-[#111827] bg-[#020617] p-5">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9ca3af]">
+    <div
+      className={`${softPanelClass} p-5 transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]`}
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
         {label}
       </div>
-      <div className="mt-2 break-words text-lg font-bold text-white">{value}</div>
-      {hint ? <div className="mt-1 text-sm text-[#9ca3af]">{hint}</div> : null}
+
+      <div className="mt-3 break-words text-[20px] font-semibold tracking-[-0.03em] text-white">
+        {value}
+      </div>
+
+      {hint ? <div className="mt-2 text-[12px] text-[#7f879f]">{hint}</div> : null}
     </div>
   );
 }
@@ -107,7 +133,7 @@ function LineItem({
 }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <span className="text-sm text-[#9ca3af]">{label}</span>
+      <span className="text-sm text-[#a7aec4]">{label}</span>
       <span className={`break-words text-right text-sm ${valueClassName}`}>
         {value}
       </span>
@@ -119,7 +145,13 @@ function getAllowedTransitions(currentStatus: string): DeliveryStatus[] {
   const s = safeStr(currentStatus).toLowerCase();
 
   if (!s || s === "assigned") {
-    return ["Assigned", "Picked Up", "Out for Delivery", "Failed Delivery", "Returned"];
+    return [
+      "Assigned",
+      "Picked Up",
+      "Out for Delivery",
+      "Failed Delivery",
+      "Returned",
+    ];
   }
 
   if (s === "picked up") {
@@ -142,7 +174,13 @@ function getAllowedTransitions(currentStatus: string): DeliveryStatus[] {
     return ["Returned"];
   }
 
-  return ["Assigned", "Picked Up", "Out for Delivery", "Failed Delivery", "Returned"];
+  return [
+    "Assigned",
+    "Picked Up",
+    "Out for Delivery",
+    "Failed Delivery",
+    "Returned",
+  ];
 }
 
 export default function DeliveryOrderDetailsPage() {
@@ -161,7 +199,8 @@ export default function DeliveryOrderDetailsPage() {
     React.useState<DeliveryStatus>("Assigned");
   const [deliveryNote, setDeliveryNote] = React.useState("");
 
-  const [otpChannel, setOtpChannel] = React.useState<DeliveryOtpChannel>("phone");
+  const [otpChannel, setOtpChannel] =
+    React.useState<DeliveryOtpChannel>("phone");
   const [otpInput, setOtpInput] = React.useState("");
   const [otpMessage, setOtpMessage] = React.useState("");
   const [otpError, setOtpError] = React.useState("");
@@ -190,7 +229,8 @@ export default function DeliveryOrderDetailsPage() {
       setOrder(nextOrder);
 
       setDeliveryStatus(
-        (safeStr(nextOrder?.deliveryAssignment?.status) || "Assigned") as DeliveryStatus
+        (safeStr(nextOrder?.deliveryAssignment?.status) ||
+          "Assigned") as DeliveryStatus
       );
       setDeliveryNote(safeStr(nextOrder?.deliveryAssignment?.note));
     } catch {
@@ -230,13 +270,16 @@ export default function DeliveryOrderDetailsPage() {
       }
 
       const updatedOrder = ((json as any)?.data || order) as DeliveryOrder;
+
       setOrder(updatedOrder);
       setDeliveryStatus(
-        (safeStr(updatedOrder?.deliveryAssignment?.status) || deliveryStatus) as DeliveryStatus
+        (safeStr(updatedOrder?.deliveryAssignment?.status) ||
+          deliveryStatus) as DeliveryStatus
       );
       setDeliveryNote(safeStr(updatedOrder?.deliveryAssignment?.note));
       setOtpMessage("");
       setOtpError("");
+
       alert("Delivery status updated successfully");
       router.refresh();
     } catch {
@@ -255,12 +298,15 @@ export default function DeliveryOrderDetailsPage() {
       setOtpError("");
       setOtpMessage("");
 
-      const res = await fetch(`${DELIVERY_ENDPOINTS.orders}/${orderId}/send-otp`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channel: otpChannel }),
-      });
+      const res = await fetch(
+        `${DELIVERY_ENDPOINTS.orders}/${orderId}/send-otp`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ channel: otpChannel }),
+        }
+      );
 
       const json = await safeJson(res);
 
@@ -270,7 +316,9 @@ export default function DeliveryOrderDetailsPage() {
       }
 
       const data = (json as any)?.data || {};
-      let message = `OTP sent via ${otpChannel} to ${safeStr(data.sentTo) || "customer"}.`;
+      let message = `OTP sent via ${otpChannel} to ${
+        safeStr(data.sentTo) || "customer"
+      }.`;
 
       if (otpChannel === "phone" && safeStr(data.devOtpPreview)) {
         message += ` Demo OTP: ${safeStr(data.devOtpPreview)}`;
@@ -295,12 +343,15 @@ export default function DeliveryOrderDetailsPage() {
       setOtpError("");
       setOtpMessage("");
 
-      const res = await fetch(`${DELIVERY_ENDPOINTS.orders}/${orderId}/verify-otp`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ otp: otpInput.trim() }),
-      });
+      const res = await fetch(
+        `${DELIVERY_ENDPOINTS.orders}/${orderId}/verify-otp`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ otp: otpInput.trim() }),
+        }
+      );
 
       const json = await safeJson(res);
 
@@ -310,13 +361,16 @@ export default function DeliveryOrderDetailsPage() {
       }
 
       const updatedOrder = ((json as any)?.data || order) as DeliveryOrder;
+
       setOrder(updatedOrder);
       setDeliveryStatus(
-        (safeStr(updatedOrder?.deliveryAssignment?.status) || "Delivered") as DeliveryStatus
+        (safeStr(updatedOrder?.deliveryAssignment?.status) ||
+          "Delivered") as DeliveryStatus
       );
       setDeliveryNote(safeStr(updatedOrder?.deliveryAssignment?.note));
       setOtpInput("");
       setOtpMessage("OTP verified successfully. Order marked as delivered.");
+
       router.refresh();
     } catch {
       setOtpError("Failed to verify OTP");
@@ -327,24 +381,41 @@ export default function DeliveryOrderDetailsPage() {
 
   if (loading) {
     return (
-      <div className="rounded-[14px] border border-[#111827] bg-[#020617] p-8 text-[#9ca3af]">
-        Loading...
+      <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+        <div className={`${panelClass} p-8`}>
+          <div className="h-3 w-36 animate-pulse rounded bg-white/5" />
+          <div className="mt-4 h-9 w-64 animate-pulse rounded bg-white/5" />
+          <div className="mt-4 h-4 w-full max-w-[620px] animate-pulse rounded bg-white/5" />
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className={`${softPanelClass} p-5`}>
+                <div className="h-3 w-24 animate-pulse rounded bg-white/5" />
+                <div className="mt-4 h-7 w-32 animate-pulse rounded bg-white/5" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!order) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-[14px] border border-[#111827] bg-[#020617] p-8 text-[#9ca3af]">
-          {error || "Order not found"}
+      <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+        <div className="space-y-4">
+          <div className={`${panelClass} p-8`}>
+            <div className="text-[11px] uppercase tracking-[0.24em] text-[#fca5a5]">
+              Order Error
+            </div>
+            <div className="mt-2 text-[15px] text-white">
+              {error || "Order not found"}
+            </div>
+          </div>
+
+          <Link href="/delivery/orders" className={secondaryBtnClass}>
+            Back
+          </Link>
         </div>
-        <Link
-          href="/delivery/orders"
-          className="inline-flex rounded-lg border border-[#111827] bg-[#020617] px-4 py-2 text-sm font-medium text-white hover:bg-[#0b1220]"
-        >
-          Back
-        </Link>
       </div>
     );
   }
@@ -376,9 +447,12 @@ export default function DeliveryOrderDetailsPage() {
       status:
         currentStatus === "Picked Up"
           ? "current"
-          : ["Out for Delivery", "Delivered", "Failed Delivery", "Returned"].includes(
-              currentStatus
-            )
+          : [
+              "Out for Delivery",
+              "Delivered",
+              "Failed Delivery",
+              "Returned",
+            ].includes(currentStatus)
           ? "done"
           : "upcoming",
     },
@@ -405,11 +479,15 @@ export default function DeliveryOrderDetailsPage() {
 
   const addr = order.address || null;
   const addrTitle = addr?.label ? safeStr(addr.label) : "Shipping Address";
-  const addrName = safeStr(addr?.fullName) || safeStr(order?.customer?.name) || "-";
-  const addrPhone = safeStr(addr?.phone) || safeStr(order?.customer?.phone) || "-";
+  const addrName =
+    safeStr(addr?.fullName) || safeStr(order?.customer?.name) || "-";
+  const addrPhone =
+    safeStr(addr?.phone) || safeStr(order?.customer?.phone) || "-";
   const addrStreet = safeStr(addr?.street);
   const addrArea =
-    safeStr(addr?.addressLine) || safeStr(addr?.area) || safeStr(addr?.district);
+    safeStr(addr?.addressLine) ||
+    safeStr(addr?.area) ||
+    safeStr(addr?.district);
   const addrCity =
     safeStr(addr?.cityOrMunicipality) ||
     safeStr(addr?.city) ||
@@ -427,7 +505,8 @@ export default function DeliveryOrderDetailsPage() {
   const discountPaisa = Number(order?.discountPaisa || 0);
   const totalPaisa = Number(order?.totalPaisa || 0);
 
-  const customerPhoneLink = addrPhone && addrPhone !== "-" ? `tel:${addrPhone}` : "";
+  const customerPhoneLink =
+    addrPhone && addrPhone !== "-" ? `tel:${addrPhone}` : "";
   const mapsLink = hasLatLng(addr) ? getGoogleMapsUrl(addr) : "";
 
   const isFinalState =
@@ -440,511 +519,557 @@ export default function DeliveryOrderDetailsPage() {
   const otpChannelUsed = safeStr(order?.deliveryAssignment?.otpChannel);
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="space-y-3">
-            <div className="break-words text-[12px] text-[#9ca3af]">
-              Delivery <span className="mx-2">/</span> Orders{" "}
-              <span className="mx-2">/</span> {order.orderCode || orderId}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="break-words text-[22px] font-semibold text-white md:text-[28px]">
+    <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+      <div className="space-y-6">
+        <section
+          className={`${panelClass} relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+        >
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
+              <div className="break-words text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                Delivery <span className="mx-2 text-[#7f879f]">/</span> Orders{" "}
+                <span className="mx-2 text-[#7f879f]">/</span>{" "}
                 {order.orderCode || orderId}
-              </h1>
-              <StatusPill>{currentStatus}</StatusPill>
-            </div>
-
-            <p className="text-[13px] text-[#9ca3af]">
-              Placed on {placedOn}
-              {order?.paymentMethod ? (
-                <>
-                  <span className="mx-2">•</span>
-                  <span>{safeStr(order.paymentMethod)}</span>
-                </>
-              ) : null}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {customerPhoneLink ? (
-              <a
-                href={customerPhoneLink}
-                className="inline-flex rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/15"
-              >
-                Call Customer
-              </a>
-            ) : null}
-
-            {mapsLink ? (
-              <a
-                href={mapsLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-200 hover:bg-blue-500/15"
-              >
-                Open Map
-              </a>
-            ) : null}
-
-            <Link
-              href="/delivery/orders"
-              className="inline-flex rounded-lg border border-[#111827] bg-[#020617] px-4 py-2 text-sm font-medium text-white hover:bg-[#0b1220]"
-            >
-              Back
-            </Link>
-          </div>
-        </div>
-
-        <div className="mt-6 grid gap-[18px] sm:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard
-            label="Customer"
-            value={order.customer?.name || addrName || "-"}
-            hint={order.customer?.email || "No email"}
-          />
-          <SummaryCard
-            label="Items"
-            value={String(items.length)}
-            hint="Products in this order"
-          />
-          <SummaryCard
-            label="Total"
-            value={formatNPR(totalPaisa)}
-            hint="Order collection amount"
-          />
-          <SummaryCard
-            label="Assigned Date"
-            value={assignedAt}
-            hint={formatDateTime(order?.deliveryAssignment?.assignedAt)}
-          />
-        </div>
-      </section>
-
-      <div className="grid gap-[18px] 2xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
-        <div className="space-y-6">
-          <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-            <div className="mb-2">
-              <h2 className="text-[16px] font-medium text-white">
-                Ordered Items
-              </h2>
-              <p className="mt-1 text-[12px] text-[#9ca3af]">
-                Product, quantity, color, size, and pricing
-              </p>
-            </div>
-
-            <div className="mt-[10px] overflow-x-auto">
-              <table className="w-full min-w-[980px] text-[13px]">
-                <thead>
-                  <tr className="border-b border-[#111827] text-left text-[12px] text-[#9ca3af]">
-                    <th className="px-[12px] py-[10px]">Product</th>
-                    <th className="px-[12px] py-[10px]">Size</th>
-                    <th className="px-[12px] py-[10px]">Color</th>
-                    <th className="px-[12px] py-[10px] text-center">Qty</th>
-                    <th className="px-[12px] py-[10px] text-right">Price</th>
-                    <th className="px-[12px] py-[10px] text-right">Total</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {items.length ? (
-                    items.map((it: any, i: number) => {
-                      const colorValue = safeStr(it?.color);
-                      const colorLabel = safeStr(it?.colorLabel);
-                      const qty = Number(it?.qty || 0);
-                      const pricePaisa = Number(it?.pricePaisa || 0);
-                      const lineTotalPaisa = qty * pricePaisa;
-
-                      return (
-                        <tr key={i} className="border-t border-[#111827]">
-                          <td className="px-[12px] py-[12px]">
-                            <div className="font-medium text-white">
-                              {it?.name || "-"}
-                            </div>
-                            {it?.productId ? (
-                              <div className="mt-1 break-all text-xs text-[#6b7280]">
-                                Product ID: {it.productId}
-                              </div>
-                            ) : null}
-                          </td>
-
-                          <td className="px-[12px] py-[12px] text-[#d1d5db]">
-                            {safeStr(it?.size) || "-"}
-                          </td>
-
-                          <td className="px-[12px] py-[12px]">
-                            {colorValue || colorLabel ? (
-                              <div className="flex items-center gap-2 text-[#d1d5db]">
-                                <span
-                                  className="h-4 w-4 rounded-full border border-[#374151]"
-                                  style={{
-                                    backgroundColor: colorValue || "#16191f",
-                                  }}
-                                />
-                                <span>{colorLabel || colorValue}</span>
-                              </div>
-                            ) : (
-                              <span className="text-[#d1d5db]">-</span>
-                            )}
-                          </td>
-
-                          <td className="px-[12px] py-[12px] text-center text-[#d1d5db]">
-                            {qty || "-"}
-                          </td>
-
-                          <td className="px-[12px] py-[12px] text-right text-[#d1d5db]">
-                            {formatNPR(pricePaisa)}
-                          </td>
-
-                          <td className="px-[12px] py-[12px] text-right font-medium text-white">
-                            {formatNPR(lineTotalPaisa)}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td colSpan={6} className="px-[12px] py-[18px] text-[#9ca3af]">
-                        No items found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-            <h2 className="text-[16px] font-medium text-white">
-              Delivery Timeline
-            </h2>
-            <p className="mt-1 text-[12px] text-[#9ca3af]">
-              Current delivery progress of this order
-            </p>
-
-            <div className="mt-6 space-y-5">
-              {timeline.map((t, index) => (
-                <div key={t.label} className="flex gap-4">
-                  <div className="flex flex-col items-center">
-                    <Dot status={t.status} />
-                    {index !== timeline.length - 1 ? (
-                      <div className="mt-2 h-10 w-px bg-[#111827]" />
-                    ) : null}
-                  </div>
-
-                  <div className="pt-1">
-                    <div className="text-sm font-medium text-white">{t.label}</div>
-                    <div className="mt-1 text-xs text-[#9ca3af]">{t.date}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-
-        <div className="space-y-6">
-          <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-            <div className="flex items-start gap-4">
-              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[14px] border border-[#111827] bg-[#0b1220] text-base font-bold text-white">
-                {getInitials(order.customer?.name || addrName)}
               </div>
 
-              <div className="min-w-0">
-                <h2 className="text-[16px] font-medium text-white">
-                  Customer Details
-                </h2>
-                <div className="mt-2 text-sm text-white">
-                  {order.customer?.name || addrName || "-"}
-                </div>
-                <div className="mt-1 break-all text-sm text-[#9ca3af]">
-                  {order.customer?.email || "-"}
-                </div>
-                {addrPhone ? (
-                  <div className="mt-1 text-sm text-[#9ca3af]">{addrPhone}</div>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <h1 className="break-words text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                  {order.orderCode || orderId}
+                </h1>
+                <StatusPill>{currentStatus}</StatusPill>
+              </div>
+
+              <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                Placed on {placedOn}
+                {order?.paymentMethod ? (
+                  <>
+                    <span className="mx-2 text-[#7f879f]">•</span>
+                    <span>{safeStr(order.paymentMethod)}</span>
+                  </>
                 ) : null}
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-            <div>
-              <h2 className="text-[16px] font-medium text-white">{addrTitle}</h2>
-              <p className="mt-1 text-[12px] text-[#9ca3af]">
-                Delivery information attached to this order
               </p>
             </div>
 
-            {!addr ? (
-              <div className="mt-5 rounded-[14px] border border-[#111827] bg-[#0b1220] p-5 text-sm text-[#9ca3af]">
-                No shipping address found.
+            <div className="flex flex-wrap items-center gap-2">
+              {customerPhoneLink ? (
+                <a href={customerPhoneLink} className={secondaryBtnClass}>
+                  Call Customer
+                </a>
+              ) : null}
+
+              {mapsLink ? (
+                <a
+                  href={mapsLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={secondaryBtnClass}
+                >
+                  Open Map
+                </a>
+              ) : null}
+
+              <Link href="/delivery/orders" className={secondaryBtnClass}>
+                Back
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard
+              label="Customer"
+              value={order.customer?.name || addrName || "-"}
+              hint={order.customer?.email || "No email"}
+            />
+            <SummaryCard
+              label="Items"
+              value={String(items.length)}
+              hint="Products in this order"
+            />
+            <SummaryCard
+              label="Total"
+              value={formatNPR(totalPaisa)}
+              hint="Order collection amount"
+            />
+            <SummaryCard
+              label="Assigned Date"
+              value={assignedAt}
+              hint={formatDateTime(order?.deliveryAssignment?.assignedAt)}
+            />
+          </div>
+        </section>
+
+        <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
+          <div className="space-y-5">
+            <section className={`${panelClass} overflow-hidden`}>
+              <div className="border-b border-[#26293a] px-5 py-4 sm:px-6">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Products
+                </div>
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  Ordered Items
+                </h2>
+                <p className="mt-1 text-[13px] text-[#a7aec4]">
+                  Product, quantity, color, size, and pricing
+                </p>
               </div>
-            ) : (
-              <div className="mt-5 space-y-5">
-                <div className="rounded-[14px] border border-[#111827] bg-[#0b1220] p-5">
-                  <div className="text-base font-medium text-white">
-                    {addrName || "-"}
-                  </div>
 
-                  {addrPhone ? (
-                    <div className="mt-1 text-sm text-[#9ca3af]">{addrPhone}</div>
-                  ) : null}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] border-collapse text-[13px]">
+                  <thead>
+                    <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                      <th className="px-5 py-4 font-medium">Product</th>
+                      <th className="px-5 py-4 font-medium">Size</th>
+                      <th className="px-5 py-4 font-medium">Color</th>
+                      <th className="px-5 py-4 text-center font-medium">Qty</th>
+                      <th className="px-5 py-4 text-right font-medium">Price</th>
+                      <th className="px-5 py-4 text-right font-medium">Total</th>
+                    </tr>
+                  </thead>
 
-                  <div className="mt-4 space-y-2">
-                    <LineItem label="Street" value={addrStreet || "-"} />
-                    <LineItem label="Area" value={addrArea || "-"} />
-                    <LineItem label="City" value={addrCity || "-"} />
+                  <tbody>
+                    {items.length ? (
+                      items.map((it: any, i: number) => {
+                        const colorValue = safeStr(it?.color);
+                        const colorLabel = safeStr(it?.colorLabel);
+                        const qty = Number(it?.qty || 0);
+                        const pricePaisa = Number(it?.pricePaisa || 0);
+                        const lineTotalPaisa = qty * pricePaisa;
+
+                        return (
+                          <tr
+                            key={i}
+                            className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                          >
+                            <td className="px-5 py-4">
+                              <div className="font-semibold text-white">
+                                {it?.name || "-"}
+                              </div>
+
+                              {it?.productId ? (
+                                <div className="mt-1 break-all text-xs text-[#7f879f]">
+                                  Product ID: {it.productId}
+                                </div>
+                              ) : null}
+                            </td>
+
+                            <td className="px-5 py-4 text-[#d1d5db]">
+                              {safeStr(it?.size) || "-"}
+                            </td>
+
+                            <td className="px-5 py-4">
+                              {colorValue || colorLabel ? (
+                                <div className="flex items-center gap-2 text-[#d1d5db]">
+                                  <span
+  className="h-4 w-4 rounded-full border border-white/20 bg-[#161824]"
+  aria-hidden="true"
+/>
+                                  <span>{colorLabel || colorValue}</span>
+                                </div>
+                              ) : (
+                                <span className="text-[#d1d5db]">-</span>
+                              )}
+                            </td>
+
+                            <td className="px-5 py-4 text-center text-[#d1d5db]">
+                              {qty || "-"}
+                            </td>
+
+                            <td className="px-5 py-4 text-right text-[#d1d5db]">
+                              {formatNPR(pricePaisa)}
+                            </td>
+
+                            <td className="px-5 py-4 text-right font-semibold text-[#d6c7ff]">
+                              {formatNPR(lineTotalPaisa)}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-5 py-8 text-center text-[#a7aec4]"
+                        >
+                          No items found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className={`${panelClass} p-5 sm:p-6`}>
+              <div className="mb-5">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Progress
+                </div>
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  Delivery Timeline
+                </h2>
+                <p className="mt-1 text-[13px] text-[#a7aec4]">
+                  Current delivery progress of this order
+                </p>
+              </div>
+
+              <div className="space-y-5">
+                {timeline.map((t, index) => (
+                  <div key={t.label} className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <Dot status={t.status} />
+                      {index !== timeline.length - 1 ? (
+                        <div className="mt-2 h-10 w-px bg-[#26293a]" />
+                      ) : null}
+                    </div>
+
+                    <div className="pt-1">
+                      <div className="text-sm font-semibold text-white">
+                        {t.label}
+                      </div>
+                      <div className="mt-1 text-xs text-[#a7aec4]">{t.date}</div>
+                    </div>
                   </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="space-y-5">
+            <section className={`${panelClass} p-5 sm:p-6`}>
+              <div className="flex items-start gap-4">
+                <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] border border-white/10 bg-white/[0.05] text-base font-bold text-white shadow-[0_0_30px_rgba(139,92,246,0.12)]">
+                  {getInitials(order.customer?.name || addrName)}
                 </div>
 
-                <div className="rounded-[14px] border border-[#111827] bg-[#0b1220] p-5">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#6b7280]">
-                    Map Location
+                <div className="min-w-0">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                    Customer
                   </div>
-
-                  <div
-                    className={`mt-2 break-words text-sm ${
-                      hasLatLng(addr) ? "text-white" : "text-[#6b7280]"
-                    }`}
-                  >
-                    {hasLatLng(addr)
-                      ? `${Number(addr.lat).toFixed(6)}, ${Number(addr.lng).toFixed(6)}`
-                      : "No map location saved in this order"}
+                  <h2 className="mt-1 text-[20px] font-semibold text-white">
+                    Customer Details
+                  </h2>
+                  <div className="mt-3 text-sm font-medium text-white">
+                    {order.customer?.name || addrName || "-"}
                   </div>
-
-                  {hasLatLng(addr) ? (
-                    <div className="mt-4">
-                      <a
-                        href={getGoogleMapsUrl(addr)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-xs font-medium text-blue-200 hover:bg-blue-500/15"
-                      >
-                        View on Google Maps
-                      </a>
+                  <div className="mt-1 break-all text-sm text-[#a7aec4]">
+                    {order.customer?.email || "-"}
+                  </div>
+                  {addrPhone ? (
+                    <div className="mt-1 text-sm text-[#a7aec4]">
+                      {addrPhone}
                     </div>
                   ) : null}
                 </div>
               </div>
-            )}
-          </section>
+            </section>
 
-          <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-            <h2 className="text-[16px] font-medium text-white">
-              Payment & Totals
-            </h2>
-            <p className="mt-1 text-[12px] text-[#9ca3af]">
-              Payment information and order amount breakdown
-            </p>
-
-            <div className="mt-5 space-y-3 rounded-[14px] border border-[#111827] bg-[#0b1220] p-5">
-              <LineItem
-                label="Payment Method"
-                value={safeStr(order?.paymentMethod) || "-"}
-              />
-              <LineItem
-                label="Payment Reference"
-                value={safeStr(order?.paymentRef) || "-"}
-              />
-              <LineItem label="Subtotal" value={formatNPR(subtotalPaisa)} />
-              <LineItem label="Shipping" value={formatNPR(shippingPaisa)} />
-              <LineItem
-                label="Discount"
-                value={`- ${formatNPR(discountPaisa)}`}
-                valueClassName="text-emerald-300"
-              />
-              <div className="border-t border-[#111827] pt-3">
-                <LineItem
-                  label="Total"
-                  value={formatNPR(totalPaisa)}
-                  valueClassName="text-base font-bold text-white"
-                />
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <section className={`${panelClass} p-5 sm:p-6`}>
               <div>
-                <h2 className="text-[16px] font-medium text-white">
-                  Update Delivery Status
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Address
+                </div>
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  {addrTitle}
                 </h2>
-                <p className="mt-1 text-[12px] text-[#9ca3af]">
-                  Update your current delivery progress
+                <p className="mt-1 text-[13px] text-[#a7aec4]">
+                  Delivery information attached to this order
                 </p>
               </div>
 
-              <span
-                className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold ${
-                  isFinalState
-                    ? "border-[#111827] bg-[#0b1220] text-[#9ca3af]"
-                    : "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                }`}
-              >
-                {isFinalState ? "Final State" : "Editable"}
-              </span>
-            </div>
+              {!addr ? (
+                <div className="mt-5 rounded-[16px] border border-white/10 bg-white/[0.03] p-5 text-sm text-[#a7aec4]">
+                  No shipping address found.
+                </div>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-5">
+                    <div className="text-base font-semibold text-white">
+                      {addrName || "-"}
+                    </div>
 
-            <div className="mt-5 space-y-5">
+                    {addrPhone ? (
+                      <div className="mt-1 text-sm text-[#a7aec4]">
+                        {addrPhone}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-4 space-y-3">
+                      <LineItem label="Street" value={addrStreet || "-"} />
+                      <LineItem label="Area" value={addrArea || "-"} />
+                      <LineItem label="City" value={addrCity || "-"} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-5">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
+                      Map Location
+                    </div>
+
+                    <div
+                      className={`mt-2 break-words text-sm ${
+                        hasLatLng(addr) ? "text-white" : "text-[#7f879f]"
+                      }`}
+                    >
+                      {hasLatLng(addr)
+                        ? `${Number(addr.lat).toFixed(6)}, ${Number(
+                            addr.lng
+                          ).toFixed(6)}`
+                        : "No map location saved in this order"}
+                    </div>
+
+                    {hasLatLng(addr) ? (
+                      <div className="mt-4">
+                        <a
+                          href={getGoogleMapsUrl(addr)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={secondaryBtnClass}
+                        >
+                          View on Google Maps
+                        </a>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className={`${panelClass} p-5 sm:p-6`}>
               <div>
-                <label
-                  htmlFor="delivery-status"
-                  className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#9ca3af]"
-                >
-                  Delivery Status
-                </label>
-                <select
-                  id="delivery-status"
-                  value={deliveryStatus}
-                  onChange={(e) =>
-                    setDeliveryStatus(e.target.value as DeliveryStatus)
-                  }
-                  disabled={isFinalState}
-                  className="w-full rounded-[14px] border border-[#111827] bg-[#020617] px-4 py-3 text-sm text-white outline-none transition focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {allowedStatuses.map((status) => (
-                    <option key={status} value={status} className="bg-[#020617]">
-                      {status}
-                    </option>
-                  ))}
-                </select>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Payment
+                </div>
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  Payment & Totals
+                </h2>
+                <p className="mt-1 text-[13px] text-[#a7aec4]">
+                  Payment information and order amount breakdown
+                </p>
               </div>
 
-              <div>
-                <label
-                  htmlFor="delivery-note"
-                  className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#9ca3af]"
-                >
-                  Delivery Note
-                </label>
-                <textarea
-                  id="delivery-note"
-                  value={deliveryNote}
-                  onChange={(e) => setDeliveryNote(e.target.value)}
-                  rows={4}
-                  placeholder="Add delivery update note"
-                  disabled={isFinalState}
-                  className="w-full resize-none rounded-[14px] border border-[#111827] bg-[#020617] px-4 py-3 text-sm text-white placeholder:text-[#6b7280] outline-none transition focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 disabled:cursor-not-allowed disabled:opacity-60"
+              <div className="mt-5 space-y-3 rounded-[16px] border border-white/10 bg-white/[0.03] p-5">
+                <LineItem
+                  label="Payment Method"
+                  value={safeStr(order?.paymentMethod) || "-"}
                 />
+                <LineItem
+                  label="Payment Reference"
+                  value={safeStr(order?.paymentRef) || "-"}
+                />
+                <LineItem label="Subtotal" value={formatNPR(subtotalPaisa)} />
+                <LineItem label="Shipping" value={formatNPR(shippingPaisa)} />
+                <LineItem
+                  label="Discount"
+                  value={`- ${formatNPR(discountPaisa)}`}
+                  valueClassName="text-emerald-300"
+                />
+
+                <div className="border-t border-[#26293a] pt-3">
+                  <LineItem
+                    label="Total"
+                    value={formatNPR(totalPaisa)}
+                    valueClassName="text-base font-bold text-[#d6c7ff]"
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className={`${panelClass} p-5 sm:p-6`}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                    Status
+                  </div>
+                  <h2 className="mt-1 text-[20px] font-semibold text-white">
+                    Update Delivery Status
+                  </h2>
+                  <p className="mt-1 text-[13px] text-[#a7aec4]">
+                    Update your current delivery progress
+                  </p>
+                </div>
+
+                <span
+                  className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold ${
+                    isFinalState
+                      ? "border-white/10 bg-white/[0.03] text-[#a7aec4]"
+                      : "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
+                  }`}
+                >
+                  {isFinalState ? "Final State" : "Editable"}
+                </span>
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-[#111827] pt-5 sm:flex-row sm:items-center sm:justify-between">
-                <Link
-                  href="/delivery/orders"
-                  className="inline-flex justify-center rounded-lg border border-[#111827] bg-[#020617] px-4 py-2 text-sm font-medium text-white hover:bg-[#0b1220]"
-                >
-                  Back
-                </Link>
-
-                <button
-                  onClick={saveChanges}
-                  disabled={saving || isFinalState}
-                  className="rounded-lg bg-[#2563eb] px-6 py-2.5 text-sm font-bold text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {saving ? "Saving..." : "Save Status"}
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-            <div className="flex flex-col gap-2">
-              <h2 className="text-[16px] font-medium text-white">
-                Delivery OTP Verification
-              </h2>
-              <p className="text-[12px] text-[#9ca3af]">
-                When order is Out for Delivery, send OTP to customer by phone or email and verify before completing delivery.
-              </p>
-            </div>
-
-            <div className="mt-5 space-y-5">
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="mt-5 space-y-5">
                 <div>
                   <label
-                    htmlFor="otp-channel"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#9ca3af]"
+                    htmlFor="delivery-status"
+                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
                   >
-                    OTP Channel
+                    Delivery Status
                   </label>
+
                   <select
-                    id="otp-channel"
-                    value={otpChannel}
+                    id="delivery-status"
+                    value={deliveryStatus}
                     onChange={(e) =>
-                      setOtpChannel(e.target.value as DeliveryOtpChannel)
+                      setDeliveryStatus(e.target.value as DeliveryStatus)
                     }
-                    disabled={!canSendOtp || otpSending || isFinalState}
-                    className="w-full rounded-[14px] border border-[#111827] bg-[#020617] px-4 py-3 text-sm text-white outline-none transition focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={isFinalState}
+                    className={inputClass}
                   >
-                    <option value="phone" className="bg-[#020617]">
-                      Phone
-                    </option>
-                    <option value="email" className="bg-[#020617]">
-                      Email
-                    </option>
+                    {allowedStatuses.map((status) => (
+                      <option key={status} value={status} className="bg-[#0d0f17]">
+                        {status}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
-                <div className="flex items-end">
-                  <button
-                    onClick={sendOtp}
-                    disabled={!canSendOtp || otpSending || isFinalState}
-                    className="w-full rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                <div>
+                  <label
+                    htmlFor="delivery-note"
+                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
                   >
-                    {otpSending ? "Sending OTP..." : "Send OTP"}
+                    Delivery Note
+                  </label>
+
+                  <textarea
+                    id="delivery-note"
+                    value={deliveryNote}
+                    onChange={(e) => setDeliveryNote(e.target.value)}
+                    rows={4}
+                    placeholder="Add delivery update note"
+                    disabled={isFinalState}
+                    className={`${inputClass} resize-none`}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-3 border-t border-[#26293a] pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <Link href="/delivery/orders" className={secondaryBtnClass}>
+                    Back
+                  </Link>
+
+                  <button
+                    onClick={saveChanges}
+                    disabled={saving || isFinalState}
+                    className={primaryBtnClass}
+                  >
+                    {saving ? "Saving..." : "Save Status"}
                   </button>
                 </div>
               </div>
+            </section>
 
-              <div className="rounded-[14px] border border-[#111827] bg-[#0b1220] p-4">
-                <div className="grid gap-2 text-sm">
-                  <LineItem label="OTP Verified" value={otpVerified ? "Yes" : "No"} />
-                  <LineItem label="Last Channel" value={otpChannelUsed || "-"} />
-                  <LineItem label="Sent To" value={otpSentTo || "-"} />
-                  <LineItem
-                    label="Expires At"
-                    value={otpExpiresAt ? formatDateTime(otpExpiresAt) : "-"}
-                  />
-                </div>
-              </div>
-
+            <section className={`${panelClass} p-5 sm:p-6`}>
               <div>
-                <label
-                  htmlFor="otp-input"
-                  className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#9ca3af]"
-                >
-                  Enter Customer OTP
-                </label>
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <input
-                    id="otp-input"
-                    value={otpInput}
-                    onChange={(e) => setOtpInput(e.target.value)}
-                    placeholder="Enter 4 digit OTP"
-                    disabled={isFinalState || otpVerifying}
-                    className="w-full rounded-[14px] border border-[#111827] bg-[#020617] px-4 py-3 text-sm text-white placeholder:text-[#6b7280] outline-none transition focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                  <button
-                    onClick={verifyOtp}
-                    disabled={isFinalState || otpVerifying || !otpInput.trim()}
-                    className="rounded-lg bg-emerald-600 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {otpVerifying ? "Verifying..." : "Verify & Deliver"}
-                  </button>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Verification
                 </div>
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  Delivery OTP Verification
+                </h2>
+                <p className="mt-1 text-[13px] leading-6 text-[#a7aec4]">
+                  When order is Out for Delivery, send OTP to customer by phone
+                  or email and verify before completing delivery.
+                </p>
               </div>
 
-              {otpMessage ? (
-                <div className="rounded-[14px] border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-                  {otpMessage}
-                </div>
-              ) : null}
+              <div className="mt-5 space-y-5">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label
+                      htmlFor="otp-channel"
+                      className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
+                    >
+                      OTP Channel
+                    </label>
 
-              {otpError ? (
-                <div className="rounded-[14px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  {otpError}
+                    <select
+                      id="otp-channel"
+                      value={otpChannel}
+                      onChange={(e) =>
+                        setOtpChannel(e.target.value as DeliveryOtpChannel)
+                      }
+                      disabled={!canSendOtp || otpSending || isFinalState}
+                      className={inputClass}
+                    >
+                      <option value="phone" className="bg-[#0d0f17]">
+                        Phone
+                      </option>
+                      <option value="email" className="bg-[#0d0f17]">
+                        Email
+                      </option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-end">
+                    <button
+                      onClick={sendOtp}
+                      disabled={!canSendOtp || otpSending || isFinalState}
+                      className="inline-flex w-full items-center justify-center rounded-full border border-amber-400/20 bg-amber-500/15 px-5 py-3 text-[12px] font-bold uppercase tracking-[0.16em] text-amber-300 transition hover:-translate-y-0.5 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {otpSending ? "Sending OTP..." : "Send OTP"}
+                    </button>
+                  </div>
                 </div>
-              ) : null}
-            </div>
-          </section>
+
+                <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-5">
+                  <div className="grid gap-3 text-sm">
+                    <LineItem
+                      label="OTP Verified"
+                      value={otpVerified ? "Yes" : "No"}
+                    />
+                    <LineItem label="Last Channel" value={otpChannelUsed || "-"} />
+                    <LineItem label="Sent To" value={otpSentTo || "-"} />
+                    <LineItem
+                      label="Expires At"
+                      value={otpExpiresAt ? formatDateTime(otpExpiresAt) : "-"}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="otp-input"
+                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
+                  >
+                    Enter Customer OTP
+                  </label>
+
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <input
+                      id="otp-input"
+                      value={otpInput}
+                      onChange={(e) => setOtpInput(e.target.value)}
+                      placeholder="Enter 4 digit OTP"
+                      disabled={isFinalState || otpVerifying}
+                      className={inputClass}
+                    />
+
+                    <button
+                      onClick={verifyOtp}
+                      disabled={isFinalState || otpVerifying || !otpInput.trim()}
+                      className="inline-flex shrink-0 items-center justify-center rounded-full bg-emerald-500 px-6 py-3 text-[12px] font-bold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {otpVerifying ? "Verifying..." : "Verify & Deliver"}
+                    </button>
+                  </div>
+                </div>
+
+                {otpMessage ? (
+                  <div className="rounded-[16px] border border-emerald-400/20 bg-emerald-500/15 px-4 py-3 text-sm text-emerald-300">
+                    {otpMessage}
+                  </div>
+                ) : null}
+
+                {otpError ? (
+                  <div className="rounded-[16px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    {otpError}
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          </div>
         </div>
       </div>
     </div>

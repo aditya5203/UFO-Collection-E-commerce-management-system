@@ -10,8 +10,11 @@ type FormState = {
   confirmPassword: string;
 };
 
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
 function inputClassName() {
-  return "w-full rounded-[14px] border border-[#111827] bg-[#020617] px-4 py-3 text-sm text-white placeholder:text-[#6b7280] outline-none transition focus:border-[#2563eb] focus:ring-4 focus:ring-[#2563eb]/10";
+  return "w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-sm text-white placeholder:text-[#7f879f] outline-none transition focus:border-[#8b5cf6] focus:ring-4 focus:ring-[#8b5cf6]/10";
 }
 
 export default function DeliveryChangePasswordPage() {
@@ -67,9 +70,7 @@ export default function DeliveryChangePasswordPage() {
       const res = await fetch(DELIVERY_ENDPOINTS.changePassword, {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           currentPassword: form.currentPassword.trim(),
           newPassword: form.newPassword.trim(),
@@ -97,32 +98,34 @@ export default function DeliveryChangePasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#03101f] text-white">
-      <div className="mx-auto flex min-h-screen max-w-3xl items-center px-4 py-10 md:px-6">
-        <section className="w-full rounded-[20px] border border-[#111827] bg-[#020617] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] md:p-8">
-          <div className="space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6b7280]">
+    <div className="min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+      <div className="mx-auto flex min-h-[calc(100vh-64px)] max-w-3xl items-center">
+        <section
+          className={`${panelClass} w-full bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-8`}
+        >
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4] sm:text-[12px]">
               Delivery Panel
             </div>
 
-            <h1 className="text-3xl font-extrabold tracking-tight text-white">
+            <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
               Change Password
             </h1>
 
-            <p className="text-sm text-[#9ca3af]">
+            <p className="mt-2 max-w-[620px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
               For security, update your password before accessing the delivery
               dashboard.
             </p>
           </div>
 
           {error ? (
-            <div className="mt-5 rounded-[14px] border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+            <div className="mt-5 rounded-[16px] border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">
               {error}
             </div>
           ) : null}
 
           {success ? (
-            <div className="mt-5 rounded-[14px] border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-200">
+            <div className="mt-5 rounded-[16px] border border-emerald-400/20 bg-emerald-500/15 p-4 text-sm text-emerald-300">
               {success}
             </div>
           ) : null}
@@ -131,7 +134,7 @@ export default function DeliveryChangePasswordPage() {
             <div>
               <label
                 htmlFor="delivery-current-password"
-                className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#9ca3af]"
+                className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
               >
                 Current Password
               </label>
@@ -148,7 +151,7 @@ export default function DeliveryChangePasswordPage() {
             <div>
               <label
                 htmlFor="delivery-new-password"
-                className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#9ca3af]"
+                className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
               >
                 New Password
               </label>
@@ -165,7 +168,7 @@ export default function DeliveryChangePasswordPage() {
             <div>
               <label
                 htmlFor="delivery-confirm-password"
-                className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#9ca3af]"
+                className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
               >
                 Confirm New Password
               </label>
@@ -182,7 +185,7 @@ export default function DeliveryChangePasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-[14px] bg-[#2563eb] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-bold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Updating..." : "Update Password"}
             </button>

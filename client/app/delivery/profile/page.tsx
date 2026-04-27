@@ -9,6 +9,12 @@ import {
   safeStr,
 } from "@/app/lib/delivery";
 
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
+const softPanelClass =
+  "rounded-[20px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)]";
+
 function ProfileField({
   label,
   value,
@@ -17,11 +23,13 @@ function ProfileField({
   value: React.ReactNode;
 }) {
   return (
-    <div className="rounded-[14px] border border-[#111827] bg-[#0b1220] p-5">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#9ca3af]">
+    <div className={`${softPanelClass} p-5`}>
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
         {label}
       </div>
-      <div className="mt-2 text-sm font-medium text-white">{value}</div>
+      <div className="mt-3 break-words text-sm font-semibold text-white">
+        {value}
+      </div>
     </div>
   );
 }
@@ -89,16 +97,22 @@ export default function DeliveryProfilePage() {
 
   if (loading) {
     return (
-      <div className="rounded-[14px] border border-[#111827] bg-[#020617] p-8 text-[#9ca3af]">
-        Loading profile...
+      <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+        <div className={`${panelClass} p-8`}>
+          <div className="h-3 w-44 animate-pulse rounded bg-white/5" />
+          <div className="mt-4 h-9 w-64 animate-pulse rounded bg-white/5" />
+          <div className="mt-4 h-4 w-full max-w-[620px] animate-pulse rounded bg-white/5" />
+        </div>
       </div>
     );
   }
 
   if (!profile) {
     return (
-      <div className="rounded-[14px] border border-red-500/30 bg-red-500/10 p-8 text-red-200">
-        {error || "Profile not found"}
+      <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+        <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 p-8 text-red-200 shadow-[0_20px_70px_rgba(0,0,0,0.35)]">
+          {error || "Profile not found"}
+        </div>
       </div>
     );
   }
@@ -106,83 +120,106 @@ export default function DeliveryProfilePage() {
   const displayName = safeStr(profile.name) || "Delivery User";
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-        <div className="flex flex-wrap items-center gap-5">
-          <div className="grid h-20 w-20 place-items-center rounded-[16px] border border-[#111827] bg-[#0b1220] text-2xl font-bold text-white">
-            {getInitials(displayName)}
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-[12px] text-[#9ca3af]">
-              Delivery Panel / Profile
+    <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+      <div className="space-y-6">
+        <section
+          className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+        >
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+            <div className="grid h-20 w-20 shrink-0 place-items-center rounded-[22px] border border-white/10 bg-white/[0.05] text-2xl font-bold text-white shadow-[0_0_30px_rgba(139,92,246,0.14)]">
+              {getInitials(displayName)}
             </div>
-            <h1 className="text-[22px] font-semibold text-white md:text-[28px]">
-              {displayName}
-            </h1>
-            <p className="text-[13px] text-[#9ca3af]">
-              Delivery rider account information from your existing user system.
-            </p>
-          </div>
-        </div>
-      </section>
 
-      {error ? (
-        <div className="rounded-[14px] border border-red-500/30 bg-red-500/10 p-4 text-[13px] text-red-200">
-          {error}
-        </div>
-      ) : null}
-
-      <div className="grid gap-[18px] xl:grid-cols-2">
-        <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-          <h2 className="text-[16px] font-medium text-white">Basic Information</h2>
-          <p className="mt-1 text-[12px] text-[#9ca3af]">
-            Current delivery rider profile details
-          </p>
-
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <ProfileField label="Full Name" value={safeStr(profile.name) || "-"} />
-            <ProfileField label="Email" value={safeStr(profile.email) || "-"} />
-            <ProfileField label="Phone" value={safeStr(profile.phone) || "-"} />
-            <ProfileField label="Role" value={safeStr(profile.role) || "delivery"} />
-            <ProfileField
-              label="Account Status"
-              value={safeStr(profile.status) || "-"}
-            />
-            <ProfileField
-              label="Joined"
-              value={formatDateLong(profile.createdAt) || "-"}
-            />
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4] sm:text-[12px]">
+                Delivery Panel / Profile
+              </div>
+              <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                {displayName}
+              </h1>
+              <p className="mt-2 max-w-[620px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                Delivery rider account information from your existing user
+                system.
+              </p>
+            </div>
           </div>
         </section>
 
-        <section className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-          <h2 className="text-[16px] font-medium text-white">
-            Delivery Information
-          </h2>
-          <p className="mt-1 text-[12px] text-[#9ca3af]">
-            Fields stored inside the existing users collection
-          </p>
-
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <ProfileField
-              label="Vehicle Type"
-              value={safeStr(profile.vehicleType) || "-"}
-            />
-            <ProfileField
-              label="Vehicle Number"
-              value={safeStr(profile.vehicleNumber) || "-"}
-            />
-            <ProfileField
-              label="Delivery Area"
-              value={safeStr(profile.deliveryArea) || "-"}
-            />
-            <ProfileField
-              label="Must Change Password"
-              value={profile.mustChangePassword ? "Yes" : "No"}
-            />
+        {error ? (
+          <div className="rounded-[20px] border border-red-400/20 bg-red-500/10 p-4 text-[13px] text-red-200">
+            {error}
           </div>
-        </section>
+        ) : null}
+
+        <div className="grid gap-5 xl:grid-cols-2">
+          <section className={`${panelClass} p-5 sm:p-6`}>
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                Profile
+              </div>
+              <h2 className="mt-1 text-[20px] font-semibold text-white">
+                Basic Information
+              </h2>
+              <p className="mt-1 text-[13px] text-[#a7aec4]">
+                Current delivery rider profile details
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <ProfileField
+                label="Full Name"
+                value={safeStr(profile.name) || "-"}
+              />
+              <ProfileField label="Email" value={safeStr(profile.email) || "-"} />
+              <ProfileField label="Phone" value={safeStr(profile.phone) || "-"} />
+              <ProfileField
+                label="Role"
+                value={safeStr(profile.role) || "delivery"}
+              />
+              <ProfileField
+                label="Account Status"
+                value={safeStr(profile.status) || "-"}
+              />
+              <ProfileField
+                label="Joined"
+                value={formatDateLong(profile.createdAt) || "-"}
+              />
+            </div>
+          </section>
+
+          <section className={`${panelClass} p-5 sm:p-6`}>
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                Delivery
+              </div>
+              <h2 className="mt-1 text-[20px] font-semibold text-white">
+                Delivery Information
+              </h2>
+              <p className="mt-1 text-[13px] text-[#a7aec4]">
+                Fields stored inside the existing users collection
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <ProfileField
+                label="Vehicle Type"
+                value={safeStr(profile.vehicleType) || "-"}
+              />
+              <ProfileField
+                label="Vehicle Number"
+                value={safeStr(profile.vehicleNumber) || "-"}
+              />
+              <ProfileField
+                label="Delivery Area"
+                value={safeStr(profile.deliveryArea) || "-"}
+              />
+              <ProfileField
+                label="Must Change Password"
+                value={profile.mustChangePassword ? "Yes" : "No"}
+              />
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );

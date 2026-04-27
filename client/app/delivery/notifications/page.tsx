@@ -12,22 +12,26 @@ import {
   formatDateTime,
 } from "@/app/lib/delivery";
 
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
+const secondaryBtnClass =
+  "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+
 function NotificationTypeBadge({ type }: { type?: string }) {
   const t = safeStr(type).toLowerCase();
 
-  let cls = "border-slate-700/60 bg-slate-900/40 text-slate-300";
+  let cls = "border-white/10 bg-white/[0.04] text-[#a7aec4]";
 
-  if (t === "order") {
-    cls = "border-sky-500/30 bg-sky-500/10 text-sky-200";
-  } else if (t === "payment") {
-    cls = "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
-  } else if (t === "system") {
-    cls = "border-violet-500/30 bg-violet-500/10 text-violet-200";
-  }
+  if (t === "order") cls = "border-sky-400/20 bg-sky-500/15 text-sky-300";
+  else if (t === "payment")
+    cls = "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+  else if (t === "system")
+    cls = "border-violet-400/20 bg-violet-500/15 text-violet-300";
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${cls}`}
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${cls}`}
     >
       {safeStr(type) || "system"}
     </span>
@@ -114,90 +118,92 @@ export default function DeliveryNotificationsPage() {
   const unreadCount = items.filter((item) => !item.isRead).length;
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[16px] border border-[#111827] bg-[#020617] px-5 py-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <div className="text-[12px] text-[#94a3b8]">Delivery Panel</div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-[14px] border border-[#13203a] bg-[#020f24] text-white">
+    <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+      <div className="space-y-6">
+        <section
+          className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+        >
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[20px] border border-white/10 bg-white/[0.05] shadow-[0_0_30px_rgba(139,92,246,0.16)]">
                 <Image
                   src="/images/delivery/bell.png"
                   alt="Notifications"
-                  width={20}
-                  height={20}
+                  width={24}
+                  height={24}
                   className="object-contain"
                 />
               </div>
 
               <div>
-                <h1 className="text-[22px] font-semibold text-white">
+                <h1 className="text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
                   Notifications
                 </h1>
-                <p className="text-[13px] text-[#94a3b8]">
+                <p className="mt-2 text-[13px] leading-6 text-[#a7aec4] sm:text-[14px]">
                   Track assigned order alerts and delivery updates.
                 </p>
               </div>
             </div>
-          </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="rounded-full border border-[#13203a] bg-[#020f24] px-4 py-2 text-[13px] font-medium text-white">
-              {unreadCount} unread
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white">
+                {unreadCount} unread
+              </div>
+
+              <button
+                type="button"
+                onClick={loadNotifications}
+                className={secondaryBtnClass}
+              >
+                Refresh
+              </button>
+
+              <button
+                type="button"
+                onClick={markAllRead}
+                disabled={markingAll || !items.length}
+                className={secondaryBtnClass}
+              >
+                {markingAll ? "Marking..." : "Mark all read"}
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={loadNotifications}
-              className="rounded-lg border border-[#13203a] bg-[#020f24] px-4 py-2 text-[13px] font-medium text-white transition hover:bg-[#09152c]"
-            >
-              Refresh
-            </button>
-
-            <button
-              type="button"
-              onClick={markAllRead}
-              disabled={markingAll || !items.length}
-              className="rounded-lg border border-[#13203a] bg-[#020f24] px-4 py-2 text-[13px] font-medium text-white transition hover:bg-[#09152c] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {markingAll ? "Marking..." : "Mark all read"}
-            </button>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {error ? (
-        <div className="rounded-[14px] border border-red-500/30 bg-red-500/10 p-4 text-[13px] text-red-200">
-          {error}
-        </div>
-      ) : null}
-
-      <section className="rounded-[16px] border border-[#111827] bg-[#020617]">
-        <div className="border-b border-[#111827] px-5 py-4">
-          <div className="text-[16px] font-semibold text-white">
-            All Notifications
+        {error ? (
+          <div className="rounded-[20px] border border-red-400/20 bg-red-500/10 p-4 text-[13px] text-red-200">
+            {error}
           </div>
-          <div className="mt-1 text-[12px] text-[#94a3b8]">
-            Latest delivery-related alerts sent to your account.
-          </div>
-        </div>
+        ) : null}
 
-        <div>
+        <section className={`${panelClass} overflow-hidden`}>
+          <div className="border-b border-[#26293a] px-5 py-4 sm:px-6">
+            <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+              Inbox
+            </div>
+            <div className="mt-1 text-[20px] font-semibold text-white">
+              All Notifications
+            </div>
+            <div className="mt-1 text-[13px] text-[#a7aec4]">
+              Latest delivery-related alerts sent to your account.
+            </div>
+          </div>
+
           {loading ? (
-            <div className="px-5 py-8 text-[14px] text-[#94a3b8]">
+            <div className="px-6 py-8 text-[14px] text-[#a7aec4]">
               Loading notifications...
             </div>
           ) : items.length ? (
-            <div className="divide-y divide-[#111827]">
-              {items.map((item) => {
-                const id = safeStr(item.id || item._id);
+            <div className="divide-y divide-[#26293a]">
+              {items.map((item, index) => {
+                const id = safeStr(item.id || item._id) || `notification-${index}`;
                 const unread = !item.isRead;
 
                 const content = (
                   <div
-                    className={`flex items-start justify-between gap-4 px-5 py-5 transition ${
-                      unread ? "bg-[#071226]/40" : ""
-                    } hover:bg-[#071226]`}
+                    className={`flex items-start justify-between gap-4 px-5 py-5 transition sm:px-6 ${
+                      unread ? "bg-[#8b5cf6]/[0.06]" : ""
+                    } hover:bg-white/[0.03]`}
                   >
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-3">
@@ -208,7 +214,7 @@ export default function DeliveryNotificationsPage() {
                         <NotificationTypeBadge type={item.type} />
 
                         {unread ? (
-                          <span className="inline-flex h-2.5 w-2.5 rounded-full bg-[#60a5fa]" />
+                          <span className="inline-flex h-2.5 w-2.5 rounded-full bg-[#d6c7ff]" />
                         ) : null}
                       </div>
 
@@ -216,7 +222,7 @@ export default function DeliveryNotificationsPage() {
                         {safeStr(item.message)}
                       </div>
 
-                      <div className="mt-3 flex flex-wrap items-center gap-3 text-[12px] text-[#64748b]">
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-[12px] text-[#7f879f]">
                         <span>{timeAgo(item.createdAt)}</span>
                         <span>•</span>
                         <span>{formatDateTime(item.createdAt)}</span>
@@ -229,9 +235,10 @@ export default function DeliveryNotificationsPage() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          if (id) markOneRead(id);
+                          const rawId = safeStr(item.id || item._id);
+                          if (rawId) markOneRead(rawId);
                         }}
-                        className="shrink-0 rounded-lg border border-[#13203a] bg-[#020f24] px-3 py-2 text-[12px] font-medium text-white transition hover:bg-[#09152c]"
+                        className={secondaryBtnClass}
                       >
                         Mark read
                       </button>
@@ -245,9 +252,8 @@ export default function DeliveryNotificationsPage() {
                       key={id}
                       href={item.link}
                       onClick={() => {
-                        if (id && unread) {
-                          markOneRead(id);
-                        }
+                        const rawId = safeStr(item.id || item._id);
+                        if (rawId && unread) markOneRead(rawId);
                       }}
                       className="block"
                     >
@@ -264,37 +270,35 @@ export default function DeliveryNotificationsPage() {
               })}
             </div>
           ) : (
-            <div className="px-5 py-10 text-center">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[16px] border border-[#13203a] bg-[#020f24] text-white">
+            <div className="px-5 py-12 text-center">
+              <div className="mx-auto grid h-16 w-16 place-items-center rounded-[20px] border border-white/10 bg-white/[0.05] shadow-[0_0_30px_rgba(139,92,246,0.12)]">
                 <Image
                   src="/images/delivery/bell.png"
                   alt="Notifications"
-                  width={22}
-                  height={22}
+                  width={24}
+                  height={24}
                   className="object-contain"
                 />
               </div>
 
-              <div className="mt-4 text-[16px] font-semibold text-white">
+              <div className="mt-4 text-[18px] font-semibold text-white">
                 No notifications yet
               </div>
 
-              <div className="mt-2 text-[13px] text-[#94a3b8]">
-                New delivery assignments and order status alerts will appear here.
+              <div className="mx-auto mt-2 max-w-[420px] text-[13px] leading-6 text-[#a7aec4]">
+                New delivery assignments and order status alerts will appear
+                here.
               </div>
 
               <div className="mt-5">
-                <Link
-                  href="/delivery/dashboard"
-                  className="inline-flex items-center rounded-lg border border-[#13203a] bg-[#020f24] px-4 py-2 text-[13px] font-medium text-white transition hover:bg-[#09152c]"
-                >
+                <Link href="/delivery/dashboard" className={secondaryBtnClass}>
                   Go to Dashboard
                 </Link>
               </div>
             </div>
           )}
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
