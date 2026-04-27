@@ -22,6 +22,14 @@ type Category = {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
+const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+
 async function safeJson(res: Response) {
   const text = await res.text();
   try {
@@ -43,14 +51,17 @@ export default function AdminCategoryPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [showModal, setShowModal] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(
+    null
+  );
   const [toast, setToast] = React.useState<{
     type: "success" | "error";
     message: string;
   } | null>(null);
 
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
-  const [permissions, setPermissions] = React.useState<AdminPermissions | null>(null);
+  const [permissions, setPermissions] =
+    React.useState<AdminPermissions | null>(null);
 
   const canCreate = hasPermission(role, permissions, "categoryCreate");
   const canEdit = hasPermission(role, permissions, "categoryEdit");
@@ -75,7 +86,9 @@ export default function AdminCategoryPage() {
         if (!res.ok) return;
 
         const body = (await safeJson(res)) as AdminSettingsResponse;
-        const nextRole = (body?.profile?.role || "admin") as "admin" | "superadmin";
+        const nextRole = (body?.profile?.role || "admin") as
+          | "admin"
+          | "superadmin";
         const nextPermissions = normalizeAdminPermissions(
           nextRole,
           body?.profile?.permissions
@@ -84,9 +97,7 @@ export default function AdminCategoryPage() {
         if (!mounted) return;
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {
-        // ignore
-      }
+      } catch {}
     };
 
     loadAdminProfile();
@@ -150,7 +161,10 @@ export default function AdminCategoryPage() {
 
   function openCreateModal() {
     if (!canCreate) {
-      setToast({ type: "error", message: "You do not have permission to create category" });
+      setToast({
+        type: "error",
+        message: "You do not have permission to create category",
+      });
       return;
     }
 
@@ -160,7 +174,10 @@ export default function AdminCategoryPage() {
 
   function openEditModal(c: Category) {
     if (!canEdit) {
-      setToast({ type: "error", message: "You do not have permission to edit category" });
+      setToast({
+        type: "error",
+        message: "You do not have permission to edit category",
+      });
       return;
     }
 
@@ -174,7 +191,10 @@ export default function AdminCategoryPage() {
 
   function requestDelete(id: string) {
     if (!canDelete) {
-      setToast({ type: "error", message: "You do not have permission to delete category" });
+      setToast({
+        type: "error",
+        message: "You do not have permission to delete category",
+      });
       return;
     }
 
@@ -285,7 +305,10 @@ export default function AdminCategoryPage() {
     }
 
     if (!canDelete) {
-      setToast({ type: "error", message: "You do not have permission to delete category" });
+      setToast({
+        type: "error",
+        message: "You do not have permission to delete category",
+      });
       setConfirmDeleteId(null);
       return;
     }
@@ -315,120 +338,258 @@ export default function AdminCategoryPage() {
 
   return (
     <AdminPageGuard permission="categoryView">
-      <div className="relative">
-        <div className="mb-4 flex items-center justify-between">
-          <h1 className="mb-0 text-[22px] font-semibold">Categories</h1>
+      <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+        <div className="space-y-6">
+          <section
+            className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+          >
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4] sm:text-[12px]">
+                  Admin Catalog
+                </div>
+                <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                  Categories
+                </h1>
+                <p className="mt-2 max-w-[620px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                  Manage product categories, visibility status, slugs, and
+                  catalog organization from one clean admin panel.
+                </p>
+              </div>
 
-          {canCreate ? (
-            <button
-              type="button"
-              onClick={openCreateModal}
-              className="cursor-pointer rounded-[10px] bg-[#22c55e] px-4 py-[10px] font-semibold text-[#0f172a]"
-            >
-              Add Category
-            </button>
+              {canCreate ? (
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className={primaryBtnClass}
+                >
+                  Add Category
+                </button>
+              ) : null}
+            </div>
+          </section>
+
+          {error ? (
+            <div className="rounded-[20px] border border-red-400/20 bg-red-500/10 px-5 py-4 text-[13px] text-red-200">
+              {error}
+            </div>
           ) : null}
+
+          <section className={`${panelClass} overflow-hidden`}>
+            <div className="flex flex-col gap-3 border-b border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Category List
+                </div>
+                <div className="mt-1 text-[20px] font-semibold text-white">
+                  All Categories
+                </div>
+              </div>
+
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[12px] font-semibold text-[#d6c7ff]">
+                {categories.length} total
+              </div>
+            </div>
+
+            {loadingList ? (
+              <CategorySkeleton />
+            ) : categories.length === 0 ? (
+              <EmptyState canCreate={canCreate} onCreate={openCreateModal} />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[780px] border-collapse text-[13px]">
+                  <thead>
+                    <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                      <th className="px-5 py-4 font-medium">Name</th>
+                      <th className="px-5 py-4 font-medium">Slug</th>
+                      <th className="px-5 py-4 font-medium">Status</th>
+                      <th className="px-5 py-4 font-medium">Created</th>
+                      {canEdit || canDelete ? (
+                        <th className="px-5 py-4 font-medium">Actions</th>
+                      ) : null}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {categories.map((c) => (
+                      <tr
+                        key={c.id}
+                        className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                      >
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-white">{c.name}</div>
+                          {c.description ? (
+                            <div className="mt-1 line-clamp-1 max-w-[320px] text-[12px] text-[#7f879f]">
+                              {c.description}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-[12px] text-[#7f879f]">
+                              No description
+                            </div>
+                          )}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-[#a7aec4]">
+                            {c.slug}
+                          </span>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <StatusBadge active={c.isActive} />
+                        </td>
+
+                        <td className="px-5 py-4 text-[#a7aec4]">
+                          {c.createdAt
+                            ? new Date(c.createdAt).toLocaleDateString()
+                            : "--"}
+                        </td>
+
+                        {canEdit || canDelete ? (
+                          <td className="px-5 py-4">
+                            <div className="flex flex-wrap gap-2">
+                              {canEdit ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(c)}
+                                  className={secondaryBtnClass}
+                                >
+                                  Edit
+                                </button>
+                              ) : null}
+
+                              {canDelete ? (
+                                <button
+                                  type="button"
+                                  onClick={() => requestDelete(c.id)}
+                                  className="rounded-full border border-red-400/20 bg-red-500/10 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-red-300 transition hover:-translate-y-0.5 hover:bg-red-500/15"
+                                >
+                                  Delete
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        ) : null}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </div>
 
-        {error && <div className="mb-3 text-[13px] text-[#fca5a5]">{error}</div>}
-
         {showModal && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50">
-            <div className="w-[min(720px,90vw)] rounded-2xl border border-[#111827] bg-[#0b1220] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-              <div className="mb-[14px] flex items-center justify-between">
-                <div className="text-[18px] font-bold">
-                  {editingId ? "Edit Category" : "Add Category"}
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <div className="w-[min(720px,94vw)] overflow-hidden rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_24px_90px_rgba(0,0,0,0.7)]">
+              <div className="flex items-start justify-between border-b border-[#26293a] px-5 py-5 sm:px-6">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                    {editingId ? "Update" : "Create"}
+                  </div>
+                  <div className="mt-1 text-[22px] font-semibold text-white">
+                    {editingId ? "Edit Category" : "Add Category"}
+                  </div>
                 </div>
 
                 <button
                   type="button"
                   aria-label="Close"
                   onClick={() => setShowModal(false)}
-                  className="cursor-pointer border-0 bg-transparent text-[22px] text-[#9ca3af]"
+                  className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/5 text-[22px] text-[#a7aec4] transition hover:bg-white/10 hover:text-white"
                 >
                   ×
                 </button>
               </div>
 
-              <div className="max-w-[720px] rounded-2xl bg-transparent p-0">
-                <form onSubmit={handleSubmit}>
-                  <div className="mb-5 flex flex-col gap-[6px]">
-                    <label htmlFor="name" className="text-[13px]">
-                      Category Name *
-                    </label>
+              <form onSubmit={handleSubmit} className="space-y-5 p-5 sm:p-6">
+                <Field label="Category Name *">
+                  <input
+                    id="name"
+                    name="name"
+                    className="h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
+                    placeholder="e.g. Hoodie, Sneakers"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </Field>
+
+                <Field label="Description">
+                  <textarea
+                    id="description"
+                    name="description"
+                    className="min-h-[110px] w-full resize-none rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-[13px] leading-6 text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
+                    placeholder="Optional short description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                  />
+                </Field>
+
+                <div className="rounded-[18px] border border-[#26293a] bg-[#0d0f17] p-4">
+                  <label className="flex cursor-pointer items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[13px] font-semibold text-white">
+                        Active Category
+                      </div>
+                      <div className="mt-1 text-[12px] text-[#a7aec4]">
+                        Keep enabled to show this category in public listings.
+                      </div>
+                    </div>
+
                     <input
-                      id="name"
-                      name="name"
-                      className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
-                      placeholder="e.g. Hoodie, Sneakers"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
+                      id="isActive"
+                      name="isActive"
+                      type="checkbox"
+                      checked={isActive}
+                      onChange={(e) => setIsActive(e.target.checked)}
+                      className="h-5 w-5 accent-[#d6c7ff]"
                     />
-                  </div>
+                  </label>
+                </div>
 
-                  <div className="mb-5 flex flex-col gap-[6px]">
-                    <label htmlFor="description" className="text-[13px]">
-                      Description
-                    </label>
-                    <textarea
-                      id="description"
-                      name="description"
-                      className="rounded-[10px] border border-[#1f2937] bg-[#020617] px-3 py-[10px] text-[#e5e7eb]"
-                      placeholder="Optional short description"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      rows={3}
-                    />
-                  </div>
+                <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className={secondaryBtnClass}
+                  >
+                    Cancel
+                  </button>
 
-                  <div className="mb-5 flex flex-col gap-[6px]">
-                    <label htmlFor="isActive" className="text-[13px]">
-                      Active
-                    </label>
-
-                    <label className="flex items-center gap-2">
-                      <input
-                        id="isActive"
-                        name="isActive"
-                        type="checkbox"
-                        checked={isActive}
-                        onChange={(e) => setIsActive(e.target.checked)}
-                      />
-                      <span className="text-[11px] text-[#9ca3af]">
-                        Keep enabled to show in public listings.
-                      </span>
-                    </label>
-                  </div>
-
-                  <div className="mt-7 flex justify-end">
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="cursor-pointer rounded-full bg-[#8b5cf6] px-[22px] py-[10px] text-white disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {submitting ? "Saving..." : "Save Category"}
-                    </button>
-                  </div>
-                </form>
-              </div>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className={primaryBtnClass}
+                  >
+                    {submitting ? "Saving..." : "Save Category"}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
 
         {confirmDeleteId && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50">
-            <div className="w-[min(420px,90vw)] rounded-[14px] border border-[#111827] bg-[#0b1220] p-[18px] shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
-              <div className="mb-2 font-bold">Delete category?</div>
-              <div className="mb-2 text-[11px] text-[#9ca3af]">
-                This action cannot be undone.
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <div className="w-[min(440px,94vw)] rounded-[24px] border border-[#26293a] bg-[#11121a] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.7)]">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-red-300">
+                Delete Category
+              </div>
+              <div className="mt-2 text-[22px] font-semibold text-white">
+                Are you sure?
+              </div>
+              <div className="mt-2 text-[13px] leading-6 text-[#a7aec4]">
+                This action cannot be undone. The selected category will be
+                permanently removed from your database.
               </div>
 
-              <div className="mt-4 flex justify-end gap-[10px]">
+              <div className="mt-6 flex justify-end gap-3">
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteId(null)}
-                  className="cursor-pointer rounded-[10px] border border-[#1f2937] bg-[#0b1220] px-[14px] py-2 text-[#e5e7eb]"
+                  className={secondaryBtnClass}
                 >
                   Cancel
                 </button>
@@ -436,7 +597,7 @@ export default function AdminCategoryPage() {
                 <button
                   type="button"
                   onClick={() => handleDeleteConfirmed(confirmDeleteId)}
-                  className="cursor-pointer rounded-[10px] border border-[#b91c1c] bg-[#ef4444] px-[14px] py-2 text-white"
+                  className="rounded-full bg-red-500 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-red-400"
                 >
                   Delete
                 </button>
@@ -445,97 +606,13 @@ export default function AdminCategoryPage() {
           </div>
         )}
 
-        <div>
-          {loadingList ? (
-            <p className="text-[11px] text-[#9ca3af]">Loading categories...</p>
-          ) : categories.length === 0 ? (
-            <p className="text-[11px] text-[#9ca3af]">No categories yet.</p>
-          ) : (
-            <table className="mt-[10px] w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px] font-semibold">
-                    Name
-                  </th>
-                  <th className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px] font-semibold">
-                    Slug
-                  </th>
-                  <th className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px] font-semibold">
-                    Status
-                  </th>
-                  <th className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px] font-semibold">
-                    Created
-                  </th>
-                  {(canEdit || canDelete) ? (
-                    <th className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px] font-semibold">
-                      Actions
-                    </th>
-                  ) : null}
-                </tr>
-              </thead>
-
-              <tbody>
-                {categories.map((c) => (
-                  <tr key={c.id}>
-                    <td className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px]">
-                      {c.name}
-                    </td>
-                    <td className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px]">
-                      {c.slug}
-                    </td>
-                    <td className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px]">
-                      <span
-                        className={[
-                          "inline-flex items-center gap-[6px] rounded-full px-2 py-1 text-[12px] font-semibold",
-                          c.isActive
-                            ? "bg-[rgba(34,197,94,0.12)] text-[#4ade80]"
-                            : "bg-[rgba(248,113,113,0.12)] text-[#fca5a5]",
-                        ].join(" ")}
-                      >
-                        {c.isActive ? "Active" : "Inactive"}
-                      </span>
-                    </td>
-                    <td className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px]">
-                      {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "--"}
-                    </td>
-
-                    {(canEdit || canDelete) ? (
-                      <td className="border-b border-[#111827] px-2 py-[10px] text-left text-[13px]">
-                        {canEdit ? (
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(c)}
-                            className="mr-2 cursor-pointer rounded-lg border border-[#1f2937] bg-[#0b1220] px-[10px] py-[6px] text-[12px] text-[#e5e7eb]"
-                          >
-                            Edit
-                          </button>
-                        ) : null}
-
-                        {canDelete ? (
-                          <button
-                            type="button"
-                            onClick={() => requestDelete(c.id)}
-                            className="cursor-pointer rounded-lg border border-[#7f1d1d] bg-[#0b1220] px-[10px] py-[6px] text-[12px] text-[#fca5a5]"
-                          >
-                            Delete
-                          </button>
-                        ) : null}
-                      </td>
-                    ) : null}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
         {toast && (
           <div
             className={[
-              "fixed bottom-5 right-5 z-[1200] rounded-xl px-[14px] py-3 text-[13px] font-semibold text-[#0f172a] shadow-[0_10px_30px_rgba(0,0,0,0.25)]",
+              "fixed bottom-5 right-5 z-[1200] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)]",
               toast.type === "success"
-                ? "border border-[#22c55e] bg-[#bbf7d0]"
-                : "border border-[#f43f5e] bg-[#fecdd3]",
+                ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+                : "border-red-400/20 bg-red-500/15 text-red-200",
             ].join(" ")}
           >
             {toast.message}
@@ -543,5 +620,79 @@ export default function AdminCategoryPage() {
         )}
       </div>
     </AdminPageGuard>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-2 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a7aec4]">
+        {label}
+      </div>
+      {children}
+    </label>
+  );
+}
+
+function StatusBadge({ active }: { active: boolean }) {
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
+        active
+          ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
+          : "border-red-400/20 bg-red-500/15 text-red-300",
+      ].join(" ")}
+    >
+      {active ? "Active" : "Inactive"}
+    </span>
+  );
+}
+
+function CategorySkeleton() {
+  return (
+    <div className="space-y-3 p-5 sm:p-6">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div
+          key={i}
+          className="h-[64px] animate-pulse rounded-[18px] border border-white/5 bg-white/[0.03]"
+        />
+      ))}
+    </div>
+  );
+}
+
+function EmptyState({
+  canCreate,
+  onCreate,
+}: {
+  canCreate: boolean;
+  onCreate: () => void;
+}) {
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/5 text-[22px]">
+        🗂️
+      </div>
+      <div className="mt-4 text-[18px] font-semibold text-white">
+        No categories yet
+      </div>
+      <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-7 text-[#a7aec4]">
+        Start by creating your first product category for organizing items in
+        the store catalog.
+      </p>
+
+      {canCreate ? (
+        <button type="button" onClick={onCreate} className={`${primaryBtnClass} mt-5`}>
+          Add Category
+        </button>
+      ) : null}
+    </div>
   );
 }

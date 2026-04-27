@@ -1,3 +1,4 @@
+// client/app/admin/analytics/page.tsx
 "use client";
 
 import * as React from "react";
@@ -72,6 +73,13 @@ const rangeTabs: { key: RangeKey; label: string }[] = [
   { key: "30days", label: "Last 30 days" },
 ];
 
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+
 const fallbackData: AnalyticsResponse["data"] = {
   range: "7days",
   summaryCards: {
@@ -86,7 +94,12 @@ const fallbackData: AnalyticsResponse["data"] = {
   },
   metrics: [
     { label: "Total Revenue", value: "Rs. 0", change: "0%", positive: true },
-    { label: "Average Order Value", value: "Rs. 0", change: "0%", positive: true },
+    {
+      label: "Average Order Value",
+      value: "Rs. 0",
+      change: "0%",
+      positive: true,
+    },
     { label: "Conversion Rate", value: "0%", change: "0%", positive: true },
     { label: "Sales Trends", value: "0%", change: "0%", positive: true },
   ],
@@ -96,13 +109,27 @@ const fallbackData: AnalyticsResponse["data"] = {
   customerBehaviorCards: [
     { title: "New vs. Returning Customers", value: "0% / 0%", change: "0%" },
     { title: "Customer Lifetime Value", value: "Rs. 0", change: "0%" },
-    { title: "Geographic Distribution", value: "No data", change: "0 regions" },
+    {
+      title: "Geographic Distribution",
+      value: "No data",
+      change: "0 regions",
+    },
   ],
   customerAcquisitionData: [0, 0, 0, 0, 0, 0, 0],
   customerAcquisitionLabels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
   productPerformanceCards: [
-    { title: "Top Selling Products", value: "No sales yet", change: "0 sold", positive: true },
-    { title: "Least Selling Products", value: "No sales yet", change: "0 sold", positive: false },
+    {
+      title: "Top Selling Products",
+      value: "No sales yet",
+      change: "0 sold",
+      positive: true,
+    },
+    {
+      title: "Least Selling Products",
+      value: "No sales yet",
+      change: "0 sold",
+      positive: false,
+    },
   ],
   paymentMethodUsage: {
     paymentMethodData: [
@@ -115,7 +142,12 @@ const fallbackData: AnalyticsResponse["data"] = {
   },
 };
 
-function buildLinePath(values: number[], width: number, height: number, padding = 10) {
+function buildLinePath(
+  values: number[],
+  width: number,
+  height: number,
+  padding = 10
+) {
   if (!values.length) return "";
 
   const max = Math.max(...values);
@@ -123,21 +155,17 @@ function buildLinePath(values: number[], width: number, height: number, padding 
   const range = Math.max(max - min, 1);
   const stepX = (width - padding * 2) / Math.max(values.length - 1, 1);
 
-  const points = values.map((value, index) => {
-    const x = padding + index * stepX;
-    const y = padding + ((max - value) / range) * (height - padding * 2);
-    return { x, y };
-  });
-
-  return points
-    .map((point, index) =>
-      `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`
-    )
+  return values
+    .map((value, index) => {
+      const x = padding + index * stepX;
+      const y = padding + ((max - value) / range) * (height - padding * 2);
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    })
     .join(" ");
 }
 
 function getApiBase() {
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 }
 
 function isPositiveChange(value?: string) {
@@ -163,9 +191,42 @@ function addMonthsSafe(dateString: string, months: number) {
   return toInputDateValue(result);
 }
 
+function getWidthClass(value: number) {
+  const safe = Math.min(Math.max(Number(value || 0), 0), 100);
+
+  if (safe <= 5) return "w-[5%]";
+  if (safe <= 10) return "w-[10%]";
+  if (safe <= 20) return "w-[20%]";
+  if (safe <= 30) return "w-[30%]";
+  if (safe <= 40) return "w-[40%]";
+  if (safe <= 50) return "w-[50%]";
+  if (safe <= 60) return "w-[60%]";
+  if (safe <= 70) return "w-[70%]";
+  if (safe <= 80) return "w-[80%]";
+  if (safe <= 90) return "w-[90%]";
+  return "w-full";
+}
+
+function getHeightClass(value: number) {
+  const safe = Math.min(Math.max(Number(value || 0), 0), 100);
+
+  if (safe <= 4) return "h-[4%]";
+  if (safe <= 10) return "h-[10%]";
+  if (safe <= 20) return "h-[20%]";
+  if (safe <= 30) return "h-[30%]";
+  if (safe <= 40) return "h-[40%]";
+  if (safe <= 50) return "h-[50%]";
+  if (safe <= 60) return "h-[60%]";
+  if (safe <= 70) return "h-[70%]";
+  if (safe <= 80) return "h-[80%]";
+  if (safe <= 90) return "h-[90%]";
+  return "h-full";
+}
+
 export default function AdminAnalyticsPage() {
   const [range, setRange] = React.useState<RangeKey>("7days");
-  const [analytics, setAnalytics] = React.useState<AnalyticsResponse["data"]>(fallbackData);
+  const [analytics, setAnalytics] =
+    React.useState<AnalyticsResponse["data"]>(fallbackData);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
@@ -174,49 +235,52 @@ export default function AdminAnalyticsPage() {
   const [showExportModal, setShowExportModal] = React.useState(false);
   const today = React.useMemo(() => new Date(), []);
   const defaultTo = toInputDateValue(today);
-  const defaultFrom = toInputDateValue(new Date(today.getFullYear(), today.getMonth() - 2, today.getDate()));
+  const defaultFrom = toInputDateValue(
+    new Date(today.getFullYear(), today.getMonth() - 2, today.getDate())
+  );
 
   const [exportFrom, setExportFrom] = React.useState(defaultFrom);
   const [exportTo, setExportTo] = React.useState(defaultTo);
   const [exportError, setExportError] = React.useState("");
 
-  const fetchAnalytics = React.useCallback(async (selectedRange: RangeKey, silent = false) => {
-    try {
-      if (silent) setRefreshing(true);
-      else setLoading(true);
+  const fetchAnalytics = React.useCallback(
+    async (selectedRange: RangeKey, silent = false) => {
+      try {
+        if (silent) setRefreshing(true);
+        else setLoading(true);
 
-      setError("");
+        setError("");
 
-      const res = await fetch(`${getApiBase()}/admin/analytics?range=${selectedRange}`, {
-        method: "GET",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
-      });
+        const res = await fetch(
+          `${getApiBase()}/admin/analytics?range=${selectedRange}`,
+          {
+            method: "GET",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            cache: "no-store",
+          }
+        );
 
-      const json: AnalyticsResponse = await res.json();
+        const json: AnalyticsResponse = await res.json();
 
-      if (!res.ok || !json?.success) {
-        throw new Error("Failed to fetch analytics");
+        if (!res.ok || !json?.success) {
+          throw new Error("Failed to fetch analytics");
+        }
+
+        setAnalytics(json.data);
+      } catch (err: any) {
+        setError(err?.message || "Failed to load analytics data");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      setAnalytics(json.data);
-    } catch (err: any) {
-      setError(err?.message || "Failed to load analytics data");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   React.useEffect(() => {
     fetchAnalytics(range);
   }, [range, fetchAnalytics]);
-
-  const handleOpenExport = React.useCallback(() => {
-    setExportError("");
-    setShowExportModal(true);
-  }, []);
 
   const handleExport = React.useCallback(async () => {
     try {
@@ -234,14 +298,18 @@ export default function AdminAnalyticsPage() {
         throw new Error("'From' date cannot be greater than 'To' date");
       }
 
-      const diffMs = toDate.getTime() - fromDate.getTime();
-      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const diffDays = Math.floor(
+        (toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
       if (diffDays > 92) {
         throw new Error("Date range cannot be more than 3 months");
       }
 
       const res = await fetch(
-        `${getApiBase()}/admin/analytics?from=${encodeURIComponent(exportFrom)}&to=${encodeURIComponent(exportTo)}`,
+        `${getApiBase()}/admin/analytics?from=${encodeURIComponent(
+          exportFrom
+        )}&to=${encodeURIComponent(exportTo)}`,
         {
           method: "GET",
           credentials: "include",
@@ -314,11 +382,9 @@ export default function AdminAnalyticsPage() {
         [],
         ["Payment Method Usage"],
         ["Method", "Height %", "Orders"],
-        ...(exportData.paymentMethodUsage?.paymentMethodData || []).map((item) => [
-          item.label,
-          String(item.value),
-          String(item.count),
-        ]),
+        ...(exportData.paymentMethodUsage?.paymentMethodData || []).map(
+          (item) => [item.label, String(item.value), String(item.count)]
+        ),
       ];
 
       const csvContent = rows
@@ -330,9 +396,9 @@ export default function AdminAnalyticsPage() {
       const blob = new Blob([csvContent], {
         type: "text/csv;charset=utf-8;",
       });
-
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
+
       link.href = url;
       link.download = `analytics-${exportFrom}-to-${exportTo}.csv`;
       document.body.appendChild(link);
@@ -348,11 +414,18 @@ export default function AdminAnalyticsPage() {
     }
   }, [exportFrom, exportTo]);
 
-  const metrics = analytics.metrics?.length ? analytics.metrics : fallbackData.metrics;
-  const salesTrendValues =
-    analytics.salesTrendData?.length ? analytics.salesTrendData : fallbackData.salesTrendData;
-  const salesTrendLabels =
-    analytics.salesTrendLabels?.length ? analytics.salesTrendLabels : fallbackData.salesTrendLabels;
+  const metrics = analytics.metrics?.length
+    ? analytics.metrics
+    : fallbackData.metrics;
+
+  const salesTrendValues = analytics.salesTrendData?.length
+    ? analytics.salesTrendData
+    : fallbackData.salesTrendData;
+
+  const salesTrendLabels = analytics.salesTrendLabels?.length
+    ? analytics.salesTrendLabels
+    : fallbackData.salesTrendLabels;
+
   const trendPath = React.useMemo(
     () => buildLinePath(salesTrendValues, 560, 220, 14),
     [salesTrendValues]
@@ -360,112 +433,115 @@ export default function AdminAnalyticsPage() {
 
   return (
     <>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="text-[22px] font-semibold text-white">Analytics Dashboard</h1>
-            <p className="mt-1 text-[13px] text-[#9ca3af]">
-              Comprehensive data visualizations and key performance indicators for store
-              insights.
-            </p>
-          </div>
+      <div className="min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+        <div className="space-y-6">
+          <section
+            className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.16),transparent_35%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+          >
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                  Admin / Analytics
+                </div>
+                <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                  Analytics Dashboard
+                </h1>
+                <p className="mt-2 max-w-[760px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                  Track sales performance, customer behavior, product insights,
+                  and payment method usage with real-time store data.
+                </p>
+              </div>
 
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleOpenExport}
-              disabled={loading}
-              className="rounded-[12px] bg-[#334155] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#3f4d63] disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              Export
-            </button>
-
-            <button
-              type="button"
-              onClick={() => fetchAnalytics(range, true)}
-              disabled={refreshing}
-              className="rounded-[12px] bg-[#2563eb] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-        </div>
-
-        {error ? (
-          <div className="rounded-[14px] border border-[#7f1d1d] bg-[#450a0a] px-4 py-3 text-[13px] text-[#fecaca]">
-            {error}
-          </div>
-        ) : null}
-
-        <section className="rounded-[14px] bg-[#23374d] p-1">
-          <div className="grid grid-cols-3 gap-1">
-            {rangeTabs.map((tab) => {
-              const active = range === tab.key;
-              return (
+              <div className="flex flex-wrap gap-3">
                 <button
-                  key={tab.key}
                   type="button"
-                  onClick={() => setRange(tab.key)}
+                  onClick={() => setShowExportModal(true)}
                   disabled={loading}
-                  className={[
-                    "rounded-[10px] px-3 py-3 text-[12px] font-medium transition sm:text-[13px]",
-                    active ? "bg-[#020617] text-white" : "text-[#cbd5e1] hover:bg-[#1b2b3d]",
-                  ].join(" ")}
+                  className={secondaryBtnClass}
                 >
-                  {tab.label}
+                  Export
                 </button>
-              );
-            })}
-          </div>
-        </section>
 
-        {loading ? (
-          <div className="rounded-[14px] border border-[#111827] bg-[#020617] px-5 py-10 text-center text-[14px] text-[#9ca3af]">
-            Loading analytics...
-          </div>
-        ) : (
-          <>
-            <section className="space-y-4">
-              <h2 className="text-[18px] font-semibold text-white">Sales Performance</h2>
+                <button
+                  type="button"
+                  onClick={() => fetchAnalytics(range, true)}
+                  disabled={refreshing}
+                  className={primaryBtnClass}
+                >
+                  {refreshing ? "Refreshing..." : "Refresh"}
+                </button>
+              </div>
+            </div>
+          </section>
 
-              <div className="grid grid-cols-1 gap-[18px] sm:grid-cols-2 xl:grid-cols-4">
-                {metrics.map((item) => (
+          {error ? (
+            <div className="rounded-[20px] border border-red-400/20 bg-red-500/15 px-4 py-3 text-[13px] text-red-200">
+              {error}
+            </div>
+          ) : null}
+
+          <section className={`${panelClass} p-2`}>
+            <div className="grid grid-cols-3 gap-2">
+              {rangeTabs.map((tab) => {
+                const active = range === tab.key;
+
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setRange(tab.key)}
+                    disabled={loading}
+                    className={[
+                      "rounded-[18px] px-3 py-3 text-[12px] font-semibold uppercase tracking-[0.12em] transition sm:text-[13px]",
+                      active
+                        ? "bg-white text-[#090a12]"
+                        : "text-[#cbd5e1] hover:bg-white/10",
+                    ].join(" ")}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          {loading ? (
+            <div
+              className={`${panelClass} px-5 py-12 text-center text-[14px] text-[#a7aec4]`}
+            >
+              Loading analytics...
+            </div>
+          ) : (
+            <>
+              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {metrics.map((item, index) => (
                   <StatCard
-                    key={item.label}
+                    key={`${item.label}-${index}`}
                     label={item.label}
                     value={item.value}
                     change={item.change}
                     positive={item.positive}
                   />
                 ))}
-              </div>
+              </section>
 
-              <div className="grid grid-cols-1 gap-[18px] xl:grid-cols-2">
-                <div className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-                  <div className="text-[16px] font-medium text-white">Sales Trends</div>
-                  <div className="mt-2 text-[18px] font-semibold text-white">
-                    {analytics.summaryCards.salesTrendAmount}
-                  </div>
-                  <div className="mt-1 text-[13px] text-[#9ca3af]">
-                    {getRangeText(range)}{" "}
-                    <span
-                      className={[
-                        "font-medium",
-                        isPositiveChange(analytics.summaryCards.salesTrendChange)
-                          ? "text-[#00e29a]"
-                          : "text-[#fb923c]",
-                      ].join(" ")}
+              <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+                <ChartPanel
+                  title="Sales Trends"
+                  value={analytics.summaryCards.salesTrendAmount}
+                  change={analytics.summaryCards.salesTrendChange}
+                  range={range}
+                >
+                  <div className="relative mt-5 h-[240px] overflow-hidden rounded-[20px] border border-white/10 bg-[radial-gradient(circle_at_0_0,#1f2937,#0d0f17_55%)] p-4">
+                    <svg
+                      viewBox="0 0 560 220"
+                      className="h-full w-full"
+                      preserveAspectRatio="none"
                     >
-                      {analytics.summaryCards.salesTrendChange}
-                    </span>
-                  </div>
-
-                  <div className="relative mt-4 h-[220px] overflow-hidden rounded-[12px]">
-                    <svg viewBox="0 0 560 220" className="h-full w-full" preserveAspectRatio="none">
                       <path
                         d={trendPath}
                         fill="none"
-                        stroke="rgba(167,199,239,0.95)"
+                        stroke="rgba(216,199,255,0.95)"
                         strokeWidth="4"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -473,230 +549,210 @@ export default function AdminAnalyticsPage() {
                     </svg>
                   </div>
 
-                  <div
-                    className="mt-2 grid gap-2 text-[11px] text-[#9ca3af]"
-                    style={{
-                      gridTemplateColumns: `repeat(${Math.max(salesTrendLabels.length, 1)}, minmax(0, 1fr))`,
-                    }}
-                  >
-                    {salesTrendLabels.map((label, index) => (
-                      <span key={`${label}-${index}`} className="truncate text-center">
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                </div>
+                  <LabelRow labels={salesTrendLabels} />
+                </ChartPanel>
 
-                <div className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-                  <div className="text-[16px] font-medium text-white">Revenue by Product Category</div>
-                  <div className="mt-2 text-[18px] font-semibold text-white">
-                    {analytics.summaryCards.categoryRevenueAmount}
-                  </div>
-                  <div className="mt-1 text-[13px] text-[#9ca3af]">
-                    {getRangeText(range)}{" "}
-                    <span
-                      className={[
-                        "font-medium",
-                        isPositiveChange(analytics.summaryCards.categoryRevenueChange)
-                          ? "text-[#00e29a]"
-                          : "text-[#fb923c]",
-                      ].join(" ")}
-                    >
-                      {analytics.summaryCards.categoryRevenueChange}
-                    </span>
-                  </div>
-
+                <ChartPanel
+                  title="Revenue by Product Category"
+                  value={analytics.summaryCards.categoryRevenueAmount}
+                  change={analytics.summaryCards.categoryRevenueChange}
+                  range={range}
+                >
                   <div className="mt-6 space-y-5">
                     {analytics.revenueCategoryData.length > 0 ? (
                       analytics.revenueCategoryData.map((item) => (
-                        <div
-                          key={item.label}
-                          className="grid grid-cols-[100px_1fr] items-center gap-4 sm:grid-cols-[110px_1fr]"
-                        >
-                          <span className="text-[12px] text-white sm:text-[13px]">
-                            {item.label}
-                          </span>
-                          <div className="h-[18px] rounded-[6px] bg-transparent sm:h-[22px]">
+                        <div key={item.label} className="space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-[13px] font-medium text-white">
+                              {item.label}
+                            </span>
+                            <span className="text-[12px] text-[#a7aec4]">
+                              Rs.{" "}
+                              {Number(item.revenueRs || 0).toLocaleString(
+                                "en-US"
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="h-3 overflow-hidden rounded-full bg-white/5">
                             <div
-                              className="h-full rounded-[6px] bg-[#475569]"
-                              style={{ width: `${item.value}%` }}
-                              title={
-                                typeof item.revenueRs === "number"
-                                  ? `Rs. ${item.revenueRs.toLocaleString("en-US")}`
-                                  : item.label
-                              }
+                              className={[
+                                "h-full rounded-full bg-gradient-to-r from-[#38bdf8] to-[#d6c7ff]",
+                                getWidthClass(item.value),
+                              ].join(" ")}
                             />
                           </div>
                         </div>
                       ))
                     ) : (
-                      <div className="text-[13px] text-[#9ca3af]">No category revenue data found.</div>
+                      <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-6 text-center text-[13px] text-[#a7aec4]">
+                        No category revenue data found.
+                      </div>
                     )}
                   </div>
-                </div>
-              </div>
-            </section>
+                </ChartPanel>
+              </section>
 
-            <section className="space-y-4">
-              <h2 className="text-[18px] font-semibold text-white">Customer Behavior</h2>
+              <section className="space-y-4">
+                <SectionTitle
+                  title="Customer Behavior"
+                  subtitle="Understand customer retention, value, region, and acquisition."
+                />
 
-              <div className="grid grid-cols-1 gap-[18px] md:grid-cols-3">
-                {analytics.customerBehaviorCards.map((card) => (
-                  <InfoCard
-                    key={card.title}
-                    title={card.title}
-                    value={card.value}
-                    change={card.change}
-                    positive={isPositiveChange(card.change)}
-                  />
-                ))}
-              </div>
-
-              <div className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-                <div className="text-[16px] font-medium text-white">Customer Acquisition</div>
-                <div className="mt-2 text-[18px] font-semibold text-white">
-                  {analytics.summaryCards.customerAcquisitionTotal}
-                </div>
-                <div className="mt-1 text-[13px] text-[#9ca3af]">
-                  {getRangeText(range)}{" "}
-                  <span
-                    className={[
-                      "font-medium",
-                      isPositiveChange(analytics.summaryCards.customerAcquisitionChange)
-                        ? "text-[#00e29a]"
-                        : "text-[#fb923c]",
-                    ].join(" ")}
-                  >
-                    {analytics.summaryCards.customerAcquisitionChange}
-                  </span>
-                </div>
-
-                <div className="mt-6 flex h-[150px] items-end gap-[12px] sm:gap-[16px]">
-                  {analytics.customerAcquisitionData.map((value, index) => (
-                    <div key={index} className="flex flex-1 justify-center">
-                      <div
-                        className="w-[22px] rounded-[2px] bg-[#334155] sm:w-[28px]"
-                        style={{ height: `${value}%` }}
-                      />
-                    </div>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                  {analytics.customerBehaviorCards.map((card) => (
+                    <InfoCard
+                      key={card.title}
+                      title={card.title}
+                      value={card.value}
+                      change={card.change}
+                      positive={isPositiveChange(card.change)}
+                    />
                   ))}
                 </div>
 
-                <div
-                  className="mt-4 grid gap-2 text-[11px] text-[#9ca3af]"
-                  style={{
-                    gridTemplateColumns: `repeat(${Math.max(analytics.customerAcquisitionLabels.length, 1)}, minmax(0, 1fr))`,
-                  }}
+                <ChartPanel
+                  title="Customer Acquisition"
+                  value={String(analytics.summaryCards.customerAcquisitionTotal)}
+                  change={analytics.summaryCards.customerAcquisitionChange}
+                  range={range}
                 >
-                  {analytics.customerAcquisitionLabels.map((label, index) => (
-                    <span key={`${label}-${index}`} className="truncate text-center">
-                      {label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            <section className="space-y-4">
-              <h2 className="text-[18px] font-semibold text-white">Product Performance</h2>
-
-              <div className="grid grid-cols-1 gap-[18px] xl:grid-cols-2">
-                {analytics.productPerformanceCards.map((card) => (
-                  <ProductCard
-                    key={card.title}
-                    title={card.title}
-                    value={card.value}
-                    change={card.change}
-                    positive={card.positive}
-                  />
-                ))}
-              </div>
-
-              <div className="rounded-[14px] border border-[#111827] bg-[#020617] px-[18px] pb-[18px] pt-[16px]">
-                <div className="text-[16px] font-medium text-white">Payment Method Usage</div>
-                <div className="mt-2 text-[18px] font-semibold text-white">
-                  {analytics.paymentMethodUsage?.mostUsedMethod || analytics.summaryCards.paymentMethodTop}
-                </div>
-                <div className="mt-1 text-[13px] text-[#9ca3af]">
-                  Most used by customers{" "}
-                  <span className="font-medium text-[#00e29a]">
-                    {analytics.paymentMethodUsage?.mostUsedCount ??
-                      analytics.summaryCards.paymentMethodTopCount}{" "}
-                    orders
-                  </span>
-                </div>
-
-                <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-3">
-                  {(analytics.paymentMethodUsage?.paymentMethodData || []).map((item) => (
-                    <div key={item.label} className="flex flex-col items-center">
-                      <div className="flex h-[140px] w-full max-w-[70px] items-end">
+                  <div className="mt-6 flex h-[180px] items-end gap-3 rounded-[20px] border border-white/10 bg-[#0d0f17] p-4">
+                    {analytics.customerAcquisitionData.map((value, index) => (
+                      <div key={index} className="flex flex-1 justify-center">
                         <div
-                          className="w-full rounded-[2px] bg-[#334155]"
-                          style={{ height: `${item.value}%` }}
-                          title={`${item.count} orders`}
+                          className={[
+                            "w-full max-w-[34px] rounded-t-[10px] bg-gradient-to-t from-[#1d4ed8] to-[#38bdf8]",
+                            getHeightClass(value),
+                          ].join(" ")}
                         />
                       </div>
-                      <div className="mt-3 text-center text-[12px] text-[#cbd5e1]">{item.label}</div>
-                      <div className="mt-1 text-[11px] text-[#94a3b8]">{item.count}</div>
-                    </div>
+                    ))}
+                  </div>
+
+                  <LabelRow labels={analytics.customerAcquisitionLabels} />
+                </ChartPanel>
+              </section>
+
+              <section className="space-y-4">
+                <SectionTitle
+                  title="Product Performance"
+                  subtitle="Review top products, weak products, and payment behavior."
+                />
+
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                  {analytics.productPerformanceCards.map((card) => (
+                    <ProductCard
+                      key={card.title}
+                      title={card.title}
+                      value={card.value}
+                      change={card.change}
+                      positive={card.positive}
+                    />
                   ))}
                 </div>
-              </div>
-            </section>
-          </>
-        )}
+
+                <ChartPanel
+                  title="Payment Method Usage"
+                  value={
+                    analytics.paymentMethodUsage?.mostUsedMethod ||
+                    analytics.summaryCards.paymentMethodTop
+                  }
+                  change={`${
+                    analytics.paymentMethodUsage?.mostUsedCount ??
+                    analytics.summaryCards.paymentMethodTopCount
+                  } orders`}
+                  range={range}
+                >
+                  <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-3">
+                    {(analytics.paymentMethodUsage?.paymentMethodData || []).map(
+                      (item) => (
+                        <div
+                          key={item.label}
+                          className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4"
+                        >
+                          <div className="flex h-[150px] items-end justify-center">
+                            <div
+                              className={[
+                                "w-[54px] rounded-t-[14px] bg-gradient-to-t from-[#334155] to-[#d6c7ff]",
+                                getHeightClass(item.value),
+                              ].join(" ")}
+                              title={`${item.count} orders`}
+                            />
+                          </div>
+
+                          <div className="mt-4 text-center text-[14px] font-semibold text-white">
+                            {item.label}
+                          </div>
+                          <div className="mt-1 text-center text-[12px] text-[#a7aec4]">
+                            {item.count} orders
+                          </div>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </ChartPanel>
+              </section>
+            </>
+          )}
+        </div>
       </div>
 
       {showExportModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-md rounded-[18px] border border-[#1f2937] bg-[#020617] p-5 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur">
+          <div className={`${panelClass} w-full max-w-md p-5`}>
             <div className="flex items-center justify-between">
-              <h3 className="text-[18px] font-semibold text-white">Export Analytics</h3>
+              <h3 className="text-[20px] font-semibold text-white">
+                Export Analytics
+              </h3>
+
               <button
                 type="button"
                 onClick={() => setShowExportModal(false)}
-                className="text-[20px] leading-none text-[#94a3b8] hover:text-white"
+                aria-label="Close export modal"
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-[20px] text-[#a7aec4] hover:text-white"
               >
                 ×
               </button>
             </div>
 
-            <p className="mt-2 text-[13px] text-[#9ca3af]">
-              Select a date range to export analytics data. Maximum allowed range is 3 months.
+            <p className="mt-2 text-[13px] leading-6 text-[#a7aec4]">
+              Select a date range to export analytics data. Maximum allowed
+              range is 3 months.
             </p>
 
             <div className="mt-5 space-y-4">
-              <div>
-                <label className="mb-2 block text-[13px] font-medium text-white">From</label>
-                <input
-                  type="date"
-                  value={exportFrom}
-                  max={exportTo || defaultTo}
-                  onChange={(e) => {
-                    const nextFrom = e.target.value;
-                    setExportFrom(nextFrom);
-                    if (exportTo && nextFrom && new Date(nextFrom) > new Date(exportTo)) {
-                      setExportTo(nextFrom);
-                    }
-                  }}
-                  className="w-full rounded-[12px] border border-[#334155] bg-[#0f172a] px-3 py-2 text-[13px] text-white outline-none"
-                />
-              </div>
+              <DateField
+                label="From"
+                value={exportFrom}
+                max={exportTo || defaultTo}
+                onChange={(nextFrom) => {
+                  setExportFrom(nextFrom);
 
-              <div>
-                <label className="mb-2 block text-[13px] font-medium text-white">To</label>
-                <input
-                  type="date"
-                  value={exportTo}
-                  min={exportFrom}
-                  max={addMonthsSafe(exportFrom, 3) < defaultTo ? addMonthsSafe(exportFrom, 3) : defaultTo}
-                  onChange={(e) => setExportTo(e.target.value)}
-                  className="w-full rounded-[12px] border border-[#334155] bg-[#0f172a] px-3 py-2 text-[13px] text-white outline-none"
-                />
-              </div>
+                  if (
+                    exportTo &&
+                    nextFrom &&
+                    new Date(nextFrom) > new Date(exportTo)
+                  ) {
+                    setExportTo(nextFrom);
+                  }
+                }}
+              />
+
+              <DateField
+                label="To"
+                value={exportTo}
+                min={exportFrom}
+                max={
+                  addMonthsSafe(exportFrom, 3) < defaultTo
+                    ? addMonthsSafe(exportFrom, 3)
+                    : defaultTo
+                }
+                onChange={setExportTo}
+              />
 
               {exportError ? (
-                <div className="rounded-[12px] border border-[#7f1d1d] bg-[#450a0a] px-3 py-2 text-[12px] text-[#fecaca]">
+                <div className="rounded-[18px] border border-red-400/20 bg-red-500/15 px-4 py-3 text-[13px] text-red-200">
                   {exportError}
                 </div>
               ) : null}
@@ -705,15 +761,16 @@ export default function AdminAnalyticsPage() {
                 <button
                   type="button"
                   onClick={() => setShowExportModal(false)}
-                  className="rounded-[12px] bg-[#1e293b] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#334155]"
+                  className={secondaryBtnClass}
                 >
                   Cancel
                 </button>
+
                 <button
                   type="button"
                   onClick={handleExport}
                   disabled={exporting}
-                  className="rounded-[12px] bg-[#2563eb] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-70"
+                  className={primaryBtnClass}
                 >
                   {exporting ? "Exporting..." : "Download CSV"}
                 </button>
@@ -723,6 +780,35 @@ export default function AdminAnalyticsPage() {
         </div>
       ) : null}
     </>
+  );
+}
+
+function LabelRow({ labels }: { labels: string[] }) {
+  return (
+    <div className="mt-3 flex gap-2 text-[11px] text-[#7f879f]">
+      {labels.map((label, index) => (
+        <span
+          key={`${label}-${index}`}
+          className="min-w-0 flex-1 truncate text-center"
+        >
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+        Analytics
+      </div>
+      <h2 className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-white">
+        {title}
+      </h2>
+      <p className="mt-1 text-[13px] leading-6 text-[#a7aec4]">{subtitle}</p>
+    </div>
   );
 }
 
@@ -738,17 +824,78 @@ function StatCard({
   positive?: boolean;
 }) {
   return (
-    <div className="rounded-[14px] border border-[#111827] bg-[#020617] px-[16px] py-[14px]">
-      <div className="text-[13px] text-white">{label}</div>
-      <div className="mt-4 text-[18px] font-semibold text-[#f9fafb]">{value}</div>
-      <div
-        className={[
-          "mt-3 text-[13px] font-medium",
-          positive ? "text-[#00e29a]" : "text-[#fb923c]",
-        ].join(" ")}
-      >
-        {change}
+    <div className="rounded-[22px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+            {label}
+          </div>
+          <div className="mt-3 text-[24px] font-semibold tracking-[-0.04em] text-white">
+            {value}
+          </div>
+          <div
+            className={[
+              "mt-3 text-[13px] font-semibold",
+              positive ? "text-emerald-300" : "text-orange-300",
+            ].join(" ")}
+          >
+            {change}
+          </div>
+        </div>
+
+        <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5">
+          <span className={positive ? "text-emerald-300" : "text-orange-300"}>
+            {positive ? "↗" : "↘"}
+          </span>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function ChartPanel({
+  title,
+  value,
+  change,
+  range,
+  children,
+}: {
+  title: string;
+  value: string;
+  change: string;
+  range: RangeKey;
+  children: React.ReactNode;
+}) {
+  const positive = isPositiveChange(change);
+
+  return (
+    <div className={`${panelClass} p-5 sm:p-6`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-[18px] font-semibold text-white">{title}</h3>
+          <div className="mt-2 text-[24px] font-semibold tracking-[-0.04em] text-white">
+            {value}
+          </div>
+          <div className="mt-1 text-[13px] text-[#a7aec4]">
+            {getRangeText(range)}{" "}
+            <span
+              className={
+                positive
+                  ? "font-semibold text-emerald-300"
+                  : "font-semibold text-orange-300"
+              }
+            >
+              {change}
+            </span>
+          </div>
+        </div>
+
+        <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#cbd5e1]">
+          {getRangeText(range)}
+        </span>
+      </div>
+
+      {children}
     </div>
   );
 }
@@ -765,13 +912,15 @@ function InfoCard({
   positive?: boolean;
 }) {
   return (
-    <div className="rounded-[14px] border border-[#111827] bg-[#020617] px-[16px] py-[14px]">
-      <div className="text-[14px] text-white">{title}</div>
-      <div className="mt-3 text-[18px] font-semibold text-white">{value}</div>
+    <div className="rounded-[22px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)]">
+      <div className="text-[13px] font-medium text-white">{title}</div>
+      <div className="mt-3 text-[22px] font-semibold tracking-[-0.03em] text-white">
+        {value}
+      </div>
       <div
         className={[
-          "mt-3 text-[13px] font-medium",
-          positive ? "text-[#00e29a]" : "text-[#fb923c]",
+          "mt-3 text-[13px] font-semibold",
+          positive ? "text-emerald-300" : "text-orange-300",
         ].join(" ")}
       >
         {change}
@@ -792,17 +941,56 @@ function ProductCard({
   positive?: boolean;
 }) {
   return (
-    <div className="rounded-[14px] border border-[#111827] bg-[#020617] px-[16px] py-[14px]">
-      <div className="text-[14px] text-white">{title}</div>
-      <div className="mt-3 text-[18px] font-semibold text-white">{value}</div>
+    <div className="rounded-[22px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)]">
+      <div className="text-[13px] font-medium text-white">{title}</div>
+      <div className="mt-3 text-[22px] font-semibold tracking-[-0.03em] text-white">
+        {value}
+      </div>
       <div
         className={[
-          "mt-3 text-[13px] font-medium",
-          positive ? "text-[#00e29a]" : "text-[#fb923c]",
+          "mt-3 text-[13px] font-semibold",
+          positive ? "text-emerald-300" : "text-orange-300",
         ].join(" ")}
       >
         {change}
       </div>
+    </div>
+  );
+}
+
+function DateField({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  min?: string;
+  max?: string;
+  onChange: (value: string) => void;
+}) {
+  const inputId = React.useId();
+
+  return (
+    <div>
+      <label
+        htmlFor={inputId}
+        className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]"
+      >
+        {label}
+      </label>
+
+      <input
+        id={inputId}
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-[48px] w-full rounded-full border border-white/10 bg-[#0d0f17] px-4 text-[13px] text-white outline-none transition focus:border-[#d6c7ff]"
+      />
     </div>
   );
 }

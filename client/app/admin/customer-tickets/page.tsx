@@ -1,7 +1,9 @@
+// client/app/admin/customer-tickets/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import AdminPageGuard from "../_components/AdminPageGuard";
 import {
   AdminPermissions,
@@ -30,16 +32,35 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
 
-function pillClass(s: TicketStatus) {
-  if (s === "Open") return "bg-[#1d2a3b] text-white border-[#2b3a52]";
-  if (s === "Pending") return "bg-[#2a2a1d] text-white border-[#3a3a2b]";
-  return "bg-[#202a2a] text-white border-[#2b3a3a]";
-}
+const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
 
 function showTicketId(v: string) {
   const s = String(v || "").trim();
   if (!s) return "-";
   return s.startsWith("#") ? s : `#${s}`;
+}
+
+function formatDateShort(iso?: string) {
+  if (!iso) return "-";
+  return String(iso).slice(0, 10);
+}
+
+function statusTone(status: TicketStatus) {
+  if (status === "Open") {
+    return "border-sky-400/20 bg-sky-500/15 text-sky-300";
+  }
+
+  if (status === "Pending") {
+    return "border-amber-400/20 bg-amber-500/15 text-amber-300";
+  }
+
+  return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
 }
 
 async function safeJson(res: Response) {
@@ -58,9 +79,8 @@ export default function AdminCustomerTicketsPage() {
   const [err, setErr] = React.useState("");
 
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
-  const [permissions, setPermissions] = React.useState<AdminPermissions | null>(
-    null
-  );
+  const [permissions, setPermissions] =
+    React.useState<AdminPermissions | null>(null);
 
   const canReply = hasPermission(role, permissions, "ticketReply");
   const canClose = hasPermission(role, permissions, "ticketClose");
@@ -90,9 +110,7 @@ export default function AdminCustomerTicketsPage() {
         if (!mounted) return;
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {
-        // ignore
-      }
+      } catch {}
     };
 
     loadAdminProfile();
@@ -129,134 +147,292 @@ export default function AdminCustomerTicketsPage() {
     loadTickets();
   }, [loadTickets]);
 
+  const stats = React.useMemo(() => {
+    const open = rows.filter((t) => t.status === "Open").length;
+    const pending = rows.filter((t) => t.status === "Pending").length;
+    const closed = rows.filter((t) => t.status === "Closed").length;
+
+    return {
+      total: rows.length,
+      open,
+      pending,
+      closed,
+    };
+  }, [rows]);
+
   return (
     <AdminPageGuard permission="ticketView">
-      <div className="mx-auto max-w-[1280px]">
-        <div className="mb-8 flex items-center justify-between gap-4 rounded-[12px] border border-[#1b2a40] bg-[#0f1a2b]/55 px-5 py-4">
-          <div>
-            <div className="text-[28px] font-semibold tracking-tight text-white">
-              Product Support Tickets
-            </div>
-            <div className="mt-1 text-sm text-[#9aa7c3]">
-              Manage customer product issues and replies
-            </div>
-          </div>
+      <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+        <div className="space-y-6">
+          <section
+            className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+          >
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                  Admin / Customer Tickets
+                </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center rounded-[10px] border border-[#1b2a40] bg-[#0b1220] px-3 py-2">
-              <span className="mr-2 text-[#9aa7c3]">🔎</span>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search"
-                className="w-[220px] bg-transparent text-sm text-white placeholder:text-[#7f8aa6] outline-none"
-              />
-            </div>
+                <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                  Product Support Tickets
+                </h1>
 
-            <button
-              onClick={loadTickets}
-              disabled={loading}
-              className="rounded-[10px] border border-[#1b2a40] bg-[#0b1220] px-4 py-2 text-sm text-white hover:bg-[#14233a] disabled:opacity-60"
-              title="Refresh tickets"
-            >
-              {loading ? "Refreshing…" : "⟳ Refresh"}
-            </button>
-
-            <div className="text-sm text-[#9aa7c3]">
-              {loading ? "Loading…" : `${rows.length} tickets`}
-            </div>
-          </div>
-        </div>
-
-        {err ? (
-          <div className="mb-5 rounded-[10px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {err}
-          </div>
-        ) : null}
-
-        <section className="overflow-hidden rounded-[12px] border border-[#1b2a40] bg-[#0f1a2b]/55">
-          <div className="overflow-x-auto">
-            <div className="min-w-[1380px] pb-4">
-              <div className="grid grid-cols-[140px_250px_240px_170px_150px_140px_120px] border-b border-[#1b2a40] px-6 py-4 text-[13px] font-medium text-white/90">
-                <div>Ticket ID</div>
-                <div>Customer</div>
-                <div>Product / Order</div>
-                <div>Issue Type</div>
-                <div>Submitted</div>
-                <div>Status</div>
-                <div className="text-right">Action</div>
+                <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                  Manage customer product issues, order support requests, admin
+                  replies, and ticket status from one premium admin workspace.
+                </p>
               </div>
 
-              {rows.map((t) => (
-                <div
-                  key={t.id}
-                  className="grid grid-cols-[140px_250px_240px_170px_150px_140px_120px] items-center border-b border-[#162338] px-6 py-5 last:border-0"
-                >
-                  <div className="whitespace-nowrap font-semibold text-white/95">
-                    {showTicketId(t.ticketId)}
-                  </div>
-
-                  <div className="min-w-0">
-                    <div className="truncate text-[#a9c1ff]">{t.customerName}</div>
-                    <div className="truncate text-sm text-[#8aa0c9]">
-                      ({t.customerEmail})
-                    </div>
-                  </div>
-
-                  <div className="min-w-0">
-                    <div className="truncate text-[#9bb2dd]">
-                      {t.productName || "-"}
-                    </div>
-                    <div className="mt-1 text-xs text-[#7f8aa6]">
-                      Order: {t.orderId || "-"}
-                    </div>
-                    <div className="mt-1 text-xs text-[#7f8aa6]">
-                      Size: {t.size || "-"} • Color: {t.color || "-"}
-                    </div>
-                  </div>
-
-                  <div className="whitespace-nowrap text-[#9bb2dd]">
-                    {t.issueType}
-                  </div>
-
-                  <div className="whitespace-nowrap text-[#9bb2dd]">
-                    {String(t.submittedAt).slice(0, 10)}
-                  </div>
-
-                  <Link href={`/admin/customer-tickets/${t.id}`}>
-                    <span
-                      className={`inline-flex min-w-[92px] justify-center rounded-[10px] border px-4 py-2 text-[13px] cursor-pointer hover:opacity-90 ${pillClass(
-                        t.status
-                      )}`}
-                    >
-                      {t.status}
-                    </span>
-                  </Link>
-
-                  <div className="text-right whitespace-nowrap">
-                    {canReply || canClose ? (
-                      <Link
-                        href={`/admin/customer-tickets/${t.id}`}
-                        className="text-[#9cc2ff] hover:text-white"
-                      >
-                        View Details
-                      </Link>
-                    ) : (
-                      <span className="text-[#7f8aa6]">No actions</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {!loading && rows.length === 0 && (
-                <div className="px-6 py-10 text-center text-[#9aa7c3]">
-                  No tickets found.
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={loadTickets}
+                disabled={loading}
+                className={primaryBtnClass}
+                title="Refresh tickets"
+              >
+                {loading ? "Refreshing..." : "Refresh"}
+              </button>
             </div>
-          </div>
-        </section>
+
+            <div className="mt-6 flex h-[48px] max-w-[520px] items-center rounded-full border border-white/10 bg-white/5 px-4">
+              <label htmlFor="ticket-search" className="sr-only">
+                Search ticket, customer, product
+              </label>
+              <input
+                id="ticket-search"
+                name="ticketSearch"
+                title="Search ticket, customer, product"
+                aria-label="Search ticket, customer, product"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search ticket, customer, product..."
+                className="w-full border-none bg-transparent text-[13px] text-white outline-none placeholder:text-[#7f879f]"
+              />
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Total Tickets"
+              value={String(stats.total)}
+              hint="Current result count"
+              iconSrc="/images/admin/tickets.png"
+            />
+            <StatCard
+              label="Open"
+              value={String(stats.open)}
+              hint="New support issues"
+              iconSrc="/images/admin/open.png"
+            />
+            <StatCard
+              label="Pending"
+              value={String(stats.pending)}
+              hint="Waiting for action"
+              iconSrc="/images/admin/pending.png"
+            />
+            <StatCard
+              label="Closed"
+              value={String(stats.closed)}
+              hint="Resolved tickets"
+              iconSrc="/images/admin/active.png"
+            />
+          </section>
+
+          {err ? (
+            <div className="rounded-[20px] border border-red-400/20 bg-red-500/10 px-5 py-4 text-[13px] text-red-200">
+              {err}
+            </div>
+          ) : null}
+
+          <section className={`${panelClass} overflow-hidden`}>
+            <div className="flex flex-col gap-3 border-b border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Ticket Queue
+                </div>
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  Customer Support Requests
+                </h2>
+                <p className="mt-1 text-[13px] text-[#a7aec4]">
+                  Ticket ID, customer, product, issue type, submission date and
+                  status.
+                </p>
+              </div>
+
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[12px] font-semibold text-[#d6c7ff]">
+                {loading ? "Loading..." : `${rows.length} tickets`}
+              </div>
+            </div>
+
+            {loading ? (
+              <TicketSkeleton />
+            ) : rows.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1180px] border-collapse text-[13px]">
+                  <thead>
+                    <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                      <th className="px-5 py-4 font-medium">Ticket ID</th>
+                      <th className="px-5 py-4 font-medium">Customer</th>
+                      <th className="px-5 py-4 font-medium">Product / Order</th>
+                      <th className="px-5 py-4 font-medium">Issue Type</th>
+                      <th className="px-5 py-4 font-medium">Submitted</th>
+                      <th className="px-5 py-4 font-medium">Status</th>
+                      <th className="px-5 py-4 text-right font-medium">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {rows.map((t) => (
+                      <tr
+                        key={t.id}
+                        className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                      >
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-white">
+                            {showTicketId(t.ticketId)}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-white">
+                            {t.customerName || "-"}
+                          </div>
+                          <div className="mt-1 max-w-[240px] truncate text-[12px] text-[#7f879f]">
+                            {t.customerEmail || "-"}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <div className="max-w-[260px] truncate font-medium text-white">
+                            {t.productName || "-"}
+                          </div>
+                          <div className="mt-1 text-[12px] text-[#7f879f]">
+                            Order: {t.orderId || "-"}
+                          </div>
+                          <div className="mt-1 text-[12px] text-[#7f879f]">
+                            Size: {t.size || "-"} • Color: {t.color || "-"}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4 text-[#a7aec4]">
+                          {t.issueType || "-"}
+                        </td>
+
+                        <td className="px-5 py-4 text-[#a7aec4]">
+                          {formatDateShort(t.submittedAt)}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <Link href={`/admin/customer-tickets/${t.id}`}>
+                            <span
+                              className={[
+                                "inline-flex cursor-pointer rounded-full border px-3 py-1 text-[11px] font-semibold transition hover:opacity-90",
+                                statusTone(t.status),
+                              ].join(" ")}
+                            >
+                              {t.status}
+                            </span>
+                          </Link>
+                        </td>
+
+                        <td className="px-5 py-4 text-right">
+                          {canReply || canClose ? (
+                            <Link
+                              href={`/admin/customer-tickets/${t.id}`}
+                              className={secondaryBtnClass}
+                            >
+                              View Details
+                            </Link>
+                          ) : (
+                            <span className="text-[12px] text-[#7f879f]">
+                              No actions
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <EmptyState />
+            )}
+          </section>
+        </div>
       </div>
     </AdminPageGuard>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  iconSrc,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  iconSrc: string;
+}) {
+  return (
+    <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+            {label}
+          </div>
+          <div className="mt-3 text-[26px] font-semibold tracking-[-0.03em] text-white">
+            {value}
+          </div>
+          {hint ? (
+            <div className="mt-2 text-[12px] text-[#7f879f]">{hint}</div>
+          ) : null}
+        </div>
+
+        <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5">
+          <Image src={iconSrc} alt={label} width={22} height={22} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TicketSkeleton() {
+  return (
+    <div className="space-y-3 p-5 sm:p-6">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="h-[72px] animate-pulse rounded-[18px] border border-white/5 bg-white/[0.03]"
+        />
+      ))}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/5">
+        <Image
+          src="/images/admin/ticket.png"
+          alt="Tickets"
+          width={26}
+          height={26}
+        />
+      </div>
+
+      <div className="mt-4 text-[18px] font-semibold text-white">
+        No tickets found
+      </div>
+
+      <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-7 text-[#a7aec4]">
+        Support tickets will appear here when customers submit product or order
+        issues, or when your search matches existing tickets.
+      </p>
+    </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import AdminPageGuard from "../../_components/AdminPageGuard";
 
 const API_BASE =
@@ -21,6 +22,16 @@ type DeliveryStaffRow = {
   failedOrdersCount?: number;
   createdAt?: string;
 };
+
+const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const softPanelClass =
+  "rounded-[20px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)]";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+const primaryBtnClass =
+  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
 
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
@@ -47,12 +58,12 @@ function StatusPill({
   children: React.ReactNode;
 }) {
   const tone = active
-    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-    : "border-red-500/30 bg-red-500/10 text-red-200";
+    ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
+    : "border-red-400/20 bg-red-500/15 text-red-300";
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
     >
       {children}
     </span>
@@ -62,20 +73,62 @@ function StatusPill({
 function StatCard({
   label,
   value,
-  hint,
+  helper,
+  iconSrc,
 }: {
   label: string;
   value: React.ReactNode;
-  hint?: string;
+  helper?: string;
+  iconSrc: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-        {label}
+    <div
+      className={`${softPanelClass} group p-5 transition duration-300 hover:-translate-y-1 hover:border-[#4a506b] hover:shadow-[0_24px_70px_rgba(0,0,0,0.38)]`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+            {label}
+          </div>
+
+          <div className="mt-3 text-[26px] font-semibold tracking-[-0.03em] text-white">
+            {value}
+          </div>
+
+          {helper ? (
+            <div className="mt-2 text-[12px] text-[#7f879f]">{helper}</div>
+          ) : null}
+        </div>
+
+        <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5 transition group-hover:bg-white/10">
+          <Image src={iconSrc} alt={label} width={22} height={22} />
+        </div>
       </div>
-      <div className="mt-2 text-2xl font-extrabold text-white">{value}</div>
-      {hint ? <div className="mt-1 text-sm text-slate-400">{hint}</div> : null}
     </div>
+  );
+}
+
+function Select({
+  value,
+  onChange,
+  label,
+  children,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <select
+      aria-label={label}
+      title={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-12 rounded-2xl border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] font-medium text-white outline-none transition focus:border-[#8b5cf6]/60"
+    >
+      {children}
+    </select>
   );
 }
 
@@ -207,221 +260,246 @@ export default function DeliveryStaffPage() {
 
   return (
     <AdminPageGuard permission="deliveryStaffView">
-      <div className="space-y-8">
-        <section className="overflow-hidden rounded-[32px] border border-slate-700/50 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_35%),linear-gradient(180deg,rgba(10,19,36,1),rgba(7,14,27,1))] p-6 shadow-[0_25px_100px_rgba(0,0,0,0.32)] md:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-5">
-            <div className="space-y-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Admin <span className="mx-2">/</span> Delivery Staff
+      <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+        <div className="space-y-6">
+          <section
+            className={`${panelClass} relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+          >
+            <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4] sm:text-[12px]">
+                  Admin / Delivery Staff
+                </div>
+
+                <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                  Delivery Staff
+                </h1>
+
+                <p className="mt-2 max-w-[620px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                  Create, search, monitor, and manage delivery riders from one
+                  premium control panel.
+                </p>
               </div>
 
-              <h1 className="text-3xl font-extrabold tracking-tight text-white md:text-4xl">
-                Delivery Staff
-              </h1>
+              <div className="flex w-full flex-col gap-3 xl:w-auto">
+                <div className="relative">
+                  <input
+                    aria-label="Search delivery staff"
+                    title="Search delivery staff"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search by name, email, phone"
+                    className="h-12 w-full rounded-2xl border border-[#26293a] bg-[#0d0f17] px-4 pr-12 text-[13px] font-medium text-white outline-none transition placeholder:text-[#7f879f] focus:border-[#8b5cf6]/60 xl:w-[340px]"
+                  />
+                </div>
 
-              <p className="text-sm text-slate-400">
-                Create and manage delivery riders from one place.
-              </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] xl:w-[520px]">
+                  <Select
+                    label="Filter delivery staff by status"
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                  >
+                    <option value="all">All Status</option>
+                    <option value="active">Active Only</option>
+                    <option value="inactive">Inactive Only</option>
+                  </Select>
+
+                  <Link
+                    href="/admin/delivery/staff/create"
+                    className={`${primaryBtnClass} h-12`}
+                  >
+                    + Add Delivery Man
+                  </Link>
+                </div>
+              </div>
             </div>
+          </section>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search by name, email, phone"
-                className="h-11 w-[280px] rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 text-sm text-slate-100 placeholder:text-slate-400 outline-none"
-              />
-
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="h-11 rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 text-sm text-slate-100 outline-none"
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active Only</option>
-                <option value="inactive">Inactive Only</option>
-              </select>
-
-              <Link
-                href="/admin/delivery/staff/create"
-                className="inline-flex h-11 items-center rounded-xl bg-sky-500 px-5 text-sm font-bold text-white transition hover:bg-sky-600"
-              >
-                + Add Delivery Man
-              </Link>
-            </div>
-          </div>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Total Staff"
               value={String(totalStaff)}
-              hint="All registered delivery riders"
+              helper="All registered riders"
+              iconSrc="/images/admin/customer.png"
             />
             <StatCard
               label="Active"
               value={String(activeStaff)}
-              hint="Available for assignment"
+              helper="Available for assignment"
+              iconSrc="/images/admin/active.png"
             />
             <StatCard
               label="Inactive"
               value={String(inactiveStaff)}
-              hint="Currently disabled"
+              helper="Currently disabled"
+              iconSrc="/images/admin/pending.png"
             />
             <StatCard
               label="Assigned Orders"
               value={String(assignedLoad)}
-              hint="Current rider workload"
+              helper="Current rider workload"
+              iconSrc="/images/admin/orders.png"
             />
-          </div>
-        </section>
+          </section>
 
-        {error ? (
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-            {error}
-          </div>
-        ) : null}
-
-        <section className="overflow-hidden rounded-3xl border border-slate-700/50 bg-[#0A1324] shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-          <div className="flex items-center justify-between border-b border-slate-700/40 px-6 py-5">
-            <div>
-              <h2 className="text-lg font-bold text-slate-100">
-                Delivery Riders
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Manage rider details, area, vehicle, and status
-              </p>
+          {error ? (
+            <div className="rounded-[20px] border border-red-400/20 bg-red-500/15 p-4 text-[13px] font-medium text-red-300">
+              {error}
             </div>
-          </div>
+          ) : null}
 
-          <div className="overflow-x-auto">
-            <table className="min-w-[1480px] w-full border-collapse">
-              <thead className="bg-slate-900/30">
-                <tr className="text-left text-sm font-semibold text-slate-200">
-                  <th className="px-6 py-4">Name</th>
-                  <th className="px-6 py-4">Contact</th>
-                  <th className="px-6 py-4">Vehicle</th>
-                  <th className="px-6 py-4">Area</th>
-                  <th className="px-6 py-4">Assigned</th>
-                  <th className="px-6 py-4">Delivered</th>
-                  <th className="px-6 py-4">Failed</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Created</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
+          <section className={`${panelClass} overflow-hidden`}>
+            <div className="flex flex-col gap-4 border-b border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Riders
+                </div>
 
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td
-                      colSpan={10}
-                      className="px-6 py-10 text-center text-sm text-slate-400"
-                    >
-                      Loading...
-                    </td>
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  Delivery Riders
+                </h2>
+
+                <p className="mt-1 text-[13px] text-[#a7aec4]">
+                  Manage rider details, delivery area, vehicle information, and
+                  account status.
+                </p>
+              </div>
+
+              <Link href="/admin/delivery" className={secondaryBtnClass}>
+                Delivery Orders
+              </Link>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1480px] border-collapse text-[13px]">
+                <thead>
+                  <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                    <th className="px-5 py-4 font-medium">Name</th>
+                    <th className="px-5 py-4 font-medium">Contact</th>
+                    <th className="px-5 py-4 font-medium">Vehicle</th>
+                    <th className="px-5 py-4 font-medium">Area</th>
+                    <th className="px-5 py-4 font-medium">Assigned</th>
+                    <th className="px-5 py-4 font-medium">Delivered</th>
+                    <th className="px-5 py-4 font-medium">Failed</th>
+                    <th className="px-5 py-4 font-medium">Status</th>
+                    <th className="px-5 py-4 font-medium">Created</th>
+                    <th className="px-5 py-4 text-right font-medium">
+                      Actions
+                    </th>
                   </tr>
-                ) : filteredRows.length ? (
-                  filteredRows.map((item) => (
-                    <tr
-                      key={item.id}
-                      className="border-t border-slate-700/40 text-sm text-slate-100 hover:bg-slate-900/20"
-                    >
-                      <td className="px-6 py-5">
-                        <div className="space-y-1">
-                          <div className="font-semibold text-slate-200">
-                            {item.name || "-"}
-                          </div>
-                          <div className="text-slate-400">{item.email || "-"}</div>
-                        </div>
-                      </td>
+                </thead>
 
-                      <td className="px-6 py-5 text-slate-300">
-                        {item.phone || "-"}
-                      </td>
-
-                      <td className="px-6 py-5">
-                        <div className="space-y-1">
-                          <div className="text-slate-200">
-                            {item.vehicleType || "-"}
-                          </div>
-                          <div className="text-slate-400">
-                            {item.vehicleNumber || "-"}
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-5 text-slate-300">
-                        {item.area || "-"}
-                      </td>
-
-                      <td className="px-6 py-5 text-slate-300">
-                        {Number(item.assignedOrdersCount || 0)}
-                      </td>
-
-                      <td className="px-6 py-5 text-slate-300">
-                        {Number(item.deliveredOrdersCount || 0)}
-                      </td>
-
-                      <td className="px-6 py-5 text-slate-300">
-                        {Number(item.failedOrdersCount || 0)}
-                      </td>
-
-                      <td className="px-6 py-5">
-                        <StatusPill active={item.isActive}>
-                          {item.isActive ? "Active" : "Inactive"}
-                        </StatusPill>
-                      </td>
-
-                      <td className="px-6 py-5 text-slate-400">
-                        {formatDateShort(item.createdAt)}
-                      </td>
-
-                      <td className="px-6 py-5 text-right">
-                        <div className="inline-flex items-center gap-3">
-                          <Link
-                            href={`/admin/delivery/staff/${item.id}`}
-                            className="font-semibold text-slate-200 hover:text-slate-100"
-                          >
-                            View
-                          </Link>
-
-                          <span className="text-slate-500">/</span>
-
-                          <Link
-                            href={`/admin/delivery/staff/${item.id}/edit`}
-                            className="font-semibold text-slate-200 hover:text-slate-100"
-                          >
-                            Edit
-                          </Link>
-
-                          <span className="text-slate-500">/</span>
-
-                          <button
-                            type="button"
-                            onClick={() => onDelete(item)}
-                            disabled={deletingId === item.id}
-                            className="font-semibold text-red-300 transition hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
-                          >
-                            {deletingId === item.id ? "Deleting..." : "Delete"}
-                          </button>
-                        </div>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td
+                        colSpan={10}
+                        className="px-6 py-12 text-center text-[13px] text-[#a7aec4]"
+                      >
+                        Loading delivery staff...
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={10}
-                      className="px-6 py-10 text-center text-sm text-slate-400"
-                    >
-                      No delivery staff found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                  ) : filteredRows.length ? (
+                    filteredRows.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                      >
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-white">
+                            {item.name || "-"}
+                          </div>
+                          <div className="mt-1 text-[12px] text-[#7f879f]">
+                            {item.email || "-"}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4 text-[#a7aec4]">
+                          {item.phone || "-"}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <div className="font-medium text-white">
+                            {item.vehicleType || "-"}
+                          </div>
+                          <div className="mt-1 text-[12px] text-[#7f879f]">
+                            {item.vehicleNumber || "-"}
+                          </div>
+                        </td>
+
+                        <td className="px-5 py-4 text-[#a7aec4]">
+                          {item.area || "-"}
+                        </td>
+
+                        <td className="px-5 py-4 font-semibold text-[#d6c7ff]">
+                          {Number(item.assignedOrdersCount || 0)}
+                        </td>
+
+                        <td className="px-5 py-4 font-semibold text-emerald-300">
+                          {Number(item.deliveredOrdersCount || 0)}
+                        </td>
+
+                        <td className="px-5 py-4 font-semibold text-red-300">
+                          {Number(item.failedOrdersCount || 0)}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <StatusPill active={item.isActive}>
+                            {item.isActive ? "Active" : "Inactive"}
+                          </StatusPill>
+                        </td>
+
+                        <td className="px-5 py-4 text-[#a7aec4]">
+                          {formatDateShort(item.createdAt)}
+                        </td>
+
+                        <td className="px-5 py-4 text-right">
+                          <div className="inline-flex items-center gap-3">
+                            <Link
+                              href={`/admin/delivery/staff/${item.id}`}
+                              className="font-semibold text-[#d6c7ff] transition hover:text-white"
+                            >
+                              View
+                            </Link>
+
+                            <span className="text-[#4a506b]">/</span>
+
+                            <Link
+                              href={`/admin/delivery/staff/${item.id}/edit`}
+                              className="font-semibold text-white transition hover:text-[#d6c7ff]"
+                            >
+                              Edit
+                            </Link>
+
+                            <span className="text-[#4a506b]">/</span>
+
+                            <button
+                              type="button"
+                              onClick={() => onDelete(item)}
+                              disabled={deletingId === item.id}
+                              className="font-semibold text-red-300 transition hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {deletingId === item.id ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={10}
+                        className="px-6 py-12 text-center text-[13px] text-[#a7aec4]"
+                      >
+                        No delivery staff found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       </div>
     </AdminPageGuard>
   );

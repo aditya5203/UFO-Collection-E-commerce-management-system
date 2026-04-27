@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import React from "react";
+import Image from "next/image";
 import {
   usePathname,
   useRouter,
@@ -76,58 +77,13 @@ type Address = {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
-function Badge({ text }: { text: string }) {
-  return (
-    <span className="inline-flex items-center rounded-xl border border-slate-700/60 bg-slate-900/35 px-3 py-1 text-xs font-semibold text-slate-100">
-      {text}
-    </span>
-  );
-}
-
-function TabButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "rounded-xl px-4 py-2 text-sm font-semibold transition",
-        active
-          ? "bg-slate-800/40 ring-1 ring-slate-700/60 text-slate-100"
-          : "text-slate-300 hover:bg-slate-800/25",
-      ].join(" ")}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
-
-function TableShell({
-  title,
-  right,
-  children,
-}: {
-  title: string;
-  right?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-slate-700/50 bg-[#0A1324]">
-      <div className="flex items-center justify-between px-6 py-4">
-        <h2 className="text-lg font-bold text-slate-100">{title}</h2>
-        {right ? <div className="text-sm text-slate-400">{right}</div> : null}
-      </div>
-      {children}
-    </div>
-  );
-}
+const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
 
 function formatDateShort(iso?: string) {
   if (!iso) return "-";
@@ -137,14 +93,6 @@ function formatDateShort(iso?: string) {
 function formatNPR(paisa: number) {
   const safe = Number.isFinite(paisa) ? paisa : 0;
   return `Rs. ${(safe / 100).toFixed(2)}`;
-}
-
-function Pill({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center justify-center rounded-xl border border-slate-700/60 bg-slate-900/35 px-4 py-2 text-xs font-semibold text-slate-100">
-      {children}
-    </span>
-  );
 }
 
 function nameFromAddress(a: Address) {
@@ -193,96 +141,6 @@ function latLngText(a: Address) {
 function getGoogleMapsUrl(a: Address) {
   if (!hasLatLng(a)) return "";
   return `https://www.google.com/maps?q=${a.lat},${a.lng}`;
-}
-
-function AddressCard({ a }: { a: Address }) {
-  const id = a._id || a.id || "";
-
-  return (
-    <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="text-sm font-bold text-slate-100">
-              {a.label || "Home"}
-            </div>
-
-            <span className="rounded-full border border-slate-700/60 bg-slate-800/40 px-2 py-0.5 text-[11px] font-semibold text-slate-200">
-              {a.type}
-            </span>
-
-            {a.isDefault ? (
-              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-200">
-                Default
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-1 text-xs text-slate-400">
-            {nameFromAddress(a)}
-          </div>
-
-          {a.phone ? (
-            <div className="mt-1 text-xs text-slate-400">{a.phone}</div>
-          ) : null}
-
-          {a.email ? (
-            <div className="mt-1 text-xs text-slate-500">{a.email}</div>
-          ) : null}
-        </div>
-
-        {id ? <div className="text-xs text-slate-500">ID: {id}</div> : null}
-      </div>
-
-      <div className="mt-4 text-sm leading-6 text-slate-200">
-        {addressLinePretty(a)}
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {a.cityOrMunicipality ? <Pill>{a.cityOrMunicipality}</Pill> : null}
-        {a.district ? <Pill>{a.district}</Pill> : null}
-        {a.provinceId ? (
-          <Pill>
-            {/^province/i.test(String(a.provinceId))
-              ? String(a.provinceId)
-              : `Province ${a.provinceId}`}
-          </Pill>
-        ) : null}
-        {hasLatLng(a) ? <Pill>Map Saved</Pill> : null}
-      </div>
-
-      <div className="mt-4 rounded-xl border border-slate-700/40 bg-slate-950/30 p-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-          Map Location
-        </div>
-        <div
-          className={`mt-1 text-xs ${
-            hasLatLng(a) ? "text-slate-200" : "text-slate-500"
-          }`}
-        >
-          {latLngText(a)}
-        </div>
-
-        {hasLatLng(a) ? (
-          <div className="mt-3">
-            <a
-              href={getGoogleMapsUrl(a)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-xs font-semibold text-blue-200 transition hover:bg-blue-500/15"
-            >
-              View on Google Maps
-            </a>
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-        <span>Created: {formatDateShort(a.createdAt)}</span>
-        <span>Updated: {formatDateShort(a.updatedAt)}</span>
-      </div>
-    </div>
-  );
 }
 
 async function safeJson(res: Response) {
@@ -350,11 +208,10 @@ export default function CustomerDetailsPage() {
         );
 
         if (!mounted) return;
+
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {
-        // ignore
-      }
+      } catch {}
     };
 
     loadAdminProfile();
@@ -509,20 +366,8 @@ export default function CustomerDetailsPage() {
   if (loading) {
     return (
       <AdminPageGuard permission="customerView">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-extrabold">Customer</h1>
-            <Link
-              href="/admin/customers"
-              className="rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900/55"
-            >
-              Back
-            </Link>
-          </div>
-
-          <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-6 text-slate-300">
-            Loading...
-          </div>
+        <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+          <CustomerSkeleton />
         </div>
       </AdminPageGuard>
     );
@@ -531,19 +376,15 @@ export default function CustomerDetailsPage() {
   if (!customer) {
     return (
       <AdminPageGuard permission="customerView">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-extrabold">Customer</h1>
-            <Link
-              href="/admin/customers"
-              className="rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900/55"
-            >
+        <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+          <div className="space-y-4">
+            <div className={`${panelClass} p-6 text-[13px] text-red-200`}>
+              {error || "Customer not found."}
+            </div>
+
+            <Link href="/admin/customers" className={secondaryBtnClass}>
               Back
             </Link>
-          </div>
-
-          <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-6 text-slate-300">
-            {error || "Customer not found."}
           </div>
         </div>
       </AdminPageGuard>
@@ -552,283 +393,544 @@ export default function CustomerDetailsPage() {
 
   return (
     <AdminPageGuard permission="customerView">
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-extrabold tracking-tight">
-              {customer.name || "-"}
-            </h1>
+      <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+        <div className="space-y-6">
+          <section
+            className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+          >
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                  Admin / Customers / Details
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <h1 className="text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                    {customer.name || "-"}
+                  </h1>
+
+                  <Badge text={customer.role || "customer"} />
+                </div>
+
+                <p className="mt-2 max-w-[680px] text-[13px] leading-7 text-[#a7aec4]">
+                  {customer.email || "-"}
+                </p>
+              </div>
+
+              <Link href="/admin/customers" className={secondaryBtnClass}>
+                Back
+              </Link>
+            </div>
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <StatCard
+              label="Created At"
+              value={formatDateShort(customer.createdAt)}
+              hint="Account creation date"
+              iconSrc="/images/admin/calendar.png"
+            />
+
+            <StatCard
+              label="Last Login"
+              value={formatDateShort(customer.lastLogin)}
+              hint="Last time user logged in"
+              iconSrc="/images/admin/clock.png"
+            />
+
+            <StatCard
+              label="Total Orders"
+              value={String(ordersCount)}
+              hint="Lifetime orders"
+              iconSrc="/images/admin/orders.png"
+            />
+          </section>
+
+          <section className={`${panelClass} p-3`}>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge text={customer.role || "customer"} />
-              <span className="text-sm text-slate-400">
-                {customer.email || "-"}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link
-              href="/admin/customers"
-              className="rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-900/55"
-            >
-              Back
-            </Link>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-700/50 bg-[#0A1324] p-3">
-          <TabButton
-            active={tab === "overview"}
-            onClick={() => setTab("overview")}
-          >
-            Overview
-          </TabButton>
-
-          {canViewOrders ? (
-            <TabButton active={tab === "orders"} onClick={() => setTab("orders")}>
-              Orders{" "}
-              <span className="ml-2 text-xs opacity-70">({ordersCount})</span>
-            </TabButton>
-          ) : null}
-
-          {canViewTickets ? (
-            <TabButton
-              active={tab === "tickets"}
-              onClick={() => setTab("tickets")}
-            >
-              Tickets{" "}
-              <span className="ml-2 text-xs opacity-70">({ticketsCount})</span>
-            </TabButton>
-          ) : null}
-
-          <TabButton
-            active={tab === "addresses"}
-            onClick={() => setTab("addresses")}
-          >
-            Addresses{" "}
-            <span className="ml-2 text-xs opacity-70">
-              ({tab === "addresses" ? addressesCount : "—"})
-            </span>
-          </TabButton>
-        </div>
-
-        {tab === "overview" && (
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Created At
-              </p>
-              <p className="mt-2 text-lg font-bold text-slate-100">
-                {formatDateShort(customer.createdAt)}
-              </p>
-              <p className="mt-1 text-sm text-slate-400">
-                Account creation date
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Last Login
-              </p>
-              <p className="mt-2 text-lg font-bold text-slate-100">
-                {formatDateShort(customer.lastLogin)}
-              </p>
-              <p className="mt-1 text-sm text-slate-400">
-                Last time user logged in
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-700/50 bg-[#0A1324] p-5">
-              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Total Orders
-              </p>
-              <p className="mt-2 text-lg font-bold text-slate-100">
-                {ordersCount}
-              </p>
-              <p className="mt-1 text-sm text-slate-400">Lifetime orders</p>
-            </div>
-          </div>
-        )}
-
-        {tab === "orders" && canViewOrders && (
-          <TableShell title="Orders" right={<span>{ordersCount} total</span>}>
-            {ordersError ? (
-              <div className="px-6 py-6">
-                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-                  {ordersError}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="overflow-x-auto">
-              <table className="min-w-[980px] w-full border-collapse">
-                <thead className="bg-slate-900/30">
-                  <tr className="text-left text-sm font-semibold text-slate-200">
-                    <th className="px-6 py-4">Order</th>
-                    <th className="px-6 py-4">Total</th>
-                    <th className="px-6 py-4">Payment</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Created</th>
-                    <th className="px-6 py-4 text-right">Action</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {ordersLoading ? (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-6 py-10 text-center text-sm text-slate-400"
-                      >
-                        Loading...
-                      </td>
-                    </tr>
-                  ) : orders.length ? (
-                    orders.map((o) => {
-                      const code = o.orderCode || o.id;
-                      const paisa = Number.isFinite(o.totalPaisa as number)
-                        ? (o.totalPaisa as number)
-                        : Math.round(Number(o.total || 0) * 100);
-
-                      return (
-                        <tr
-                          key={o.id}
-                          className="border-t border-slate-700/40 text-sm text-slate-100 hover:bg-slate-900/20"
-                        >
-                          <td className="px-6 py-5 font-semibold">{code}</td>
-                          <td className="px-6 py-5 text-slate-300">
-                            {formatNPR(paisa)}
-                          </td>
-                          <td className="px-6 py-5">
-                            <Pill>{o.paymentStatus}</Pill>
-                          </td>
-                          <td className="px-6 py-5">
-                            <Pill>{o.orderStatus}</Pill>
-                          </td>
-                          <td className="px-6 py-5 text-slate-400">
-                            {formatDateShort(o.createdAt)}
-                          </td>
-                          <td className="px-6 py-5 text-right">
-                            <Link
-                              href={`/admin/orders/${o.id}`}
-                              className="font-semibold text-slate-200 hover:text-slate-100"
-                            >
-                              View
-                            </Link>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-6 py-10 text-center text-sm text-slate-400"
-                      >
-                        No orders for this customer.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </TableShell>
-        )}
-
-        {tab === "tickets" && canViewTickets && (
-          <TableShell title="Customer Tickets" right={<span>0 total</span>}>
-            <div className="px-6 py-10 text-sm text-slate-400">
-              Tickets module not connected yet.
-            </div>
-          </TableShell>
-        )}
-
-        {tab === "addresses" && (
-          <TableShell
-            title="Addresses"
-            right={
-              <button
-                type="button"
-                onClick={() => customerId && loadAddresses(customerId)}
-                className="rounded-xl border border-slate-700/50 bg-slate-900/25 px-3 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-900/40"
-                disabled={addrLoading}
+              <TabButton
+                active={tab === "overview"}
+                onClick={() => setTab("overview")}
               >
-                {addrLoading ? "Refreshing..." : "Refresh"}
-              </button>
-            }
-          >
-            {addrError ? (
-              <div className="px-6 py-6">
-                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-                  {addrError}
-                </div>
-              </div>
-            ) : null}
+                Overview
+              </TabButton>
 
-            <div className="px-6 pb-6">
-              {addrLoading ? (
-                <div className="py-8 text-sm text-slate-400">
-                  Loading addresses...
-                </div>
-              ) : (
-                <div className="grid gap-6 lg:grid-cols-2">
-                  <div>
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-slate-100">
-                        Shipping
-                      </h3>
-                      <span className="text-xs text-slate-400">
-                        {shipping.length} saved
-                      </span>
-                    </div>
+              {canViewOrders ? (
+                <TabButton
+                  active={tab === "orders"}
+                  onClick={() => setTab("orders")}
+                >
+                  Orders <span className="ml-2 opacity-70">({ordersCount})</span>
+                </TabButton>
+              ) : null}
 
-                    {shipping.length ? (
-                      <div className="space-y-4">
-                        {shipping.map((a, index) => (
-                          <AddressCard
-                            key={a._id || a.id || `shipping-${index}`}
-                            a={a}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-slate-700/50 bg-slate-900/15 p-5 text-sm text-slate-400">
-                        No shipping addresses found.
-                      </div>
-                    )}
-                  </div>
+              {canViewTickets ? (
+                <TabButton
+                  active={tab === "tickets"}
+                  onClick={() => setTab("tickets")}
+                >
+                  Tickets <span className="ml-2 opacity-70">({ticketsCount})</span>
+                </TabButton>
+              ) : null}
 
-                  <div>
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="text-sm font-bold text-slate-100">
-                        Billing
-                      </h3>
-                      <span className="text-xs text-slate-400">
-                        {billing.length} saved
-                      </span>
-                    </div>
-
-                    {billing.length ? (
-                      <div className="space-y-4">
-                        {billing.map((a, index) => (
-                          <AddressCard
-                            key={a._id || a.id || `billing-${index}`}
-                            a={a}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-slate-700/50 bg-slate-900/15 p-5 text-sm text-slate-400">
-                        No billing addresses found.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
+              <TabButton
+                active={tab === "addresses"}
+                onClick={() => setTab("addresses")}
+              >
+                Addresses{" "}
+                <span className="ml-2 opacity-70">
+                  ({tab === "addresses" ? addressesCount : "—"})
+                </span>
+              </TabButton>
             </div>
-          </TableShell>
-        )}
+          </section>
+
+          {tab === "overview" ? (
+            <section className={`${panelClass} p-5 sm:p-6`}>
+              <div className="mb-5">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Overview
+                </div>
+
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  Customer Profile
+                </h2>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <InfoBlock label="Full Name" value={customer.name} />
+                <InfoBlock label="Email" value={customer.email} />
+                <InfoBlock label="Role" value={customer.role || "customer"} />
+                <InfoBlock
+                  label="Status"
+                  value={
+                    customer.isDeleted || customer.status === "deleted"
+                      ? "Deleted"
+                      : customer.isBlocked || customer.status === "blocked"
+                      ? "Blocked"
+                      : "Active"
+                  }
+                />
+                <InfoBlock
+                  label="Created At"
+                  value={formatDateShort(customer.createdAt)}
+                />
+                <InfoBlock
+                  label="Last Login"
+                  value={formatDateShort(customer.lastLogin)}
+                />
+              </div>
+            </section>
+          ) : null}
+
+          {tab === "orders" && canViewOrders ? (
+            <TableShell title="Orders" right={<span>{ordersCount} total</span>}>
+              {ordersError ? (
+                <div className="px-5 py-4">
+                  <div className="rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-[13px] text-red-200">
+                    {ordersError}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] border-collapse text-[13px]">
+                  <thead>
+                    <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                      <th className="px-5 py-4 font-medium">Order</th>
+                      <th className="px-5 py-4 font-medium">Total</th>
+                      <th className="px-5 py-4 font-medium">Payment</th>
+                      <th className="px-5 py-4 font-medium">Status</th>
+                      <th className="px-5 py-4 font-medium">Created</th>
+                      <th className="px-5 py-4 text-right font-medium">Action</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {ordersLoading ? (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-5 py-10 text-center text-[#a7aec4]"
+                        >
+                          Loading...
+                        </td>
+                      </tr>
+                    ) : orders.length ? (
+                      orders.map((o) => {
+                        const code = o.orderCode || o.id;
+                        const paisa = Number.isFinite(o.totalPaisa as number)
+                          ? (o.totalPaisa as number)
+                          : Math.round(Number(o.total || 0) * 100);
+
+                        return (
+                          <tr
+                            key={o.id}
+                            className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                          >
+                            <td className="px-5 py-4 font-semibold text-white">
+                              {code}
+                            </td>
+
+                            <td className="px-5 py-4 font-semibold text-[#d6c7ff]">
+                              {formatNPR(paisa)}
+                            </td>
+
+                            <td className="px-5 py-4">
+                              <Pill>{o.paymentStatus}</Pill>
+                            </td>
+
+                            <td className="px-5 py-4">
+                              <Pill>{o.orderStatus}</Pill>
+                            </td>
+
+                            <td className="px-5 py-4 text-[#a7aec4]">
+                              {formatDateShort(o.createdAt)}
+                            </td>
+
+                            <td className="px-5 py-4 text-right">
+                              <Link
+                                href={`/admin/orders/${o.id}`}
+                                className={actionBtnClass}
+                              >
+                                View
+                              </Link>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="px-5 py-10 text-center text-[#a7aec4]"
+                        >
+                          No orders for this customer.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </TableShell>
+          ) : null}
+
+          {tab === "tickets" && canViewTickets ? (
+            <TableShell title="Customer Tickets" right={<span>0 total</span>}>
+              <div className="px-5 py-10 text-[13px] text-[#a7aec4]">
+                Tickets module not connected yet.
+              </div>
+            </TableShell>
+          ) : null}
+
+          {tab === "addresses" ? (
+            <TableShell
+              title="Addresses"
+              right={
+                <button
+                  type="button"
+                  onClick={() => customerId && loadAddresses(customerId)}
+                  className={secondaryBtnClass}
+                  disabled={addrLoading}
+                >
+                  {addrLoading ? "Refreshing..." : "Refresh"}
+                </button>
+              }
+            >
+              {addrError ? (
+                <div className="px-5 py-4">
+                  <div className="rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-[13px] text-red-200">
+                    {addrError}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+                {addrLoading ? (
+                  <div className="py-8 text-[13px] text-[#a7aec4]">
+                    Loading addresses...
+                  </div>
+                ) : (
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    <AddressColumn title="Shipping" addresses={shipping} />
+                    <AddressColumn title="Billing" addresses={billing} />
+                  </div>
+                )}
+              </div>
+            </TableShell>
+          ) : null}
+        </div>
       </div>
     </AdminPageGuard>
+  );
+}
+
+const actionBtnClass =
+  "rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+
+function Badge({ text }: { text: string }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
+      {text}
+    </span>
+  );
+}
+
+function Pill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
+      {children}
+    </span>
+  );
+}
+
+function TabButton({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "rounded-full px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] transition",
+        active
+          ? "bg-white text-[#090a12]"
+          : "border border-white/10 bg-white/5 text-white hover:bg-white/10",
+      ].join(" ")}
+      type="button"
+    >
+      {children}
+    </button>
+  );
+}
+
+function TableShell({
+  title,
+  right,
+  children,
+}: {
+  title: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={`${panelClass} overflow-hidden`}>
+      <div className="flex flex-col gap-3 border-b border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+            Customer Data
+          </div>
+
+          <h2 className="mt-1 text-[20px] font-semibold text-white">{title}</h2>
+        </div>
+
+        {right ? <div>{right}</div> : null}
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  iconSrc,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  iconSrc: string;
+}) {
+  return (
+    <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+            {label}
+          </div>
+
+          <div className="mt-3 text-[20px] font-semibold tracking-[-0.03em] text-white">
+            {value}
+          </div>
+
+          {hint ? (
+            <div className="mt-2 text-[12px] text-[#7f879f]">{hint}</div>
+          ) : null}
+        </div>
+
+        <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5">
+          <Image src={iconSrc} alt={label} width={22} height={22} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoBlock({
+  label,
+  value,
+}: {
+  label: string;
+  value?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
+        {label}
+      </div>
+
+      <div className="mt-2 break-words text-[13px] font-medium text-white">
+        {value || "-"}
+      </div>
+    </div>
+  );
+}
+
+function AddressColumn({
+  title,
+  addresses,
+}: {
+  title: string;
+  addresses: Address[];
+}) {
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-[14px] font-semibold text-white">{title}</h3>
+
+        <span className="text-[12px] text-[#a7aec4]">
+          {addresses.length} saved
+        </span>
+      </div>
+
+      {addresses.length ? (
+        <div className="space-y-4">
+          {addresses.map((a, index) => (
+            <AddressCard key={a._id || a.id || `${title}-${index}`} a={a} />
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-5 text-[13px] text-[#a7aec4]">
+          No {title.toLowerCase()} addresses found.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddressCard({ a }: { a: Address }) {
+  const id = a._id || a.id || "";
+
+  return (
+    <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-[14px] font-semibold text-white">
+              {a.label || "Home"}
+            </div>
+
+            <Pill>{a.type}</Pill>
+
+            {a.isDefault ? (
+              <span className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300">
+                Default
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mt-2 text-[12px] text-[#a7aec4]">
+            {nameFromAddress(a)}
+          </div>
+
+          {a.phone ? (
+            <div className="mt-1 text-[12px] text-[#a7aec4]">{a.phone}</div>
+          ) : null}
+
+          {a.email ? (
+            <div className="mt-1 text-[12px] text-[#7f879f]">{a.email}</div>
+          ) : null}
+        </div>
+
+        {id ? <div className="text-[11px] text-[#7f879f]">ID: {id}</div> : null}
+      </div>
+
+      <div className="mt-4 text-[13px] leading-6 text-white">
+        {addressLinePretty(a)}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {a.cityOrMunicipality ? <Pill>{a.cityOrMunicipality}</Pill> : null}
+        {a.district ? <Pill>{a.district}</Pill> : null}
+
+        {a.provinceId ? (
+          <Pill>
+            {/^province/i.test(String(a.provinceId))
+              ? String(a.provinceId)
+              : `Province ${a.provinceId}`}
+          </Pill>
+        ) : null}
+
+        {hasLatLng(a) ? <Pill>Map Saved</Pill> : null}
+      </div>
+
+      <div className="mt-4 rounded-[16px] border border-white/10 bg-[#0d0f17] p-4">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
+          Map Location
+        </div>
+
+        <div
+          className={`mt-2 text-[12px] ${
+            hasLatLng(a) ? "text-white" : "text-[#7f879f]"
+          }`}
+        >
+          {latLngText(a)}
+        </div>
+
+        {hasLatLng(a) ? (
+          <a
+            href={getGoogleMapsUrl(a)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`${secondaryBtnClass} mt-4 inline-flex`}
+          >
+            View Map
+          </a>
+        ) : null}
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#7f879f]">
+        <span>Created: {formatDateShort(a.createdAt)}</span>
+        <span>Updated: {formatDateShort(a.updatedAt)}</span>
+      </div>
+    </div>
+  );
+}
+
+function CustomerSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className={`${panelClass} p-6`}>
+        <div className="h-3 w-40 animate-pulse rounded bg-white/5" />
+        <div className="mt-4 h-9 w-64 animate-pulse rounded bg-white/5" />
+        <div className="mt-3 h-4 w-80 animate-pulse rounded bg-white/5" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div
+            key={i}
+            className="h-[116px] animate-pulse rounded-[20px] border border-white/5 bg-white/[0.03]"
+          />
+        ))}
+      </div>
+    </div>
   );
 }

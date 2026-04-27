@@ -16,6 +16,14 @@ import {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
+const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+
 type PaymentStatus = "Paid" | "Pending" | "Failed";
 type OrderStatus =
   | "Pending"
@@ -67,10 +75,6 @@ function formatDate(d: any) {
   }
 }
 
-function safeStr(v: any) {
-  return typeof v === "string" ? v : v == null ? "" : String(v);
-}
-
 function formatDateTime(d: any) {
   if (!d) return "-";
   try {
@@ -86,14 +90,20 @@ function formatDateTime(d: any) {
   }
 }
 
+function safeStr(v: any) {
+  return typeof v === "string" ? v : v == null ? "" : String(v);
+}
+
 function getInitials(name?: string) {
   const safe = safeStr(name).trim();
   if (!safe) return "CU";
+
   const parts = safe.split(/\s+/).filter(Boolean);
   const initials = parts
     .slice(0, 2)
     .map((x) => x[0]?.toUpperCase())
     .join("");
+
   return initials || "CU";
 }
 
@@ -108,11 +118,11 @@ function getStatusTone(status?: string) {
     s === "picked up" ||
     s === "out for delivery"
   ) {
-    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+    return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
   }
 
   if (s === "pending" || s === "shipped" || s === "transit") {
-    return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+    return "border-amber-400/20 bg-amber-500/15 text-amber-300";
   }
 
   if (
@@ -122,91 +132,10 @@ function getStatusTone(status?: string) {
     s === "failed delivery" ||
     s === "returned"
   ) {
-    return "border-red-500/30 bg-red-500/10 text-red-200";
+    return "border-red-400/20 bg-red-500/15 text-red-300";
   }
 
-  return "border-slate-700/60 bg-slate-900/35 text-slate-100";
-}
-
-function StatusPill({ children }: { children: React.ReactNode }) {
-  const tone = getStatusTone(String(children));
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Dot({ status }: { status: TimelineStep["status"] }) {
-  const base =
-    "grid h-8 w-8 shrink-0 place-items-center rounded-full border text-sm font-bold shadow-sm";
-
-  if (status === "done") {
-    return (
-      <div
-        className={`${base} border-emerald-500/30 bg-emerald-500/10 text-emerald-200`}
-      >
-        ✓
-      </div>
-    );
-  }
-
-  if (status === "current") {
-    return (
-      <div
-        className={`${base} border-sky-500/40 bg-sky-500/10 text-sky-200`}
-      >
-        •
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`${base} border-slate-700/60 bg-slate-900/20 text-slate-600`}
-    >
-      •
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: React.ReactNode;
-  hint?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-        {label}
-      </div>
-      <div className="mt-2 text-lg font-bold text-slate-100">{value}</div>
-      {hint ? <div className="mt-1 text-sm text-slate-400">{hint}</div> : null}
-    </div>
-  );
-}
-
-function LineItem({
-  label,
-  value,
-  valueClassName = "text-slate-100",
-}: {
-  label: string;
-  value: React.ReactNode;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <span className="text-sm text-slate-400">{label}</span>
-      <span className={`text-right text-sm ${valueClassName}`}>{value}</span>
-    </div>
-  );
+  return "border-white/10 bg-white/5 text-[#a7aec4]";
 }
 
 function hasLatLng(addr: any) {
@@ -225,6 +154,7 @@ function getGoogleMapsUrl(addr: any) {
 
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -247,9 +177,8 @@ export default function OrderDetailsPage() {
     React.useState<OrderStatus>("Pending");
 
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
-  const [permissions, setPermissions] = React.useState<AdminPermissions | null>(
-    null
-  );
+  const [permissions, setPermissions] =
+    React.useState<AdminPermissions | null>(null);
 
   const [riders, setRiders] = React.useState<RiderRow[]>([]);
   const [ridersLoading, setRidersLoading] = React.useState(false);
@@ -278,17 +207,17 @@ export default function OrderDetailsPage() {
         const nextRole = (body?.profile?.role || "admin") as
           | "admin"
           | "superadmin";
+
         const nextPermissions = normalizeAdminPermissions(
           nextRole,
           body?.profile?.permissions
         );
 
         if (!mounted) return;
+
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {
-        // ignore
-      }
+      } catch {}
     };
 
     loadAdminProfile();
@@ -309,7 +238,9 @@ export default function OrderDetailsPage() {
         });
 
         const json = await safeJson(res);
-        const data = Array.isArray((json as any)?.data) ? (json as any).data : [];
+        const data = Array.isArray((json as any)?.data)
+          ? (json as any).data
+          : [];
 
         const normalized: RiderRow[] = data
           .map((item: any) => ({
@@ -359,10 +290,13 @@ export default function OrderDetailsPage() {
       }
 
       const nextOrder = (json as any).data;
+
       setOrder(nextOrder);
       setPaymentStatus((nextOrder?.paymentStatus || "Pending") as PaymentStatus);
       setOrderStatus((nextOrder?.orderStatus || "Pending") as OrderStatus);
-      setDeliveryManId(safeStr(nextOrder?.deliveryAssignment?.deliveryManId || ""));
+      setDeliveryManId(
+        safeStr(nextOrder?.deliveryAssignment?.deliveryManId || "")
+      );
       setDeliveryNote(safeStr(nextOrder?.deliveryAssignment?.note || ""));
       setDeliveryStatus(
         (nextOrder?.deliveryAssignment?.status ||
@@ -440,6 +374,7 @@ export default function OrderDetailsPage() {
       }
 
       const updated = (json as any)?.data;
+
       if (updated) {
         setOrder(updated);
         setPaymentStatus((updated.paymentStatus || "Pending") as PaymentStatus);
@@ -467,8 +402,12 @@ export default function OrderDetailsPage() {
   if (loading) {
     return (
       <AdminPageGuard permission="orderView">
-        <div className="rounded-3xl border border-slate-700/50 bg-[#0A1324] p-8 text-slate-300 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-          Loading...
+        <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+          <div className={`${panelClass} p-6`}>
+            <div className="h-3 w-36 animate-pulse rounded bg-white/5" />
+            <div className="mt-4 h-9 w-64 animate-pulse rounded bg-white/5" />
+            <div className="mt-4 h-4 w-full max-w-[680px] animate-pulse rounded bg-white/5" />
+          </div>
         </div>
       </AdminPageGuard>
     );
@@ -477,16 +416,16 @@ export default function OrderDetailsPage() {
   if (!order) {
     return (
       <AdminPageGuard permission="orderView">
-        <div className="space-y-4">
-          <div className="rounded-3xl border border-slate-700/50 bg-[#0A1324] p-8 text-slate-300 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-            {error || "Order not found"}
+        <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+          <div className="space-y-4">
+            <div className={`${panelClass} p-6 text-[14px] text-red-200`}>
+              {error || "Order not found"}
+            </div>
+
+            <Link href="/admin/orders" className={secondaryBtnClass}>
+              Back
+            </Link>
           </div>
-          <Link
-            href="/admin/orders"
-            className="inline-flex rounded-xl border border-slate-700/50 bg-slate-900/25 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-900/35"
-          >
-            Back
-          </Link>
         </div>
       </AdminPageGuard>
     );
@@ -503,8 +442,8 @@ export default function OrderDetailsPage() {
         orderStatus === "Shipped"
           ? "current"
           : orderStatus === "Transit" || orderStatus === "Delivered"
-            ? "done"
-            : "upcoming",
+          ? "done"
+          : "upcoming",
     },
     {
       label: "Order In Transit",
@@ -513,8 +452,8 @@ export default function OrderDetailsPage() {
         orderStatus === "Transit"
           ? "current"
           : orderStatus === "Delivered"
-            ? "done"
-            : "upcoming",
+          ? "done"
+          : "upcoming",
     },
     {
       label: "Order Delivered",
@@ -560,364 +499,357 @@ export default function OrderDetailsPage() {
 
   return (
     <AdminPageGuard permission="orderView">
-      <div className="max-w-7xl space-y-8">
-        <section className="overflow-hidden rounded-[32px] border border-slate-700/50 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_35%),linear-gradient(180deg,rgba(10,19,36,1),rgba(7,14,27,1))] p-6 shadow-[0_25px_100px_rgba(0,0,0,0.32)] md:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-5">
-            <div className="space-y-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Orders <span className="mx-2">/</span> {order.orderCode}
+      <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+        <div className="space-y-6">
+          <section
+            className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+          >
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                  Orders / {order.orderCode}
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <h1 className="text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                    {order.orderCode}
+                  </h1>
+
+                  <StatusPill>{paymentStatus}</StatusPill>
+                  <StatusPill>{orderStatus}</StatusPill>
+
+                  {order?.deliveryAssignment?.status ? (
+                    <StatusPill>{order.deliveryAssignment.status}</StatusPill>
+                  ) : null}
+                </div>
+
+                <p className="mt-2 max-w-[700px] text-[13px] leading-7 text-[#a7aec4]">
+                  Placed on {placedOn}
+                  {order?.paymentMethod ? (
+                    <>
+                      <span className="mx-2">•</span>
+                      <span>{safeStr(order.paymentMethod)}</span>
+                    </>
+                  ) : null}
+                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-extrabold tracking-tight text-white md:text-4xl">
-                  {order.orderCode}
-                </h1>
-                <StatusPill>{paymentStatus}</StatusPill>
-                <StatusPill>{orderStatus}</StatusPill>
-                {order?.deliveryAssignment?.status ? (
-                  <StatusPill>{order.deliveryAssignment.status}</StatusPill>
+                {customerId ? (
+                  <Link
+                    href={`/admin/customers/${customerId}?tab=addresses`}
+                    className={secondaryBtnClass}
+                  >
+                    Customer Addresses
+                  </Link>
                 ) : null}
-              </div>
 
-              <p className="text-sm text-slate-400">
-                Placed on {placedOn}
-                {order?.paymentMethod ? (
-                  <>
-                    <span className="mx-2">•</span>
-                    <span>{safeStr(order.paymentMethod)}</span>
-                  </>
-                ) : null}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {customerId ? (
-                <Link
-                  href={`/admin/customers/${customerId}?tab=addresses`}
-                  className="inline-flex rounded-xl border border-slate-700/50 bg-slate-900/25 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-900/35"
-                >
-                  View Customer Addresses
+                <Link href="/admin/orders" className={secondaryBtnClass}>
+                  Back
                 </Link>
-              ) : null}
-
-              <Link
-                href="/admin/orders"
-                className="inline-flex rounded-xl border border-slate-700/50 bg-slate-900/25 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-900/35"
-              >
-                Back
-              </Link>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div className="mt-8 grid gap-4 md:grid-cols-4">
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
               label="Customer"
               value={order.customer?.name || "-"}
               hint={order.customer?.email || "No email"}
+              iconSrc="/images/admin/customer.png"
             />
+
             <SummaryCard
               label="Items"
               value={String(items.length)}
               hint="Products in this order"
+              iconSrc="/images/admin/products.png"
             />
+
             <SummaryCard
               label="Total"
               value={formatNPR(totalPaisa)}
               hint="Final charged amount"
+              iconSrc="/images/admin/revenue.png"
             />
+
             <SummaryCard
               label="Order Date"
               value={formatDate(order.createdAt)}
               hint={formatDateTime(order.createdAt)}
+              iconSrc="/images/admin/calendar.png"
             />
-          </div>
-        </section>
+          </section>
 
-        <div className="grid gap-8 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
-          <div className="space-y-8">
-            <section className="overflow-hidden rounded-3xl border border-slate-700/50 bg-[#0A1324] shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-              <div className="flex items-center justify-between border-b border-slate-700/40 px-6 py-5">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-100">
-                    Ordered Items
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-400">
-                    Product, quantity, color, size, and pricing
-                  </p>
-                </div>
-              </div>
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
+            <div className="space-y-6">
+              <section className={`${panelClass} overflow-hidden`}>
+                <SectionHeader
+                  eyebrow="Order Items"
+                  title="Ordered Products"
+                  description="Product, quantity, color, size, and pricing"
+                />
 
-              <div className="overflow-x-auto">
-                <table className="min-w-[980px] w-full text-sm">
-                  <thead className="bg-slate-900/30 text-slate-200">
-                    <tr>
-                      <th className="px-6 py-4 text-left">Product</th>
-                      <th className="px-6 py-4 text-left">Size</th>
-                      <th className="px-6 py-4 text-left">Color</th>
-                      <th className="px-6 py-4 text-center">Qty</th>
-                      <th className="px-6 py-4 text-right">Price</th>
-                      <th className="px-6 py-4 text-right">Total</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {items.length ? (
-                      items.map((it: any, i: number) => {
-                        const colorValue = safeStr(it?.color);
-                        const colorLabel = safeStr(it?.colorLabel);
-                        const qty = Number(it?.qty || 0);
-                        const pricePaisa = Number(it?.pricePaisa || 0);
-                        const lineTotalPaisa = qty * pricePaisa;
-
-                        return (
-                          <tr
-                            key={i}
-                            className="border-t border-slate-700/40 text-slate-100 hover:bg-slate-900/15"
-                          >
-                            <td className="px-6 py-5">
-                              <div className="flex items-center gap-4">
-                                <div className="relative h-14 w-14 overflow-hidden rounded-2xl border border-slate-700/50 bg-slate-900/30">
-                                  {it?.image ? (
-                                    <Image
-                                      src={it.image}
-                                      alt={it?.name || "Product"}
-                                      fill
-                                      className="object-cover"
-                                    />
-                                  ) : (
-                                    <div className="grid h-full w-full place-items-center text-xs text-slate-500">
-                                      No image
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="min-w-0">
-                                  <div className="font-semibold text-slate-100">
-                                    {it?.name || "-"}
-                                  </div>
-                                  {it?.productId ? (
-                                    <div className="mt-1 text-xs text-slate-500">
-                                      Product ID: {it.productId}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className="px-6 py-5 text-slate-300">
-                              {safeStr(it?.size) || "-"}
-                            </td>
-
-                            <td className="px-6 py-5">
-                              {colorValue || colorLabel ? (
-                                <div className="flex items-center gap-2 text-slate-300">
-                                  <span
-                                    className="h-4 w-4 rounded-full border border-slate-600"
-                                    style={{
-                                      backgroundColor:
-                                        colorValue || "#16191f",
-                                    }}
-                                  />
-                                  <span>{colorLabel || colorValue}</span>
-                                </div>
-                              ) : (
-                                <span className="text-slate-300">-</span>
-                              )}
-                            </td>
-
-                            <td className="px-6 py-5 text-center text-slate-300">
-                              {qty || "-"}
-                            </td>
-
-                            <td className="px-6 py-5 text-right text-slate-300">
-                              {formatNPR(pricePaisa)}
-                            </td>
-
-                            <td className="px-6 py-5 text-right font-semibold text-slate-100">
-                              {formatNPR(lineTotalPaisa)}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr className="border-t border-slate-700/40">
-                        <td colSpan={6} className="px-6 py-10 text-slate-400">
-                          No items found.
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[980px] text-[13px]">
+                    <thead>
+                      <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                        <th className="px-5 py-4 font-medium">Product</th>
+                        <th className="px-5 py-4 font-medium">Size</th>
+                        <th className="px-5 py-4 font-medium">Color</th>
+                        <th className="px-5 py-4 text-center font-medium">
+                          Qty
+                        </th>
+                        <th className="px-5 py-4 text-right font-medium">
+                          Price
+                        </th>
+                        <th className="px-5 py-4 text-right font-medium">
+                          Total
+                        </th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                    </thead>
 
-            <section className="rounded-3xl border border-slate-700/50 bg-[#0A1324] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-              <div className="flex items-center justify-between gap-4">
+                    <tbody>
+                      {items.length ? (
+                        items.map((it: any, i: number) => {
+                          const colorValue = safeStr(it?.color);
+                          const colorLabel = safeStr(it?.colorLabel);
+                          const qty = Number(it?.qty || 0);
+                          const pricePaisa = Number(it?.pricePaisa || 0);
+                          const lineTotalPaisa = qty * pricePaisa;
+
+                          return (
+                            <tr
+                              key={i}
+                              className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                            >
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="relative h-14 w-14 overflow-hidden rounded-[18px] border border-white/10 bg-[#0d0f17]">
+                                    {it?.image ? (
+                                      <Image
+                                        src={it.image}
+                                        alt={it?.name || "Product"}
+                                        fill
+                                        sizes="56px"
+                                        className="object-cover"
+                                      />
+                                    ) : (
+                                      <div className="grid h-full w-full place-items-center text-[10px] text-[#7f879f]">
+                                        No image
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0">
+                                    <div className="line-clamp-1 font-semibold text-white">
+                                      {it?.name || "-"}
+                                    </div>
+
+                                    {it?.productId ? (
+                                      <div className="mt-1 text-[12px] text-[#7f879f]">
+                                        Product ID: {it.productId}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="px-5 py-4 text-[#a7aec4]">
+                                {safeStr(it?.size) || "-"}
+                              </td>
+
+                              <td className="px-5 py-4">
+                                {colorValue || colorLabel ? (
+                                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
+                                    {colorLabel || colorValue}
+                                  </span>
+                                ) : (
+                                  <span className="text-[#a7aec4]">-</span>
+                                )}
+                              </td>
+
+                              <td className="px-5 py-4 text-center text-[#a7aec4]">
+                                {qty || "-"}
+                              </td>
+
+                              <td className="px-5 py-4 text-right text-[#a7aec4]">
+                                {formatNPR(pricePaisa)}
+                              </td>
+
+                              <td className="px-5 py-4 text-right font-semibold text-[#d6c7ff]">
+                                {formatNPR(lineTotalPaisa)}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr className="border-t border-[#26293a]">
+                          <td
+                            colSpan={6}
+                            className="px-5 py-10 text-center text-[#a7aec4]"
+                          >
+                            No items found.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className={`${panelClass} p-5 sm:p-6`}>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-100">
+                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                    Lifecycle
+                  </div>
+
+                  <h2 className="mt-1 text-[20px] font-semibold text-white">
                     Order Timeline
                   </h2>
-                  <p className="mt-1 text-sm text-slate-400">
+
+                  <p className="mt-1 text-[13px] text-[#a7aec4]">
                     Current lifecycle status of this order
                   </p>
                 </div>
-              </div>
 
-              <div className="mt-6 space-y-5">
-                {timeline.map((t, index) => (
-                  <div key={t.label} className="flex gap-4">
-                    <div className="flex flex-col items-center">
-                      <Dot status={t.status} />
-                      {index !== timeline.length - 1 ? (
-                        <div className="mt-2 h-10 w-px bg-slate-700/50" />
-                      ) : null}
-                    </div>
+                <div className="mt-6 space-y-5">
+                  {timeline.map((t, index) => (
+                    <div key={t.label} className="flex gap-4">
+                      <div className="flex flex-col items-center">
+                        <TimelineDot status={t.status} />
 
-                    <div className="pt-1">
-                      <div className="text-sm font-semibold text-slate-100">
-                        {t.label}
+                        {index !== timeline.length - 1 ? (
+                          <div className="mt-2 h-10 w-px bg-[#26293a]" />
+                        ) : null}
                       </div>
-                      <div className="mt-1 text-xs text-slate-400">
-                        {t.date}
+
+                      <div className="pt-1">
+                        <div className="text-[14px] font-semibold text-white">
+                          {t.label}
+                        </div>
+
+                        <div className="mt-1 text-[12px] text-[#a7aec4]">
+                          {t.date}
+                        </div>
                       </div>
                     </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-6">
+              <InfoPanel title="Customer Details" eyebrow="Customer">
+                <div className="flex items-start gap-4">
+                  <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] border border-white/10 bg-white/5 text-[15px] font-bold text-white">
+                    {getInitials(order.customer?.name)}
                   </div>
-                ))}
-              </div>
-            </section>
-          </div>
 
-          <div className="space-y-8">
-            <section className="rounded-3xl border border-slate-700/50 bg-[#0A1324] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-              <div className="flex items-start gap-4">
-                <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-slate-700/60 bg-slate-900/30 text-base font-bold text-slate-100">
-                  {getInitials(order.customer?.name)}
-                </div>
-
-                <div className="min-w-0">
-                  <h2 className="text-lg font-bold text-slate-100">
-                    Customer Details
-                  </h2>
-                  <div className="mt-2 text-sm text-slate-100">
-                    {order.customer?.name || "-"}
-                  </div>
-                  <div className="mt-1 break-all text-sm text-slate-400">
-                    {order.customer?.email || "-"}
-                  </div>
-                  {order.customer?.phone ? (
-                    <div className="mt-1 text-sm text-slate-400">
-                      {order.customer.phone}
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-3xl border border-slate-700/50 bg-[#0A1324] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-100">
-                    {addrTitle}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-400">
-                    Delivery information attached to this order
-                  </p>
-                </div>
-
-                {customerId ? (
-                  <Link
-                    href={`/admin/customers/${customerId}?tab=addresses`}
-                    className="rounded-xl border border-slate-700/50 bg-slate-900/25 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-slate-900/35"
-                  >
-                    Open Customer
-                  </Link>
-                ) : null}
-              </div>
-
-              {!addr ? (
-                <div className="mt-5 rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5 text-sm text-slate-400">
-                  No shipping address found.
-                </div>
-              ) : (
-                <div className="mt-5 space-y-5">
-                  <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
-                    <div className="text-base font-semibold text-slate-100">
-                      {addrName || "-"}
+                  <div className="min-w-0">
+                    <div className="font-semibold text-white">
+                      {order.customer?.name || "-"}
                     </div>
 
-                    {addrPhone ? (
-                      <div className="mt-1 text-sm text-slate-400">
-                        {addrPhone}
+                    <div className="mt-1 break-all text-[13px] text-[#a7aec4]">
+                      {order.customer?.email || "-"}
+                    </div>
+
+                    {order.customer?.phone ? (
+                      <div className="mt-1 text-[13px] text-[#a7aec4]">
+                        {order.customer.phone}
                       </div>
                     ) : null}
-
-                    <div className="mt-4 space-y-2">
-                      <LineItem label="Street" value={addrStreet || "-"} />
-                      <LineItem label="Area" value={addrArea || "-"} />
-                      <LineItem label="City" value={addrCity || "-"} />
-                    </div>
                   </div>
+                </div>
+              </InfoPanel>
 
-                  <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Map Location
+              <InfoPanel title={addrTitle} eyebrow="Delivery Address">
+                {!addr ? (
+                  <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4 text-[13px] text-[#a7aec4]">
+                    No shipping address found.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+                      <div className="font-semibold text-white">
+                        {addrName || "-"}
+                      </div>
+
+                      {addrPhone ? (
+                        <div className="mt-1 text-[13px] text-[#a7aec4]">
+                          {addrPhone}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-4 space-y-3">
+                        <LineItem label="Street" value={addrStreet || "-"} />
+                        <LineItem label="Area" value={addrArea || "-"} />
+                        <LineItem label="City" value={addrCity || "-"} />
+                      </div>
                     </div>
 
-                    <div
-                      className={`mt-2 text-sm ${
-                        hasLatLng(addr) ? "text-slate-100" : "text-slate-500"
-                      }`}
-                    >
-                      {hasLatLng(addr)
-                        ? `${Number(addr.lat).toFixed(6)}, ${Number(addr.lng).toFixed(6)}`
-                        : "No map location saved in this order"}
-                    </div>
+                    <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
+                        Map Location
+                      </div>
 
-                    {hasLatLng(addr) ? (
-                      <div className="mt-4">
+                      <div
+                        className={`mt-2 text-[13px] ${
+                          hasLatLng(addr) ? "text-white" : "text-[#7f879f]"
+                        }`}
+                      >
+                        {hasLatLng(addr)
+                          ? `${Number(addr.lat).toFixed(6)}, ${Number(
+                              addr.lng
+                            ).toFixed(6)}`
+                          : "No map location saved in this order"}
+                      </div>
+
+                      {hasLatLng(addr) ? (
                         <a
                           href={getGoogleMapsUrl(addr)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center rounded-xl border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-xs font-semibold text-blue-200 transition hover:bg-blue-500/15"
+                          className={`${secondaryBtnClass} mt-4 inline-flex`}
                         >
-                          View on Google Maps
+                          View Map
                         </a>
-                      </div>
-                    ) : null}
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              )}
-            </section>
+                )}
+              </InfoPanel>
 
-            <section className="rounded-3xl border border-slate-700/50 bg-[#0A1324] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-              <h2 className="text-lg font-bold text-slate-100">
-                Delivery Assignment
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Assign rider and manage delivery flow for this order
-              </p>
-
-              <div className="mt-5 space-y-5">
-                <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
-                  <div className="space-y-2">
-                    <div className="text-sm font-semibold text-slate-100">
+              <InfoPanel title="Delivery Assignment" eyebrow="Rider">
+                <div className="space-y-5">
+                  <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+                    <div className="text-[13px] font-semibold text-white">
                       Current Rider
                     </div>
-                    <div className="text-sm text-slate-300">{assignedRiderName}</div>
-                    <div className="text-sm text-slate-400">
+
+                    <div className="mt-2 text-[13px] text-[#a7aec4]">
+                      {assignedRiderName}
+                    </div>
+
+                    <div className="mt-1 text-[13px] text-[#7f879f]">
                       {assignedRiderPhone || "-"}
                     </div>
-                    <div className="text-xs text-slate-500">
+
+                    <div className="mt-1 text-[12px] text-[#7f879f]">
                       {assignedRiderVehicle || "-"}
                     </div>
-                    <div className="pt-2">
+
+                    <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
                       <LineItem label="Assigned At" value={assignedAt} />
+
                       <LineItem
                         label="Delivery Status"
                         value={
                           order?.deliveryAssignment?.status ? (
-                            <StatusPill>{order.deliveryAssignment.status}</StatusPill>
+                            <StatusPill>
+                              {order.deliveryAssignment.status}
+                            </StatusPill>
                           ) : (
                             "-"
                           )
@@ -925,239 +857,389 @@ export default function OrderDetailsPage() {
                       />
                     </div>
                   </div>
-                </div>
 
-                <div>
-                  <label
-                    htmlFor="delivery-rider"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
-                  >
-                    Delivery Rider
-                  </label>
-                  <select
-                    id="delivery-rider"
-                    value={deliveryManId}
-                    onChange={(e) => setDeliveryManId(e.target.value)}
-                    disabled={!canUpdate || ridersLoading}
-                    className="w-full rounded-2xl border border-slate-700/50 bg-slate-900/25 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-500/60 focus:ring-4 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="" className="bg-[#0A1324]">
-                      {ridersLoading ? "Loading riders..." : "Select delivery rider"}
-                    </option>
-                    {riders.map((rider) => (
-                      <option
-                        key={rider.id}
-                        value={rider.id}
-                        className="bg-[#0A1324]"
-                      >
-                        {rider.name || "Unnamed"}{" "}
-                        {rider.area ? `- ${rider.area}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="delivery-status"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
-                  >
-                    Delivery Status
-                  </label>
-                  <select
-                    id="delivery-status"
-                    value={deliveryStatus}
-                    onChange={(e) =>
-                      setDeliveryStatus(e.target.value as DeliveryAssignmentStatus)
-                    }
-                    disabled={!canUpdate}
-                    className="w-full rounded-2xl border border-slate-700/50 bg-slate-900/25 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-500/60 focus:ring-4 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="Assigned" className="bg-[#0A1324]">
-                      Assigned
-                    </option>
-                    <option value="Picked Up" className="bg-[#0A1324]">
-                      Picked Up
-                    </option>
-                    <option value="Out for Delivery" className="bg-[#0A1324]">
-                      Out for Delivery
-                    </option>
-                    <option value="Delivered" className="bg-[#0A1324]">
-                      Delivered
-                    </option>
-                    <option value="Failed Delivery" className="bg-[#0A1324]">
-                      Failed Delivery
-                    </option>
-                    <option value="Returned" className="bg-[#0A1324]">
-                      Returned
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="delivery-note"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
-                  >
-                    Delivery Note
-                  </label>
-                  <textarea
-                    id="delivery-note"
-                    value={deliveryNote}
-                    onChange={(e) => setDeliveryNote(e.target.value)}
-                    disabled={!canUpdate}
-                    rows={4}
-                    placeholder="Call customer before arrival, gate instructions, landmark, etc."
-                    className="w-full rounded-2xl border border-slate-700/50 bg-slate-900/25 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none transition focus:border-sky-500/60 focus:ring-4 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  />
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-3xl border border-slate-700/50 bg-[#0A1324] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-              <h2 className="text-lg font-bold text-slate-100">
-                Payment & Totals
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Payment state and order amount breakdown
-              </p>
-
-              <div className="mt-5 space-y-3 rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
-                <LineItem
-                  label="Payment Method"
-                  value={safeStr(order?.paymentMethod) || "-"}
-                />
-                <LineItem
-                  label="Payment Reference"
-                  value={safeStr(order?.paymentRef) || "-"}
-                />
-                <LineItem label="Subtotal" value={formatNPR(subtotalPaisa)} />
-                <LineItem label="Shipping" value={formatNPR(shippingPaisa)} />
-                <LineItem
-                  label="Discount"
-                  value={`- ${formatNPR(discountPaisa)}`}
-                  valueClassName="text-emerald-300"
-                />
-                <div className="border-t border-slate-700/50 pt-3">
-                  <LineItem
-                    label="Total"
-                    value={formatNPR(totalPaisa)}
-                    valueClassName="text-base font-bold text-white"
-                  />
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-3xl border border-slate-700/50 bg-[#0A1324] p-6 shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-lg font-bold text-slate-100">
-                    Update Order
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-400">
-                    Change payment, fulfillment, and delivery assignment
-                  </p>
-                </div>
-
-                {canUpdate ? (
-                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-                    Editable
-                  </span>
-                ) : (
-                  <span className="rounded-full border border-slate-700/60 bg-slate-900/35 px-3 py-1 text-xs font-semibold text-slate-300">
-                    Read only
-                  </span>
-                )}
-              </div>
-
-              <div className="mt-5 space-y-5">
-                <div>
-                  <label
-                    htmlFor="order-payment-status"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
-                  >
-                    Payment Status
-                  </label>
-                  <select
-                    id="order-payment-status"
-                    value={paymentStatus}
-                    onChange={(e) =>
-                      setPaymentStatus(e.target.value as PaymentStatus)
-                    }
-                    disabled={!canUpdate}
-                    className="w-full rounded-2xl border border-slate-700/50 bg-slate-900/25 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-500/60 focus:ring-4 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="Paid" className="bg-[#0A1324]">
-                      Paid
-                    </option>
-                    <option value="Pending" className="bg-[#0A1324]">
-                      Pending
-                    </option>
-                    <option value="Failed" className="bg-[#0A1324]">
-                      Failed
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="order-status"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-400"
-                  >
-                    Order Status
-                  </label>
-                  <select
-                    id="order-status"
-                    value={orderStatus}
-                    onChange={(e) => setOrderStatus(e.target.value as OrderStatus)}
-                    disabled={!canUpdate}
-                    className="w-full rounded-2xl border border-slate-700/50 bg-slate-900/25 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-500/60 focus:ring-4 focus:ring-sky-500/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="Pending" className="bg-[#0A1324]">
-                      Pending
-                    </option>
-                    <option value="Shipped" className="bg-[#0A1324]">
-                      Shipped
-                    </option>
-                    <option value="Transit" className="bg-[#0A1324]">
-                      Transit
-                    </option>
-                    <option value="Delivered" className="bg-[#0A1324]">
-                      Delivered
-                    </option>
-                    <option value="Cancelled" className="bg-[#0A1324]">
-                      Cancelled
-                    </option>
-                  </select>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-700/50 pt-5">
-                  <Link
-                    href="/admin/orders"
-                    className="rounded-xl border border-slate-700/50 bg-slate-900/25 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-900/35"
-                  >
-                    Back
-                  </Link>
-
-                  {canUpdate ? (
-                    <button
-                      onClick={saveChanges}
-                      disabled={saving}
-                      className="rounded-xl bg-sky-500 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  <Field label="Delivery Rider" htmlFor="delivery-rider">
+                    <select
+                      id="delivery-rider"
+                      name="deliveryRider"
+                      title="Delivery rider"
+                      aria-label="Delivery rider"
+                      value={deliveryManId}
+                      onChange={(e) => setDeliveryManId(e.target.value)}
+                      disabled={!canUpdate || ridersLoading}
+                      className={inputClass}
                     >
-                      {saving ? "Saving..." : "Save Changes"}
-                    </button>
+                      <option value="" className="bg-[#11121a]">
+                        {ridersLoading
+                          ? "Loading riders..."
+                          : "Select delivery rider"}
+                      </option>
+
+                      {riders.map((rider) => (
+                        <option
+                          key={rider.id}
+                          value={rider.id}
+                          className="bg-[#11121a]"
+                        >
+                          {rider.name || "Unnamed"}{" "}
+                          {rider.area ? `- ${rider.area}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+
+                  <Field label="Delivery Status" htmlFor="delivery-status">
+                    <select
+                      id="delivery-status"
+                      name="deliveryStatus"
+                      title="Delivery status"
+                      aria-label="Delivery status"
+                      value={deliveryStatus}
+                      onChange={(e) =>
+                        setDeliveryStatus(
+                          e.target.value as DeliveryAssignmentStatus
+                        )
+                      }
+                      disabled={!canUpdate}
+                      className={inputClass}
+                    >
+                      <option value="Assigned" className="bg-[#11121a]">
+                        Assigned
+                      </option>
+                      <option value="Picked Up" className="bg-[#11121a]">
+                        Picked Up
+                      </option>
+                      <option value="Out for Delivery" className="bg-[#11121a]">
+                        Out for Delivery
+                      </option>
+                      <option value="Delivered" className="bg-[#11121a]">
+                        Delivered
+                      </option>
+                      <option value="Failed Delivery" className="bg-[#11121a]">
+                        Failed Delivery
+                      </option>
+                      <option value="Returned" className="bg-[#11121a]">
+                        Returned
+                      </option>
+                    </select>
+                  </Field>
+
+                  <Field label="Delivery Note" htmlFor="delivery-note">
+                    <textarea
+                      id="delivery-note"
+                      name="deliveryNote"
+                      title="Delivery note"
+                      aria-label="Delivery note"
+                      value={deliveryNote}
+                      onChange={(e) => setDeliveryNote(e.target.value)}
+                      disabled={!canUpdate}
+                      rows={4}
+                      placeholder="Call customer before arrival, gate instructions, landmark, etc."
+                      className={`${inputClass} min-h-[110px] resize-none py-3`}
+                    />
+                  </Field>
+                </div>
+              </InfoPanel>
+
+              <InfoPanel title="Payment & Totals" eyebrow="Billing">
+                <div className="space-y-3 rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+                  <LineItem
+                    label="Payment Method"
+                    value={safeStr(order?.paymentMethod) || "-"}
+                  />
+                  <LineItem
+                    label="Payment Reference"
+                    value={safeStr(order?.paymentRef) || "-"}
+                  />
+                  <LineItem label="Subtotal" value={formatNPR(subtotalPaisa)} />
+                  <LineItem label="Shipping" value={formatNPR(shippingPaisa)} />
+                  <LineItem
+                    label="Discount"
+                    value={`- ${formatNPR(discountPaisa)}`}
+                    valueClassName="text-emerald-300"
+                  />
+
+                  <div className="border-t border-white/10 pt-3">
+                    <LineItem
+                      label="Total"
+                      value={formatNPR(totalPaisa)}
+                      valueClassName="text-[16px] font-bold text-white"
+                    />
+                  </div>
+                </div>
+              </InfoPanel>
+
+              <InfoPanel title="Update Order" eyebrow="Management">
+                <div className="mb-5 flex justify-end">
+                  {canUpdate ? (
+                    <span className="rounded-full border border-emerald-400/20 bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300">
+                      Editable
+                    </span>
                   ) : (
-                    <div className="text-sm text-slate-400">
-                      Update permission required
-                    </div>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
+                      Read only
+                    </span>
                   )}
                 </div>
-              </div>
-            </section>
+
+                <div className="space-y-5">
+                  <Field label="Payment Status" htmlFor="order-payment-status">
+                    <select
+                      id="order-payment-status"
+                      name="orderPaymentStatus"
+                      title="Payment status"
+                      aria-label="Payment status"
+                      value={paymentStatus}
+                      onChange={(e) =>
+                        setPaymentStatus(e.target.value as PaymentStatus)
+                      }
+                      disabled={!canUpdate}
+                      className={inputClass}
+                    >
+                      <option value="Paid" className="bg-[#11121a]">
+                        Paid
+                      </option>
+                      <option value="Pending" className="bg-[#11121a]">
+                        Pending
+                      </option>
+                      <option value="Failed" className="bg-[#11121a]">
+                        Failed
+                      </option>
+                    </select>
+                  </Field>
+
+                  <Field label="Order Status" htmlFor="order-status">
+                    <select
+                      id="order-status"
+                      name="orderStatus"
+                      title="Order status"
+                      aria-label="Order status"
+                      value={orderStatus}
+                      onChange={(e) =>
+                        setOrderStatus(e.target.value as OrderStatus)
+                      }
+                      disabled={!canUpdate}
+                      className={inputClass}
+                    >
+                      <option value="Pending" className="bg-[#11121a]">
+                        Pending
+                      </option>
+                      <option value="Shipped" className="bg-[#11121a]">
+                        Shipped
+                      </option>
+                      <option value="Transit" className="bg-[#11121a]">
+                        Transit
+                      </option>
+                      <option value="Delivered" className="bg-[#11121a]">
+                        Delivered
+                      </option>
+                      <option value="Cancelled" className="bg-[#11121a]">
+                        Cancelled
+                      </option>
+                    </select>
+                  </Field>
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
+                    <Link href="/admin/orders" className={secondaryBtnClass}>
+                      Back
+                    </Link>
+
+                    {canUpdate ? (
+                      <button
+                        type="button"
+                        onClick={saveChanges}
+                        disabled={saving}
+                        className={primaryBtnClass}
+                      >
+                        {saving ? "Saving..." : "Save Changes"}
+                      </button>
+                    ) : (
+                      <div className="text-[13px] text-[#a7aec4]">
+                        Update permission required
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </InfoPanel>
+            </div>
           </div>
         </div>
       </div>
     </AdminPageGuard>
+  );
+}
+
+const inputClass =
+  "h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60";
+
+function StatusPill({ children }: { children: React.ReactNode }) {
+  const tone = getStatusTone(String(children));
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function TimelineDot({ status }: { status: TimelineStep["status"] }) {
+  const base =
+    "grid h-8 w-8 shrink-0 place-items-center rounded-full border text-[13px] font-bold shadow-sm";
+
+  if (status === "done") {
+    return (
+      <div
+        className={`${base} border-emerald-400/20 bg-emerald-500/15 text-emerald-300`}
+      >
+        ✓
+      </div>
+    );
+  }
+
+  if (status === "current") {
+    return (
+      <div
+        className={`${base} border-[#d6c7ff]/30 bg-[#d6c7ff]/15 text-[#d6c7ff]`}
+      >
+        •
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${base} border-white/10 bg-white/5 text-[#7f879f]`}>
+      •
+    </div>
+  );
+}
+
+function SummaryCard({
+  label,
+  value,
+  hint,
+  iconSrc,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  iconSrc: string;
+}) {
+  return (
+    <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+            {label}
+          </div>
+
+          <div className="mt-3 line-clamp-1 text-[20px] font-semibold tracking-[-0.03em] text-white">
+            {value}
+          </div>
+
+          {hint ? (
+            <div className="mt-2 line-clamp-1 text-[12px] text-[#7f879f]">
+              {hint}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/5">
+          <Image src={iconSrc} alt={label} width={22} height={22} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  description,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="border-b border-[#26293a] px-5 py-4 sm:px-6">
+      <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+        {eyebrow}
+      </div>
+
+      <h2 className="mt-1 text-[20px] font-semibold text-white">{title}</h2>
+
+      {description ? (
+        <p className="mt-1 text-[13px] text-[#a7aec4]">{description}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function InfoPanel({
+  eyebrow,
+  title,
+  children,
+}: {
+  eyebrow: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className={`${panelClass} p-5 sm:p-6`}>
+      <div className="mb-5">
+        <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+          {eyebrow}
+        </div>
+
+        <h2 className="mt-1 text-[20px] font-semibold text-white">{title}</h2>
+      </div>
+
+      {children}
+    </section>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={htmlFor}
+        className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a7aec4]"
+      >
+        {label}
+      </label>
+
+      {children}
+    </div>
+  );
+}
+
+function LineItem({
+  label,
+  value,
+  valueClassName = "text-white",
+}: {
+  label: string;
+  value: React.ReactNode;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <span className="text-[13px] text-[#a7aec4]">{label}</span>
+
+      <span className={`text-right text-[13px] ${valueClassName}`}>
+        {value}
+      </span>
+    </div>
   );
 }

@@ -1,4 +1,7 @@
+// client/app/admin/advertisement/page.tsx
 "use client";
+
+// Same API/logic, premium UI updated.
 
 import * as React from "react";
 import Image from "next/image";
@@ -36,16 +39,36 @@ type AdRow = {
   priority?: number;
 };
 
-function statusPill(s: AdStatus) {
-  if (s === "Active") return "bg-[#153225] text-[#b7f7d0] border-[#1f4b34]";
-  if (s === "Inactive") return "bg-[#1d2a3b] text-[#cfe6ff] border-[#2b3a52]";
-  if (s === "Scheduled") return "bg-[#2a2a1d] text-[#fff4c2] border-[#3a3a2b]";
-  return "bg-[#2a2020] text-[#ffd1d1] border-[#3a2b2b]";
+const API_BASE = (
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
+).replace(/\/+$/, "");
+
+const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+
+const totalIcon = "/images/admin/advertisement.png";
+const activeIcon = "/images/admin/active.png";
+const scheduledIcon = "/images/admin/clock.png";
+const expiredIcon = "/images/admin/pending.png";
+
+function statusTone(s: AdStatus) {
+  if (s === "Active")
+    return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+  if (s === "Inactive")
+    return "border-slate-400/20 bg-white/5 text-slate-300";
+  if (s === "Scheduled")
+    return "border-amber-400/20 bg-amber-500/15 text-amber-300";
+  return "border-red-400/20 bg-red-500/15 text-red-300";
 }
 
 function fmtDate(s: string) {
   const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return s;
+  if (Number.isNaN(d.getTime())) return s || "-";
   return d.toISOString().slice(0, 10);
 }
 
@@ -59,27 +82,19 @@ function toISODateInput(v: any) {
   return d.toISOString().slice(0, 10);
 }
 
-const API_BASE =
-  (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api").replace(
-    /\/+$/,
-    ""
-  );
-
 async function safeJson(res: Response) {
   const text = await res.text();
   try {
-    return JSON.parse(text);
+    return text ? JSON.parse(text) : {};
   } catch {
     return { raw: text };
   }
 }
 
 function firstMedia(ad: AdRow) {
-  const arr = Array.isArray(ad.mediaUrls)
-    ? ad.mediaUrls.filter(Boolean)
-    : [];
+  const arr = Array.isArray(ad.mediaUrls) ? ad.mediaUrls.filter(Boolean) : [];
   if (arr.length) return arr[0];
-  return ad.mediaUrl || "/images/placeholder.png";
+  return ad.mediaUrl || "/images/products/placeholder.png";
 }
 
 function SmartMedia({ ad }: { ad: AdRow }) {
@@ -94,7 +109,15 @@ function SmartMedia({ ad }: { ad: AdRow }) {
     return <img src={src} alt={ad.title} className="h-full w-full object-cover" />;
   }
 
-  return <Image src={src} alt={ad.title} fill className="object-cover" />;
+  return (
+    <Image
+      src={src}
+      alt={ad.title}
+      fill
+      sizes="480px"
+      className="object-cover"
+    />
+  );
 }
 
 function AdvertisementInner() {
@@ -159,13 +182,9 @@ function AdvertisementInner() {
         );
 
         if (mounted) {
-          setCanCreate(
-            hasPermission(role, permissions, "advertisementCreate")
-          );
+          setCanCreate(hasPermission(role, permissions, "advertisementCreate"));
           setCanEdit(hasPermission(role, permissions, "advertisementEdit"));
-          setCanDelete(
-            hasPermission(role, permissions, "advertisementDelete")
-          );
+          setCanDelete(hasPermission(role, permissions, "advertisementDelete"));
         }
       } catch {
         if (mounted) {
@@ -271,8 +290,14 @@ function AdvertisementInner() {
     () => ads.filter((x) => x.status === "Active").length,
     [ads]
   );
+
   const scheduledCount = React.useMemo(
     () => ads.filter((x) => x.status === "Scheduled").length,
+    [ads]
+  );
+
+  const expiredCount = React.useMemo(
+    () => ads.filter((x) => x.status === "Expired").length,
     [ads]
   );
 
@@ -288,8 +313,9 @@ function AdvertisementInner() {
 
       if (!formId) {
         if (isCarouselImages) {
-          if (!files.length && !file)
+          if (!files.length && !file) {
             return alert("Please select 1+ images for Carousel");
+          }
         } else {
           if (!file) return alert("Please select image/video file");
         }
@@ -331,7 +357,7 @@ function AdvertisementInner() {
       setOpenForm(false);
       resetForm();
       await fetchAds();
-      alert(isEdit ? "Advertisement updated ✅" : "Advertisement created ✅");
+      alert(isEdit ? "Advertisement updated" : "Advertisement created");
     } catch (e: any) {
       console.error(e);
       alert(e?.message || "Failed to save");
@@ -377,7 +403,7 @@ function AdvertisementInner() {
       if (!res.ok) throw new Error(json?.message || "Delete failed");
 
       await fetchAds();
-      alert("Deleted ✅");
+      alert("Deleted");
     } catch (e: any) {
       console.error(e);
       alert(e?.message || "Delete failed");
@@ -387,311 +413,307 @@ function AdvertisementInner() {
   const filtered = ads;
 
   return (
-    <div className="min-h-screen bg-[#0e1620] text-white">
-      <div className="mx-auto w-full max-w-[1200px] px-4 py-8">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Advertisement
-            </h1>
-            <p className="mt-1 text-sm text-white/60">
-              Connected to API + Cloudinary upload.
-            </p>
-          </div>
+    <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+      <div className="space-y-6">
+        <section
+          className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+        >
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                Admin / Advertisement
+              </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            {canCreate ? (
-              <button
-                onClick={openCreate}
-                className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#0e1620] shadow-sm hover:bg-white/90"
-              >
-                + Create Advertisement
-              </button>
-            ) : null}
+              <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                Advertisement
+              </h1>
 
-            <Link
-              href="/admin/advertisement/history"
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10"
-            >
-              View History
-            </Link>
-          </div>
-        </div>
+              <p className="mt-2 max-w-[760px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                Manage homepage banners, carousel ads, pop-ups, videos,
+                placement priority, audience targeting, and Cloudinary media
+                uploads.
+              </p>
+            </div>
 
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs text-white/60">Active Ads</div>
-            <div className="mt-2 text-2xl font-semibold">{activeCount}</div>
-            <div className="mt-1 text-xs text-white/50">
-              Currently visible to customers
+            <div className="flex flex-wrap gap-3">
+              {canCreate ? (
+                <button type="button" onClick={openCreate} className={primaryBtnClass}>
+                  Create Ad
+                </button>
+              ) : null}
+
+              <Link href="/admin/advertisement/history" className={secondaryBtnClass}>
+                View History
+              </Link>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs text-white/60">Scheduled</div>
-            <div className="mt-2 text-2xl font-semibold">{scheduledCount}</div>
-            <div className="mt-1 text-xs text-white/50">
-              Will go live on start date
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs text-white/60">Quick Tips</div>
-            <div className="mt-2 text-sm text-white/70">
-              Use <span className="text-white">priority</span> to decide which
-              banner appears first. Add a <span className="text-white">click URL</span> to send users to collection pages.
-              For <span className="text-white">Carousel</span>, upload 2–6 images.
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-1 items-center gap-3 rounded-xl border border-white/10 bg-[#111c28] px-3 py-2">
-              <span className="text-white/50">🔎</span>
+          <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(240px,1fr)_repeat(3,180px)]">
+            <div className="flex h-[48px] items-center rounded-full border border-white/10 bg-white/5 px-4">
+              <label htmlFor="ad-search" className="sr-only">
+                Search advertisements
+              </label>
               <input
+                id="ad-search"
+                name="adSearch"
+                title="Search advertisements"
+                aria-label="Search advertisements"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search by ad name"
-                className="w-full bg-transparent text-sm text-white placeholder:text-white/40 outline-none"
+                placeholder="Search by ad name..."
+                className="w-full border-none bg-transparent text-[13px] text-white outline-none placeholder:text-[#7f879f]"
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:w-[560px]">
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as any)}
-                className="w-full rounded-xl border border-white/10 bg-[#111c28] px-3 py-2 text-sm text-white outline-none"
-              >
-                <option value="All">All Types</option>
-                <option value="Banner">Banner</option>
-                <option value="Carousel">Carousel</option>
-                <option value="Pop-up">Pop-up</option>
-                <option value="Video">Video</option>
-              </select>
+            <Select
+              label="Filter by advertisement type"
+              value={type}
+              onChange={(v) => setType(v as any)}
+            >
+              <option value="All">All Types</option>
+              <option value="Banner">Banner</option>
+              <option value="Carousel">Carousel</option>
+              <option value="Pop-up">Pop-up</option>
+              <option value="Video">Video</option>
+            </Select>
 
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as any)}
-                className="w-full rounded-xl border border-white/10 bg-[#111c28] px-3 py-2 text-sm text-white outline-none"
-              >
-                <option value="All">All Status</option>
-                <option value="Active">Active</option>
-                <option value="Inactive">Inactive</option>
-                <option value="Scheduled">Scheduled</option>
-                <option value="Expired">Expired</option>
-              </select>
+            <Select
+              label="Filter by advertisement status"
+              value={status}
+              onChange={(v) => setStatus(v as any)}
+            >
+              <option value="All">All Status</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+              <option value="Scheduled">Scheduled</option>
+              <option value="Expired">Expired</option>
+            </Select>
 
-              <select
-                value={audience}
-                onChange={(e) => setAudience(e.target.value as any)}
-                className="w-full rounded-xl border border-white/10 bg-[#111c28] px-3 py-2 text-sm text-white outline-none"
-              >
-                <option value="All">All Audience</option>
-                <option value="All Customers">All Customers</option>
-                <option value="New Customers">New Customers</option>
-                <option value="Returning Customers">Returning Customers</option>
-              </select>
-            </div>
+            <Select
+              label="Filter by advertisement audience"
+              value={audience}
+              onChange={(v) => setAudience(v as any)}
+            >
+              <option value="All">All Audience</option>
+              <option value="All Customers">All Customers</option>
+              <option value="New Customers">New Customers</option>
+              <option value="Returning Customers">Returning Customers</option>
+            </Select>
           </div>
-        </div>
+        </section>
 
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-2xl border border-white/10 bg-white/5">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Total Ads"
+            value={String(ads.length)}
+            hint="Current result count"
+            iconSrc={totalIcon}
+          />
+          <StatCard
+            label="Active Ads"
+            value={String(activeCount)}
+            hint="Visible to customers"
+            iconSrc={activeIcon}
+          />
+          <StatCard
+            label="Scheduled"
+            value={String(scheduledCount)}
+            hint="Upcoming campaigns"
+            iconSrc={scheduledIcon}
+          />
+          <StatCard
+            label="Expired"
+            value={String(expiredCount)}
+            hint="Ended campaigns"
+            iconSrc={expiredIcon}
+          />
+        </section>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
+          <section className={`${panelClass} overflow-hidden`}>
+            <div className="flex flex-col gap-3 border-b border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <div>
-                <div className="text-sm font-semibold">Advertisements</div>
-                <div className="text-xs text-white/50">
-                  Click any row to preview & manage.
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Campaign List
                 </div>
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  Advertisements
+                </h2>
+                <p className="mt-1 text-[13px] text-[#a7aec4]">
+                  Click any row to preview and manage the campaign.
+                </p>
               </div>
-              <div className="text-xs text-white/50">
-                Showing <span className="text-white">{filtered.length}</span>
+
+              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[12px] font-semibold text-[#d6c7ff]">
+                {loading ? "Loading..." : `${filtered.length} showing`}
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left text-sm">
-                <thead className="text-xs text-white/60">
-                  <tr className="border-b border-white/10">
-                    <th className="px-4 py-3">Ad Title</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Start</th>
-                    <th className="px-4 py-3">End</th>
-                    <th className="px-4 py-3">Audience</th>
-                    <th className="px-4 py-3">Actions</th>
-                  </tr>
-                </thead>
-
-                <tbody className="text-white/80">
-                  {loading ? (
-                    <tr>
-                      <td
-                        colSpan={7}
-                        className="px-4 py-10 text-center text-white/60"
-                      >
-                        Loading…
-                      </td>
+            {loading ? (
+              <TableSkeleton />
+            ) : filtered.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] border-collapse text-[13px]">
+                  <thead>
+                    <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                      <th className="px-5 py-4 font-medium">Ad Title</th>
+                      <th className="px-5 py-4 font-medium">Type</th>
+                      <th className="px-5 py-4 font-medium">Status</th>
+                      <th className="px-5 py-4 font-medium">Start</th>
+                      <th className="px-5 py-4 font-medium">End</th>
+                      <th className="px-5 py-4 font-medium">Audience</th>
+                      <th className="px-5 py-4 text-right font-medium">Actions</th>
                     </tr>
-                  ) : (
-                    filtered.map((a) => {
+                  </thead>
+
+                  <tbody>
+                    {filtered.map((a) => {
                       const isSel = selected?.id === a.id;
+
                       return (
                         <tr
                           key={a.id}
                           onClick={() => setSelected(a)}
-                          className={`cursor-pointer border-b border-white/10 transition ${
-                            isSel ? "bg-white/10" : "hover:bg-white/5"
-                          }`}
+                          className={[
+                            "cursor-pointer border-t border-[#26293a] transition",
+                            isSel ? "bg-white/[0.06]" : "hover:bg-white/[0.03]",
+                          ].join(" ")}
                         >
-                          <td className="px-4 py-3 font-medium text-white">
-                            {a.title}
+                          <td className="px-5 py-4">
+                            <div className="font-semibold text-white">{a.title}</div>
+                            <div className="mt-1 text-[12px] text-[#7f879f]">
+                              {a.position || "No placement"} • Priority{" "}
+                              {a.priority ?? "-"}
+                            </div>
                           </td>
-                          <td className="px-4 py-3 text-white/70">{a.type}</td>
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center rounded-lg border px-3 py-1 text-xs font-semibold ${statusPill(
-                                a.status
-                              )}`}
-                            >
-                              {a.status}
-                            </span>
+
+                          <td className="px-5 py-4 text-[#a7aec4]">{a.type}</td>
+
+                          <td className="px-5 py-4">
+                            <StatusPill status={a.status} />
                           </td>
-                          <td className="px-4 py-3 text-white/70">
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
                             {fmtDate(a.startDate)}
                           </td>
-                          <td className="px-4 py-3 text-white/70">
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
                             {fmtDate(a.endDate)}
                           </td>
-                          <td className="px-4 py-3 text-white/70">
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
                             {a.audience}
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-3">
+
+                          <td className="px-5 py-4 text-right">
+                            <div className="inline-flex flex-wrap items-center justify-end gap-2">
                               {canEdit ? (
                                 <>
                                   <button
+                                    type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       openEdit(a);
                                     }}
-                                    className="text-xs font-semibold text-white hover:underline"
+                                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-white/10"
                                   >
                                     Edit
                                   </button>
-                                  <span className="text-white/30">|</span>
+
                                   <button
+                                    type="button"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       onToggle(a);
                                     }}
-                                    className="text-xs font-semibold text-white/70 hover:text-white hover:underline"
+                                    className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1.5 text-[11px] font-semibold text-blue-200 transition hover:bg-blue-500/15"
                                   >
-                                    {a.status === "Active"
-                                      ? "Deactivate"
-                                      : "Activate"}
+                                    {a.status === "Active" ? "Deactivate" : "Activate"}
                                   </button>
                                 </>
                               ) : (
-                                <span className="text-xs text-white/40">
+                                <span className="text-[12px] text-[#7f879f]">
                                   View only
                                 </span>
                               )}
 
                               {canDelete ? (
-                                <>
-                                  <span className="text-white/30">|</span>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      onDelete(a);
-                                    }}
-                                    className="text-xs font-semibold text-red-200 hover:text-red-100 hover:underline"
-                                  >
-                                    Delete
-                                  </button>
-                                </>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDelete(a);
+                                  }}
+                                  className="rounded-full border border-red-400/20 bg-red-500/10 px-3 py-1.5 text-[11px] font-semibold text-red-300 transition hover:bg-red-500/15"
+                                >
+                                  Delete
+                                </button>
                               ) : null}
                             </div>
                           </td>
                         </tr>
                       );
-                    })
-                  )}
-
-                  {!loading && filtered.length === 0 && (
-                    <tr>
-                      <td
-                        className="px-4 py-10 text-center text-white/60"
-                        colSpan={7}
-                      >
-                        No advertisements found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/5">
-            <div className="border-b border-white/10 px-4 py-3">
-              <div className="text-sm font-semibold">Preview</div>
-              <div className="text-xs text-white/50">
-                See how it will look on the site.
+                    })}
+                  </tbody>
+                </table>
               </div>
+            )}
+          </section>
+
+          <section className={`${panelClass} overflow-hidden`}>
+            <div className="border-b border-[#26293a] px-5 py-4">
+              <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                Preview
+              </div>
+              <h2 className="mt-1 text-[20px] font-semibold text-white">
+                Campaign Preview
+              </h2>
+              <p className="mt-1 text-[13px] text-[#a7aec4]">
+                See the selected advertisement media and details.
+              </p>
             </div>
 
-            <div className="p-4">
+            <div className="p-5">
               {!selected ? (
-                <div className="rounded-xl border border-white/10 bg-[#111c28] p-6 text-center text-sm text-white/60">
+                <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-8 text-center text-[13px] text-[#a7aec4]">
                   Select an advertisement to preview.
                 </div>
               ) : (
-                <>
+                <div className="space-y-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-base font-semibold">
+                      <div className="text-[18px] font-semibold text-white">
                         {selected.title}
                       </div>
-                      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-white/60">
-                        <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1">
-                          {selected.type}
-                        </span>
-                        <span
-                          className={`rounded-lg border px-2 py-1 font-semibold ${statusPill(
-                            selected.status
-                          )}`}
-                        >
-                          {selected.status}
-                        </span>
-                        <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1">
-                          {selected.audience}
-                        </span>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <MiniChip>{selected.type}</MiniChip>
+                        <StatusPill status={selected.status} />
+                        <MiniChip>{selected.audience}</MiniChip>
                       </div>
                     </div>
 
                     {canEdit ? (
                       <button
+                        type="button"
                         onClick={() => openEdit(selected)}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                        className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
                       >
                         Edit
                       </button>
                     ) : null}
                   </div>
 
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-[#111c28] p-3">
-                    <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl border border-white/10 bg-black/30">
+                  <div className="rounded-[20px] border border-white/10 bg-[#0d0f17] p-3">
+                    <div className="relative aspect-[16/9] w-full overflow-hidden rounded-[16px] border border-white/10 bg-black/30">
                       <SmartMedia ad={selected} />
                     </div>
 
-                    {selected.type === "Carousel" &&
-                    selected.mediaKind === "image" ? (
-                      <div className="mt-2 text-xs text-white/60">
+                    {selected.type === "Carousel" && selected.mediaKind === "image" ? (
+                      <div className="mt-3 text-[12px] text-[#a7aec4]">
                         Slides:{" "}
-                        <span className="text-white">
+                        <span className="font-semibold text-white">
                           {Array.isArray(selected.mediaUrls) &&
                           selected.mediaUrls.length
                             ? selected.mediaUrls.length
@@ -701,134 +723,136 @@ function AdvertisementInner() {
                         </span>
                       </div>
                     ) : null}
-
-                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-white/70">
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-white/50">Start → End</div>
-                        <div className="mt-1 text-white">
-                          {fmtDate(selected.startDate)} →{" "}
-                          {fmtDate(selected.endDate)}
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-white/50">Placement</div>
-                        <div className="mt-1 text-white">
-                          {selected.position ?? "-"}
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-white/50">Priority</div>
-                        <div className="mt-1 text-white">
-                          {selected.priority ?? "-"}
-                        </div>
-                      </div>
-                      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                        <div className="text-white/50">Click URL</div>
-                        <div className="mt-1 truncate text-white">
-                          {selected.clickUrl ?? "-"}
-                        </div>
-                      </div>
-                    </div>
                   </div>
-                </>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <InfoCard
+                      label="Start → End"
+                      value={`${fmtDate(selected.startDate)} → ${fmtDate(
+                        selected.endDate
+                      )}`}
+                    />
+                    <InfoCard label="Placement" value={selected.position ?? "-"} />
+                    <InfoCard label="Priority" value={selected.priority ?? "-"} />
+                    <InfoCard label="Click URL" value={selected.clickUrl ?? "-"} />
+                  </div>
+                </div>
               )}
             </div>
-          </div>
+          </section>
         </div>
 
         {openForm && (
           <div
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center"
+            className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"
             onClick={() => setOpenForm(false)}
           >
             <div
-              className="w-full max-w-[720px] rounded-2xl border border-white/10 bg-[#0e1620] shadow-xl"
+              className="flex max-h-[92vh] w-full max-w-[820px] flex-col overflow-hidden rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_30px_100px_rgba(0,0,0,0.55)]"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+              <div className="flex items-start justify-between gap-4 border-b border-[#26293a] px-5 py-4">
                 <div>
-                  <div className="text-sm font-semibold">
+                  <div className="text-[18px] font-semibold text-white">
                     {formId ? "Edit Advertisement" : "Create Advertisement"}
                   </div>
-                  <div className="text-xs text-white/50">
+                  <div className="mt-1 text-[13px] text-[#a7aec4]">
                     Connected to API + Cloudinary upload.
                   </div>
                 </div>
+
                 <button
+                  type="button"
                   onClick={() => setOpenForm(false)}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-white/80 hover:bg-white/10"
+                  className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[12px] font-semibold text-white transition hover:bg-white/10"
                 >
                   Close
                 </button>
               </div>
 
-              <div className="p-4">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/60">Ad Title</div>
+              <div className="flex-1 overflow-y-auto p-5">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Field label="Ad Title" htmlFor="ad-title">
                     <input
+                      id="ad-title"
+                      name="adTitle"
+                      title="Ad Title"
+                      aria-label="Ad Title"
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       placeholder="e.g. Dashain Offer"
-                      className="mt-2 w-full rounded-lg border border-white/10 bg-[#111c28] px-3 py-2 text-sm outline-none placeholder:text-white/30"
+                      className={inputClassName()}
                     />
-                  </div>
+                  </Field>
 
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/60">Type</div>
+                  <Field label="Type" htmlFor="ad-type">
                     <select
+                      id="ad-type"
+                      name="adType"
+                      title="Advertisement type"
+                      aria-label="Advertisement type"
                       value={adType}
                       onChange={(e) => setAdType(e.target.value as any)}
-                      className="mt-2 w-full rounded-lg border border-white/10 bg-[#111c28] px-3 py-2 text-sm outline-none"
+                      className={inputClassName()}
                     >
                       <option>Banner</option>
                       <option>Carousel</option>
                       <option>Pop-up</option>
                       <option>Video</option>
                     </select>
-                  </div>
+                  </Field>
 
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/60">Start Date</div>
+                  <Field label="Start Date" htmlFor="ad-start-date">
                     <input
+                      id="ad-start-date"
+                      name="adStartDate"
+                      title="Advertisement start date"
+                      aria-label="Advertisement start date"
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="mt-2 w-full rounded-lg border border-white/10 bg-[#111c28] px-3 py-2 text-sm outline-none"
+                      className={inputClassName()}
                     />
-                  </div>
+                  </Field>
 
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/60">End Date</div>
+                  <Field label="End Date" htmlFor="ad-end-date">
                     <input
+                      id="ad-end-date"
+                      name="adEndDate"
+                      title="Advertisement end date"
+                      aria-label="Advertisement end date"
                       type="date"
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
-                      className="mt-2 w-full rounded-lg border border-white/10 bg-[#111c28] px-3 py-2 text-sm outline-none"
+                      className={inputClassName()}
                     />
-                  </div>
+                  </Field>
 
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/60">Audience</div>
+                  <Field label="Audience" htmlFor="ad-audience">
                     <select
+                      id="ad-audience"
+                      name="adAudience"
+                      title="Advertisement audience"
+                      aria-label="Advertisement audience"
                       value={formAudience}
-                      onChange={(e) =>
-                        setFormAudience(e.target.value as any)
-                      }
-                      className="mt-2 w-full rounded-lg border border-white/10 bg-[#111c28] px-3 py-2 text-sm outline-none"
+                      onChange={(e) => setFormAudience(e.target.value as any)}
+                      className={inputClassName()}
                     >
                       <option>All Customers</option>
                       <option>New Customers</option>
                       <option>Returning Customers</option>
                     </select>
-                  </div>
+                  </Field>
 
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/60">Placement</div>
+                  <Field label="Placement" htmlFor="ad-placement">
                     <select
+                      id="ad-placement"
+                      name="adPlacement"
+                      title="Advertisement placement"
+                      aria-label="Advertisement placement"
                       value={position}
                       onChange={(e) => setPosition(e.target.value as any)}
-                      className="mt-2 w-full rounded-lg border border-white/10 bg-[#111c28] px-3 py-2 text-sm outline-none"
+                      className={inputClassName()}
                     >
                       <option>Home Top</option>
                       <option>Home Mid</option>
@@ -836,128 +860,134 @@ function AdvertisementInner() {
                       <option>Category Top</option>
                       <option>Product Page</option>
                     </select>
-                  </div>
+                  </Field>
 
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/60">Priority</div>
+                  <Field label="Priority" htmlFor="ad-priority">
                     <input
+                      id="ad-priority"
+                      name="adPriority"
+                      title="Advertisement priority"
+                      aria-label="Advertisement priority"
                       type="number"
                       value={priority}
                       onChange={(e) => setPriority(Number(e.target.value))}
                       min={1}
-                      className="mt-2 w-full rounded-lg border border-white/10 bg-[#111c28] px-3 py-2 text-sm outline-none"
+                      className={inputClassName()}
                     />
-                  </div>
+                  </Field>
 
-                  <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/60">Click URL</div>
+                  <Field label="Click URL" htmlFor="ad-click-url">
                     <input
+                      id="ad-click-url"
+                      name="adClickUrl"
+                      title="Advertisement click URL"
+                      aria-label="Advertisement click URL"
                       value={clickUrl}
                       onChange={(e) => setClickUrl(e.target.value)}
                       placeholder="/collection or https://..."
-                      className="mt-2 w-full rounded-lg border border-white/10 bg-[#111c28] px-3 py-2 text-sm outline-none placeholder:text-white/30"
+                      className={inputClassName()}
                     />
-                  </div>
+                  </Field>
 
-                  <div className="md:col-span-2 rounded-xl border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/60">
-                      Upload Media (Image/Video)
-                    </div>
+                  <div className="md:col-span-2">
+                    <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+                        Upload Media
+                      </div>
 
-                    <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
-                      <div className="rounded-lg border border-white/10 bg-[#111c28] p-3">
-                        <div className="text-xs text-white/50">Media Kind</div>
-                        <select
-                          value={mediaKind}
-                          onChange={(e) =>
-                            setMediaKind(e.target.value as any)
+                      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <Field label="Media Kind" htmlFor="ad-media-kind">
+                          <select
+                            id="ad-media-kind"
+                            name="adMediaKind"
+                            title="Advertisement media kind"
+                            aria-label="Advertisement media kind"
+                            value={mediaKind}
+                            onChange={(e) => setMediaKind(e.target.value as any)}
+                            className={inputClassName()}
+                          >
+                            <option value="image">image</option>
+                            <option value="video">video</option>
+                          </select>
+
+                          {adType === "Carousel" && mediaKind === "video" ? (
+                            <div className="mt-2 text-[12px] text-amber-300">
+                              Carousel + video is not recommended. Use Type=Video
+                              for video ads.
+                            </div>
+                          ) : null}
+                        </Field>
+
+                        <Field
+                          label={
+                            isCarouselImages
+                              ? "Choose Images (Multiple)"
+                              : "Choose File"
                           }
-                          className="mt-2 w-full rounded-lg border border-white/10 bg-[#0e1620] px-3 py-2 text-sm outline-none"
+                          htmlFor="ad-media-upload"
                         >
-                          <option value="image">image</option>
-                          <option value="video">video</option>
-                        </select>
-                        <div className="mt-2 text-xs text-white/40">
-                          If you choose video, upload mp4 (recommended).
-                        </div>
-                        {adType === "Carousel" && mediaKind === "video" ? (
-                          <div className="mt-2 text-xs text-yellow-200/80">
-                            Carousel + video is not recommended. Use Type=Video
-                            for video ads.
+                          <input
+                            id="ad-media-upload"
+                            name="adMediaUpload"
+                            title="Upload advertisement media"
+                            aria-label="Upload advertisement media"
+                            type="file"
+                            accept={isCarouselImages ? "image/*" : "image/*,video/*"}
+                            multiple={isCarouselImages}
+                            onChange={(e) => {
+                              const list = Array.from(e.target.files || []);
+                              if (isCarouselImages) {
+                                setFiles(list);
+                                setFile(null);
+                              } else {
+                                setFile(list[0] ?? null);
+                                setFiles([]);
+                              }
+                            }}
+                            className="block w-full text-[12px] text-[#a7aec4] file:mr-3 file:rounded-full file:border-0 file:bg-white file:px-4 file:py-2 file:text-[12px] file:font-semibold file:text-[#090a12] hover:file:bg-white/90"
+                          />
+
+                          <div className="mt-2 text-[12px] text-[#7f879f]">
+                            {formId
+                              ? "Optional: upload new file(s) to replace existing media."
+                              : isCarouselImages
+                              ? "Required: upload 1+ images for Carousel."
+                              : "Required: upload image/video before saving."}
                           </div>
-                        ) : null}
-                      </div>
 
-                      <div className="rounded-lg border border-white/10 bg-[#111c28] p-3">
-                        <div className="text-xs text-white/50">
-                          {isCarouselImages
-                            ? "Choose Images (Multiple)"
-                            : "Choose File"}
-                        </div>
-
-                        <input
-                          type="file"
-                          accept={
-                            isCarouselImages ? "image/*" : "image/*,video/*"
-                          }
-                          multiple={isCarouselImages}
-                          onChange={(e) => {
-                            const list = Array.from(e.target.files || []);
-                            if (isCarouselImages) {
-                              setFiles(list);
-                              setFile(null);
-                            } else {
-                              setFile(list[0] ?? null);
-                              setFiles([]);
-                            }
-                          }}
-                          className="mt-2 block w-full text-xs text-white/70 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-xs file:font-semibold file:text-[#0e1620] hover:file:bg-white/90"
-                        />
-
-                        <div className="mt-2 text-xs text-white/40">
-                          {formId
-                            ? "Optional: upload new file(s) to replace existing media."
-                            : isCarouselImages
-                            ? "Required: upload 1+ images for Carousel."
-                            : "Required: upload image/video before saving."}
-                        </div>
-
-                        {isCarouselImages && files.length ? (
-                          <div className="mt-2 text-xs text-white/70">
-                            Selected:{" "}
-                            <span className="text-white">{files.length}</span>{" "}
-                            images
-                          </div>
-                        ) : null}
+                          {isCarouselImages && files.length ? (
+                            <div className="mt-2 text-[12px] text-[#a7aec4]">
+                              Selected:{" "}
+                              <span className="font-semibold text-white">
+                                {files.length}
+                              </span>{" "}
+                              images
+                            </div>
+                          ) : null}
+                        </Field>
                       </div>
                     </div>
                   </div>
                 </div>
+              </div>
 
-                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                  <button
-                    onClick={() => setOpenForm(false)}
-                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 hover:bg-white/10"
-                    disabled={saving}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={onSave}
-                    disabled={saving}
-                    className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#0e1620] hover:bg-white/90 disabled:opacity-60"
-                  >
-                    {saving ? "Saving..." : "Save Advertisement"}
-                  </button>
-                </div>
+              <div className="flex flex-col gap-3 border-t border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setOpenForm(false)}
+                  className={secondaryBtnClass}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+
+                <button type="button" onClick={onSave} disabled={saving} className={primaryBtnClass}>
+                  {saving ? "Saving..." : "Save Advertisement"}
+                </button>
               </div>
             </div>
           </div>
         )}
-
-        <div className="mt-8 text-center text-xs text-white/40">
-          © {new Date().getFullYear()} UFO Collection • Admin
-        </div>
       </div>
     </div>
   );
@@ -968,5 +998,163 @@ export default function AdminAdvertisementPage() {
     <AdminPageGuard permission="advertisementView">
       <AdvertisementInner />
     </AdminPageGuard>
+  );
+}
+
+function Select({
+  value,
+  onChange,
+  children,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  children: React.ReactNode;
+  label: string;
+}) {
+  const id = React.useId();
+
+  return (
+    <div>
+      <label htmlFor={id} className="sr-only">
+        {label}
+      </label>
+
+      <select
+        id={id}
+        name={id}
+        title={label}
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-[48px] rounded-full border border-white/10 bg-white/5 px-4 text-[13px] text-white outline-none transition focus:border-[#d6c7ff]"
+      >
+        {children}
+      </select>
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: AdStatus }) {
+  return (
+    <span
+      className={[
+        "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold",
+        statusTone(status),
+      ].join(" ")}
+    >
+      {status}
+    </span>
+  );
+}
+
+function MiniChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
+      {children}
+    </span>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  iconSrc,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  iconSrc: string;
+}) {
+  return (
+    <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+            {label}
+          </div>
+          <div className="mt-3 text-[26px] font-semibold tracking-[-0.03em] text-white">
+            {value}
+          </div>
+          {hint ? <div className="mt-2 text-[12px] text-[#7f879f]">{hint}</div> : null}
+        </div>
+
+        <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5">
+          <Image src={iconSrc} alt={label} width={24} height={24} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoCard({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+      <div className="text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+        {label}
+      </div>
+      <div className="mt-2 truncate text-[13px] font-medium text-white">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="block rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+      <label
+        htmlFor={htmlFor}
+        className="mb-2 block text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]"
+      >
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function inputClassName() {
+  return "h-[44px] w-full rounded-full border border-white/10 bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]";
+}
+
+function TableSkeleton() {
+  return (
+    <div className="space-y-3 p-5 sm:p-6">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className="h-[72px] animate-pulse rounded-[18px] border border-white/5 bg-white/[0.03]"
+        />
+      ))}
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/5">
+        <Image src={totalIcon} alt="Advertisements" width={28} height={28} />
+      </div>
+
+      <div className="mt-4 text-[18px] font-semibold text-white">
+        No advertisements found
+      </div>
+
+      <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-7 text-[#a7aec4]">
+        Advertisements will appear here when you create campaigns or when your
+        filters match existing ads.
+      </p>
+    </div>
   );
 }

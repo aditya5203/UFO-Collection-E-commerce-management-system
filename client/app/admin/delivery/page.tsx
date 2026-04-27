@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import AdminPageGuard from "../_components/AdminPageGuard";
 import {
   AdminPermissions,
@@ -61,6 +62,14 @@ type RiderOption = {
   name: string;
 };
 
+const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const softPanelClass =
+  "rounded-[20px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)]";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+
 function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
@@ -90,18 +99,18 @@ function getStatusTone(status?: string) {
   const s = safeStr(status).toLowerCase();
 
   if (s === "assigned" || s === "picked up" || s === "out for delivery") {
-    return "border-sky-500/30 bg-sky-500/10 text-sky-200";
+    return "border-blue-400/20 bg-blue-500/15 text-blue-300";
   }
 
   if (s === "delivered") {
-    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+    return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
   }
 
   if (s === "failed delivery" || s === "returned") {
-    return "border-red-500/30 bg-red-500/10 text-red-200";
+    return "border-red-400/20 bg-red-500/15 text-red-300";
   }
 
-  return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+  return "border-amber-400/20 bg-amber-500/15 text-amber-300";
 }
 
 function StatusPill({ children }: { children: React.ReactNode }) {
@@ -109,7 +118,7 @@ function StatusPill({ children }: { children: React.ReactNode }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
     >
       {children}
     </span>
@@ -119,19 +128,37 @@ function StatusPill({ children }: { children: React.ReactNode }) {
 function StatCard({
   label,
   value,
-  hint,
+  helper,
+  iconSrc,
 }: {
   label: string;
   value: React.ReactNode;
-  hint?: string;
+  helper?: string;
+  iconSrc: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-700/50 bg-slate-900/20 p-5">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-        {label}
+    <div
+      className={`${softPanelClass} group p-5 transition duration-300 hover:-translate-y-1 hover:border-[#4a506b] hover:shadow-[0_24px_70px_rgba(0,0,0,0.38)]`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+            {label}
+          </div>
+
+          <div className="mt-3 text-[26px] font-semibold tracking-[-0.03em] text-white">
+            {value}
+          </div>
+
+          {helper ? (
+            <div className="mt-2 text-[12px] text-[#7f879f]">{helper}</div>
+          ) : null}
+        </div>
+
+        <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5 transition group-hover:bg-white/10">
+          <Image src={iconSrc} alt={label} width={22} height={22} />
+        </div>
       </div>
-      <div className="mt-2 text-2xl font-extrabold text-white">{value}</div>
-      {hint ? <div className="mt-1 text-sm text-slate-400">{hint}</div> : null}
     </div>
   );
 }
@@ -139,17 +166,21 @@ function StatCard({
 function Select({
   value,
   onChange,
+  label,
   children,
 }: {
   value: string;
   onChange: (value: string) => void;
+  label: string;
   children: React.ReactNode;
 }) {
   return (
     <select
+      aria-label={label}
+      title={label}
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="h-11 rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 text-sm text-slate-100 outline-none"
+      className="h-12 rounded-2xl border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] font-medium text-white outline-none transition focus:border-[#8b5cf6]/60"
     >
       {children}
     </select>
@@ -199,6 +230,7 @@ export default function AdminDeliveryPage() {
         const nextRole = (body?.profile?.role || "admin") as
           | "admin"
           | "superadmin";
+
         const nextPermissions = normalizeAdminPermissions(
           nextRole,
           body?.profile?.permissions
@@ -348,269 +380,306 @@ export default function AdminDeliveryPage() {
 
   return (
     <AdminPageGuard permission="deliveryView">
-      <div className="space-y-8">
-        <section className="overflow-hidden rounded-[32px] border border-slate-700/50 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_35%),linear-gradient(180deg,rgba(10,19,36,1),rgba(7,14,27,1))] p-6 shadow-[0_25px_100px_rgba(0,0,0,0.32)] md:p-8">
-          <div className="flex flex-wrap items-start justify-between gap-5">
-            <div className="space-y-3">
-              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
-                Admin <span className="mx-2">/</span> Delivery
-              </div>
+      <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+        <div className="space-y-6">
+          <section
+            className={`${panelClass} relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+          >
+            <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4] sm:text-[12px]">
+                  Admin / Delivery
+                </div>
 
-              <div className="flex flex-wrap items-center gap-3">
-                <h1 className="text-3xl font-extrabold tracking-tight text-white md:text-4xl">
+                <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
                   Delivery Management
                 </h1>
+
+                <p className="mt-2 max-w-[620px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                  View assigned orders, track rider status, and manage delivery
+                  flow from one premium control panel.
+                </p>
               </div>
 
-              <p className="text-sm text-slate-400">
-                View assigned orders and manage delivery flow from one place.
-              </p>
+              <div className="flex w-full flex-col gap-3 xl:w-auto">
+                <div className="relative">
+                  <input
+                    aria-label="Search delivery orders"
+                    title="Search delivery orders"
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search order, customer, rider"
+                    className="h-12 w-full rounded-2xl border border-[#26293a] bg-[#0d0f17] px-4 pr-12 text-[13px] font-medium text-white outline-none transition placeholder:text-[#7f879f] focus:border-[#8b5cf6]/60 xl:w-[340px]"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:w-[620px]">
+                  <Select
+                    label="Filter delivery orders by status"
+                    value={statusFilter}
+                    onChange={setStatusFilter}
+                  >
+                    <option value="all">All Status</option>
+                    <option value="Assigned">Assigned</option>
+                    <option value="Picked Up">Picked Up</option>
+                    <option value="Out for Delivery">Out for Delivery</option>
+                    <option value="Delivered">Delivered</option>
+                    <option value="Failed Delivery">Failed Delivery</option>
+                    <option value="Returned">Returned</option>
+                  </Select>
+
+                  <Select
+                    label="Filter delivery orders by rider"
+                    value={riderFilter}
+                    onChange={setRiderFilter}
+                  >
+                    <option value="all">All Riders</option>
+                    {riderOptions.map((rider) => (
+                      <option key={rider.id} value={rider.id}>
+                        {rider.name}
+                      </option>
+                    ))}
+                  </Select>
+
+                  <Select
+                    label="Filter delivery orders by date"
+                    value={dateFilter}
+                    onChange={setDateFilter}
+                  >
+                    <option value="all">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="7days">Last 7 Days</option>
+                    <option value="30days">Last 30 Days</option>
+                  </Select>
+                </div>
+              </div>
             </div>
+          </section>
 
-            <div className="flex flex-wrap gap-3">
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search order, customer, rider"
-                className="h-11 w-[280px] rounded-xl border border-slate-700/50 bg-slate-900/35 px-4 text-sm text-slate-100 placeholder:text-slate-400 outline-none"
-              />
-
-              <Select value={statusFilter} onChange={setStatusFilter}>
-                <option value="all">All Status</option>
-                <option value="Assigned">Assigned</option>
-                <option value="Picked Up">Picked Up</option>
-                <option value="Out for Delivery">Out for Delivery</option>
-                <option value="Delivered">Delivered</option>
-                <option value="Failed Delivery">Failed Delivery</option>
-                <option value="Returned">Returned</option>
-              </Select>
-
-              <Select value={riderFilter} onChange={setRiderFilter}>
-                <option value="all">All Riders</option>
-                {riderOptions.map((rider) => (
-                  <option key={rider.id} value={rider.id}>
-                    {rider.name}
-                  </option>
-                ))}
-              </Select>
-
-              <Select value={dateFilter} onChange={setDateFilter}>
-                <option value="all">All Time</option>
-                <option value="today">Today</option>
-                <option value="7days">Last 7 Days</option>
-                <option value="30days">Last 30 Days</option>
-              </Select>
-            </div>
-          </div>
-
-          <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Assigned Orders"
               value={String(totalAssigned)}
-              hint="Orders with rider assigned"
+              helper="Orders with rider assigned"
+              iconSrc="/images/admin/orders.png"
             />
             <StatCard
               label="Out for Delivery"
               value={String(outForDelivery)}
-              hint="Currently on the way"
+              helper="Currently on the way"
+              iconSrc="/images/admin/delivery.png"
             />
             <StatCard
               label="Delivered"
               value={String(delivered)}
-              hint="Completed deliveries"
+              helper="Completed deliveries"
+              iconSrc="/images/admin/active.png"
             />
             <StatCard
               label="Failed / Returned"
               value={String(failed)}
-              hint="Need follow-up"
+              helper="Need follow-up"
+              iconSrc="/images/admin/pending.png"
             />
-          </div>
-        </section>
+          </section>
 
-        {error ? (
-          <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-            {error}
-          </div>
-        ) : null}
+          {error ? (
+            <div className="rounded-[20px] border border-red-400/20 bg-red-500/15 p-4 text-[13px] font-medium text-red-300">
+              {error}
+            </div>
+          ) : null}
 
-        <section className="overflow-hidden rounded-3xl border border-slate-700/50 bg-[#0A1324] shadow-[0_20px_80px_rgba(0,0,0,0.25)]">
-          <div className="flex items-center justify-between border-b border-slate-700/40 px-6 py-5">
-            <div>
-              <h2 className="text-lg font-bold text-slate-100">
-                Assigned Delivery Orders
-              </h2>
-              <p className="mt-1 text-sm text-slate-400">
-                Open an order to assign or update delivery rider details
-              </p>
+          <section className={`${panelClass} overflow-hidden`}>
+            <div className="flex flex-col gap-4 border-b border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Delivery Orders
+                </div>
+
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  Assigned Delivery Orders
+                </h2>
+
+                <p className="mt-1 text-[13px] text-[#a7aec4]">
+                  Open an order to assign or update delivery rider details.
+                </p>
+              </div>
+
+              <Link href="/admin/orders" className={secondaryBtnClass}>
+                Open Orders
+              </Link>
             </div>
 
-            <Link
-              href="/admin/orders"
-              className="rounded-xl border border-slate-700/50 bg-slate-900/25 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-900/35"
-            >
-              Open Orders
-            </Link>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="min-w-[1320px] w-full border-collapse">
-              <thead className="bg-slate-900/30">
-                <tr className="text-left text-sm font-semibold text-slate-200">
-                  <th className="px-6 py-4">Order ID</th>
-                  <th className="px-6 py-4">Customer</th>
-                  <th className="px-6 py-4">Delivery Address</th>
-                  <th className="px-6 py-4">Rider</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">Total</th>
-                  <th className="px-6 py-4">Created</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-6 py-10 text-center text-sm text-slate-400"
-                    >
-                      Loading...
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1320px] border-collapse text-[13px]">
+                <thead>
+                  <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                    <th className="px-5 py-4 font-medium">Order ID</th>
+                    <th className="px-5 py-4 font-medium">Customer</th>
+                    <th className="px-5 py-4 font-medium">Delivery Address</th>
+                    <th className="px-5 py-4 font-medium">Rider</th>
+                    <th className="px-5 py-4 font-medium">Status</th>
+                    <th className="px-5 py-4 font-medium">Total</th>
+                    <th className="px-5 py-4 font-medium">Created</th>
+                    <th className="px-5 py-4 text-right font-medium">
+                      Actions
+                    </th>
                   </tr>
-                ) : !canView ? (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-6 py-10 text-center text-sm text-slate-400"
-                    >
-                      You do not have permission to view delivery orders.
-                    </td>
-                  </tr>
-                ) : deliveryRows.length ? (
-                  deliveryRows.map((o) => {
-                    const code = o.orderCode || o.id;
+                </thead>
 
-                    const customerName =
-                      safeStr(o.customer?.name) ||
-                      safeStr(o.address?.fullName) ||
-                      "-";
-
-                    const customerContact =
-                      safeStr(o.customer?.phone) ||
-                      safeStr(o.address?.phone) ||
-                      safeStr(o.customer?.email) ||
-                      "-";
-
-                    const area =
-                      safeStr(o.address?.addressLine) ||
-                      safeStr(o.address?.area) ||
-                      safeStr(o.address?.district) ||
-                      "-";
-
-                    const city =
-                      safeStr(o.address?.cityOrMunicipality) ||
-                      safeStr(o.address?.city) ||
-                      "-";
-
-                    const riderName =
-                      safeStr(o.deliveryAssignment?.name) || "Unassigned";
-
-                    const riderPhone =
-                      safeStr(o.deliveryAssignment?.phone) || "-";
-
-                    const riderVehicle =
-                      safeStr(o.deliveryAssignment?.vehicleType) || "-";
-
-                    const status =
-                      safeStr(o.deliveryAssignment?.status) || "Unassigned";
-
-                    return (
-                      <tr
-                        key={o.id}
-                        className="border-t border-slate-700/40 text-sm text-slate-100 hover:bg-slate-900/20"
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="px-6 py-12 text-center text-[13px] text-[#a7aec4]"
                       >
-                        <td className="px-6 py-5 font-semibold">{code}</td>
+                        Loading delivery orders...
+                      </td>
+                    </tr>
+                  ) : !canView ? (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="px-6 py-12 text-center text-[13px] text-[#a7aec4]"
+                      >
+                        You do not have permission to view delivery orders.
+                      </td>
+                    </tr>
+                  ) : deliveryRows.length ? (
+                    deliveryRows.map((o) => {
+                      const code = o.orderCode || o.id;
 
-                        <td className="px-6 py-5">
-                          <div className="space-y-1">
-                            <div className="font-semibold text-slate-200">
+                      const customerName =
+                        safeStr(o.customer?.name) ||
+                        safeStr(o.address?.fullName) ||
+                        "-";
+
+                      const customerContact =
+                        safeStr(o.customer?.phone) ||
+                        safeStr(o.address?.phone) ||
+                        safeStr(o.customer?.email) ||
+                        "-";
+
+                      const area =
+                        safeStr(o.address?.addressLine) ||
+                        safeStr(o.address?.area) ||
+                        safeStr(o.address?.district) ||
+                        "-";
+
+                      const city =
+                        safeStr(o.address?.cityOrMunicipality) ||
+                        safeStr(o.address?.city) ||
+                        "-";
+
+                      const riderName =
+                        safeStr(o.deliveryAssignment?.name) || "Unassigned";
+
+                      const riderPhone =
+                        safeStr(o.deliveryAssignment?.phone) || "-";
+
+                      const riderVehicle =
+                        safeStr(o.deliveryAssignment?.vehicleType) || "-";
+
+                      const status =
+                        safeStr(o.deliveryAssignment?.status) || "Unassigned";
+
+                      return (
+                        <tr
+                          key={o.id}
+                          className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                        >
+                          <td className="px-5 py-4">
+                            <div className="font-semibold text-white">
+                              {code}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="font-medium text-white">
                               {customerName}
                             </div>
-                            <div className="text-slate-400">
+
+                            <div className="mt-1 text-[12px] text-[#7f879f]">
                               {customerContact}
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="px-6 py-5">
-                          <div className="space-y-1">
-                            <div className="text-slate-200">{area}</div>
-                            <div className="text-slate-400">{city}</div>
-                          </div>
-                        </td>
+                          <td className="px-5 py-4">
+                            <div className="max-w-[260px] line-clamp-1 text-white">
+                              {area}
+                            </div>
 
-                        <td className="px-6 py-5">
-                          <div className="space-y-1">
-                            <div className="font-semibold text-slate-200">
+                            <div className="mt-1 text-[12px] text-[#7f879f]">
+                              {city}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="font-medium text-white">
                               {riderName}
                             </div>
-                            <div className="text-slate-400">{riderPhone}</div>
-                            <div className="text-xs text-slate-500">
+
+                            <div className="mt-1 text-[12px] text-[#7f879f]">
+                              {riderPhone}
+                            </div>
+
+                            <div className="mt-1 text-[11px] text-[#7f879f]">
                               {riderVehicle}
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="px-6 py-5">
-                          <StatusPill>{status}</StatusPill>
-                        </td>
+                          <td className="px-5 py-4">
+                            <StatusPill>{status}</StatusPill>
+                          </td>
 
-                        <td className="px-6 py-5 text-slate-300">
-                          {formatNPR(o.totalPaisa, o.total)}
-                        </td>
+                          <td className="px-5 py-4 font-semibold text-[#d6c7ff]">
+                            {formatNPR(o.totalPaisa, o.total)}
+                          </td>
 
-                        <td className="px-6 py-5 text-slate-400">
-                          {formatDateShort(o.createdAt)}
-                        </td>
+                          <td className="px-5 py-4 text-[#a7aec4]">
+                            {formatDateShort(o.createdAt)}
+                          </td>
 
-                        <td className="px-6 py-5 text-right">
-                          <div className="inline-flex items-center gap-3">
-                            {safeStr(o.deliveryAssignment?.deliveryManId) ? (
+                          <td className="px-5 py-4 text-right">
+                            <div className="inline-flex items-center gap-3">
+                              {safeStr(o.deliveryAssignment?.deliveryManId) ? (
+                                <Link
+                                  href={`/admin/delivery/staff/${safeStr(
+                                    o.deliveryAssignment?.deliveryManId
+                                  )}`}
+                                  className="font-semibold text-[#d6c7ff] transition hover:text-white"
+                                >
+                                  Rider
+                                </Link>
+                              ) : null}
+
                               <Link
-                                href={`/admin/delivery/staff/${safeStr(
-                                  o.deliveryAssignment?.deliveryManId
-                                )}`}
-                                className="font-semibold text-slate-200 hover:text-slate-100"
+                                href={`/admin/orders/${o.id}`}
+                                className="font-semibold text-white transition hover:text-[#d6c7ff]"
                               >
-                                Rider
+                                View Order
                               </Link>
-                            ) : null}
-
-                            <Link
-                              href={`/admin/orders/${o.id}`}
-                              className="font-semibold text-slate-200 hover:text-slate-100"
-                            >
-                              View Order
-                            </Link>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-6 py-10 text-center text-sm text-slate-400"
-                    >
-                      No assigned delivery orders found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="px-6 py-12 text-center text-[13px] text-[#a7aec4]"
+                      >
+                        No assigned delivery orders found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       </div>
     </AdminPageGuard>
   );
