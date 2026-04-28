@@ -2,12 +2,127 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import Image from "next/image";
+import CartHeader from "@/components/layout/CartHeader";
+import MainFooter from "@/components/layout/MainFooter";
+
+type ToastType = "success" | "error" | "info";
+
+const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+const containerClass =
+  "mx-auto w-full max-w-[760px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+
+function ToastMessage({
+  toast,
+  onClose,
+}: {
+  toast: { type: ToastType; message: string } | null;
+  onClose: () => void;
+}) {
+  if (!toast) return null;
+
+  const tone =
+    toast.type === "error"
+      ? "border-red-400/30 bg-red-500/15 text-red-100"
+      : toast.type === "info"
+        ? "border-blue-400/30 bg-blue-500/15 text-blue-100"
+        : "border-emerald-400/30 bg-emerald-500/15 text-emerald-100";
+
+  const dot =
+    toast.type === "error"
+      ? "bg-red-300"
+      : toast.type === "info"
+        ? "bg-blue-300"
+        : "bg-emerald-300";
+
+  return (
+    <div className="fixed right-4 top-24 z-[100] w-[calc(100%-32px)] max-w-[380px] sm:right-6">
+      <div
+        className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
+      >
+        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
+
+        <div className="flex-1 text-[13px] font-medium leading-6">
+          {toast.message}
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full px-2 text-[14px] text-white/75 transition hover:bg-white/10 hover:text-white"
+          aria-label="Close notification"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PasswordField({
+  id,
+  label,
+  name,
+  value,
+  show,
+  placeholder,
+  onChange,
+  onToggle,
+}: {
+  id: string;
+  label: string;
+  name: string;
+  value: string;
+  show: boolean;
+  placeholder: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onToggle: () => void;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
+      >
+        {label}
+      </label>
+
+      <div className="flex h-[52px] items-center rounded-full border border-[#26293a] bg-[#0d0f17] transition focus-within:border-[#d6c7ff]">
+        <input
+          id={id}
+          name={name}
+          type={show ? "text" : "password"}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          aria-label={label}
+          className="h-full min-w-0 flex-1 bg-transparent px-5 text-[13px] text-white outline-none placeholder:text-[#7f879f]"
+        />
+
+        <button
+          type="button"
+          onClick={onToggle}
+          className="mr-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#a7aec4] transition hover:bg-white/10 hover:text-white"
+          aria-label={show ? `Hide ${label}` : `Show ${label}`}
+        >
+          {show ? "Hide" : "Show"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function ChangePasswordPage() {
   const router = useRouter();
-  const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+
+  const API =
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
+    "http://localhost:8080/api";
 
   const [form, setForm] = React.useState({
     currentPassword: "",
@@ -20,6 +135,36 @@ export default function ChangePasswordPage() {
   const [showNew, setShowNew] = React.useState(false);
   const [showConfirm, setShowConfirm] = React.useState(false);
 
+  const [toast, setToast] = React.useState<{
+    type: ToastType;
+    message: string;
+  } | null>(null);
+
+  const toastTimerRef = React.useRef<number | null>(null);
+
+  const showToast = React.useCallback(
+    (message: string, type: ToastType = "success") => {
+      setToast({ message, type });
+
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+
+      toastTimerRef.current = window.setTimeout(() => {
+        setToast(null);
+      }, 2600);
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -29,22 +174,22 @@ export default function ChangePasswordPage() {
     e.preventDefault();
 
     if (!form.currentPassword.trim()) {
-      alert("Current password is required");
+      showToast("Current password is required.", "error");
       return;
     }
 
     if (!form.newPassword.trim()) {
-      alert("New password is required");
+      showToast("New password is required.", "error");
       return;
     }
 
     if (form.newPassword.length < 6) {
-      alert("New password must be at least 6 characters");
+      showToast("New password must be at least 6 characters.", "error");
       return;
     }
 
     if (form.newPassword !== form.confirmPassword) {
-      alert("New password and confirm password do not match");
+      showToast("New password and confirm password do not match.", "error");
       return;
     }
 
@@ -66,163 +211,144 @@ export default function ChangePasswordPage() {
       const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        alert(data?.message || "Failed to change password");
+        showToast(data?.message || "Failed to change password.", "error");
         return;
       }
 
-      alert("Password changed successfully");
-      router.push("/profile");
+      showToast("Password changed successfully.", "success");
+
+      setForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+
+      window.setTimeout(() => {
+        router.push("/profile");
+      }, 700);
     } catch (error) {
       console.error(error);
-      alert("Something went wrong. Please try again.");
+      showToast("Something went wrong. Please try again.", "error");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#050611] text-white">
-      <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
-        <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
-          <div className="flex items-center gap-4">
+    <>
+      <CartHeader />
+
+      <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
+      <main className={shellClass}>
+        <div className={containerClass}>
+          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                Account Security
+              </div>
+
+              <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[44px]">
+                Change Password
+              </h1>
+
+              <p className="mt-2 max-w-[560px] text-[13px] leading-6 text-[#a7aec4]">
+                Update your account password securely. Use a strong password
+                with at least 6 characters.
+              </p>
+            </div>
+
             <button
               type="button"
               onClick={() => router.back()}
-              className="group flex items-center gap-2 rounded-full border border-[#2b2f45] px-3 py-[7px] text-[11px] uppercase tracking-[0.16em] text-white hover:bg-white hover:text-[#050611]"
-              aria-label="Back"
-              title="Back"
+              className={secondaryBtnClass}
             >
-              <Image
-                src="/images/backarrow.png"
-                width={18}
-                height={18}
-                alt="Back icon"
-                className="brightness-0 invert group-hover:invert-0"
-              />
-              <span className="hidden sm:inline">Back</span>
+              Back
             </button>
+          </div>
 
-            <Link href="/homepage" className="flex items-center gap-2">
-              <div className="h-[48px] w-[48px] overflow-hidden rounded-full border-2 border-white">
-                <Image
-                  src="/images/logo.png"
-                  alt="UFO Collection logo"
-                  width={48}
-                  height={48}
-                  className="h-full w-full object-cover"
-                />
+          <div className={`${panelClass} overflow-hidden`}>
+            <div className="border-b border-[#26293a] bg-[radial-gradient(circle_at_top,#30214f,transparent_55%),linear-gradient(135deg,#161824,#0d0f17)] p-6 sm:p-8">
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                  <span className="text-[28px]">🔐</span>
+                </div>
+
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.2em] text-[#d6c7ff]">
+                    Password Protection
+                  </div>
+
+                  <div className="mt-1 text-[20px] font-semibold tracking-[-0.02em] text-white">
+                    Keep your UFO Collection account safe
+                  </div>
+                </div>
               </div>
-              <span className="text-[26px] font-bold uppercase tracking-[0.18em] text-white">
-                UFO Collection
-              </span>
-            </Link>
+            </div>
+
+            <form onSubmit={handleSubmit} className="grid gap-5 p-5 sm:p-6">
+              <PasswordField
+                id="currentPassword"
+                label="Current Password"
+                name="currentPassword"
+                value={form.currentPassword}
+                show={showCurrent}
+                placeholder="Enter current password"
+                onChange={handleChange}
+                onToggle={() => setShowCurrent((prev) => !prev)}
+              />
+
+              <PasswordField
+                id="newPassword"
+                label="New Password"
+                name="newPassword"
+                value={form.newPassword}
+                show={showNew}
+                placeholder="Enter new password"
+                onChange={handleChange}
+                onToggle={() => setShowNew((prev) => !prev)}
+              />
+
+              <PasswordField
+                id="confirmPassword"
+                label="Confirm New Password"
+                name="confirmPassword"
+                value={form.confirmPassword}
+                show={showConfirm}
+                placeholder="Confirm new password"
+                onChange={handleChange}
+                onToggle={() => setShowConfirm((prev) => !prev)}
+              />
+
+              <div className="mt-2 rounded-[18px] border border-[#26293a] bg-[#161824] px-4 py-3 text-[12px] leading-6 text-[#a7aec4]">
+                Tip: Avoid using your name, phone number, or simple passwords
+                like <span className="text-white">123456</span>.
+              </div>
+
+              <div className="mt-3 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => router.push("/profile")}
+                  disabled={saving}
+                  className={secondaryBtnClass}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className={primaryBtnClass}
+                >
+                  {saving ? "Updating..." : "Update Password"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </header>
-
-      <main className="mx-auto flex max-w-[1160px] justify-center px-4 py-10">
-        <div className="w-full max-w-[650px] rounded-xl border border-[#22253a] bg-[#101223] p-6">
-          <h1 className="text-xl font-semibold">Change Password</h1>
-          <p className="mt-2 text-sm text-[#8b90ad]">
-            Update your account password securely.
-          </p>
-
-          <form onSubmit={handleSubmit} className="mt-6">
-            <label
-              htmlFor="currentPassword"
-              className="mt-4 block text-[12px] text-[#8b90ad]"
-            >
-              Current Password
-            </label>
-            <div className="mt-1 flex items-center rounded-lg border border-[#23253a] bg-[#181a2c]">
-              <input
-                id="currentPassword"
-                name="currentPassword"
-                type={showCurrent ? "text" : "password"}
-                value={form.currentPassword}
-                onChange={handleChange}
-                placeholder="Enter current password"
-                className="w-full bg-transparent px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setShowCurrent((prev) => !prev)}
-                className="px-3 text-[12px] text-[#8b90ad] hover:text-white"
-              >
-                {showCurrent ? "Hide" : "Show"}
-              </button>
-            </div>
-
-            <label
-              htmlFor="newPassword"
-              className="mt-4 block text-[12px] text-[#8b90ad]"
-            >
-              New Password
-            </label>
-            <div className="mt-1 flex items-center rounded-lg border border-[#23253a] bg-[#181a2c]">
-              <input
-                id="newPassword"
-                name="newPassword"
-                type={showNew ? "text" : "password"}
-                value={form.newPassword}
-                onChange={handleChange}
-                placeholder="Enter new password"
-                className="w-full bg-transparent px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setShowNew((prev) => !prev)}
-                className="px-3 text-[12px] text-[#8b90ad] hover:text-white"
-              >
-                {showNew ? "Hide" : "Show"}
-              </button>
-            </div>
-
-            <label
-              htmlFor="confirmPassword"
-              className="mt-4 block text-[12px] text-[#8b90ad]"
-            >
-              Confirm New Password
-            </label>
-            <div className="mt-1 flex items-center rounded-lg border border-[#23253a] bg-[#181a2c]">
-              <input
-                id="confirmPassword"
-                name="confirmPassword"
-                type={showConfirm ? "text" : "password"}
-                value={form.confirmPassword}
-                onChange={handleChange}
-                placeholder="Confirm new password"
-                className="w-full bg-transparent px-3 py-3 text-sm text-white placeholder:text-[#787e99] focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirm((prev) => !prev)}
-                className="px-3 text-[12px] text-[#8b90ad] hover:text-white"
-              >
-                {showConfirm ? "Hide" : "Show"}
-              </button>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => router.push("/profile")}
-                className="rounded-full border border-[#23253a] px-6 py-3 text-sm text-white hover:bg-[#181a2c]"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="submit"
-                disabled={saving}
-                className="rounded-full bg-[#2f7efc] px-6 py-3 text-sm hover:brightness-105 disabled:opacity-60"
-              >
-                {saving ? "Updating..." : "Update Password"}
-              </button>
-            </div>
-          </form>
-        </div>
       </main>
-    </div>
+
+      <MainFooter />
+    </>
   );
 }

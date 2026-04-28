@@ -1,17 +1,133 @@
-// app/ThankYou/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import CartHeader from "@/components/layout/CartHeader";
+import MainFooter from "@/components/layout/MainFooter";
 
 type VerifyState = "idle" | "checking" | "paid" | "failed";
+type ToastType = "success" | "error" | "info";
+
+const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+const containerClass =
+  "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-12 lg:px-6";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
 
 function joinUrl(base: string, path: string) {
   const b = base.replace(/\/+$/, "");
   const p = path.replace(/^\/+/, "");
   return `${b}/${p}`;
+}
+
+function ToastMessage({
+  toast,
+  onClose,
+}: {
+  toast: { type: ToastType; message: string } | null;
+  onClose: () => void;
+}) {
+  if (!toast) return null;
+
+  const tone =
+    toast.type === "error"
+      ? "border-red-400/30 bg-red-500/15 text-red-100"
+      : toast.type === "info"
+        ? "border-blue-400/30 bg-blue-500/15 text-blue-100"
+        : "border-emerald-400/30 bg-emerald-500/15 text-emerald-100";
+
+  const dot =
+    toast.type === "error"
+      ? "bg-red-300"
+      : toast.type === "info"
+        ? "bg-blue-300"
+        : "bg-emerald-300";
+
+  return (
+    <div className="fixed right-4 top-24 z-[100] w-[calc(100%-32px)] max-w-[380px] sm:right-6">
+      <div
+        className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
+      >
+        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
+
+        <div className="flex-1 text-[13px] font-medium leading-6">
+          {toast.message}
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full px-2 text-[14px] text-white/75 transition hover:bg-white/10 hover:text-white"
+          aria-label="Close notification"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StatusIcon({
+  type,
+}: {
+  type: "success" | "failed" | "checking";
+}) {
+  const className =
+    type === "success"
+      ? "border-green-500/20 bg-green-500/10 text-green-300"
+      : type === "failed"
+        ? "border-red-500/20 bg-red-500/10 text-red-300"
+        : "border-blue-500/20 bg-blue-500/10 text-blue-300";
+
+  const symbol = type === "success" ? "✓" : type === "failed" ? "✕" : "⏳";
+
+  return (
+    <div
+      className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full border text-[34px] ${className}`}
+    >
+      <span className={type === "checking" ? "animate-pulse" : ""}>
+        {symbol}
+      </span>
+    </div>
+  );
+}
+
+function StepIndicator() {
+  const steps = [
+    { label: "Cart", href: "/cartpage", active: false },
+    { label: "Payment", href: "/payment", active: false },
+    { label: "Confirmed", href: "/ThankYou", active: true },
+  ];
+
+  return (
+    <div className="mb-8 flex flex-wrap items-center gap-2 text-[13px] text-[#a7aec4]">
+      {steps.map((step, index) => (
+        <React.Fragment key={step.label}>
+          {step.active ? (
+            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-white">
+              {step.label}
+            </span>
+          ) : (
+            <Link
+              href={step.href}
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 transition hover:text-white"
+            >
+              {step.label}
+            </Link>
+          )}
+
+          {index < steps.length - 1 ? (
+            <span className="text-[#50576f]">/</span>
+          ) : null}
+        </React.Fragment>
+      ))}
+    </div>
+  );
 }
 
 export default function ThankYouPage() {
@@ -20,21 +136,48 @@ export default function ThankYouPage() {
 
   const pidx = sp.get("pidx");
 
-  // ✅ ONE env everywhere
   const BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
   const apiBase = React.useMemo(() => joinUrl(BASE, "/api"), [BASE]);
 
   const [verifyState, setVerifyState] = React.useState<VerifyState>("idle");
-  const [verifyMsg, setVerifyMsg] = React.useState<string>("");
+  const [verifyMsg, setVerifyMsg] = React.useState("");
 
-  const [paymentMethod, setPaymentMethod] = React.useState<string>("");
+  const [paymentMethod, setPaymentMethod] = React.useState("");
+  const [orderNumber, setOrderNumber] = React.useState("#0000000");
+  const [orderId, setOrderId] = React.useState("");
+  const [totalPaisa, setTotalPaisa] = React.useState(0);
 
-  // saved from PaymentPage after DB order creation
-  const [orderNumber, setOrderNumber] = React.useState<string>("#0000000");
-  const [orderId, setOrderId] = React.useState<string>("");
+  const [toast, setToast] = React.useState<{
+    type: ToastType;
+    message: string;
+  } | null>(null);
 
-  // ✅ Estimated delivery: today + 3–4 days
-  const [estimatedDelivery] = React.useState<string>(() => {
+  const toastTimerRef = React.useRef<number | null>(null);
+
+  const showToast = React.useCallback(
+    (message: string, type: ToastType = "success") => {
+      setToast({ message, type });
+
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+
+      toastTimerRef.current = window.setTimeout(() => {
+        setToast(null);
+      }, 2800);
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const [estimatedDelivery] = React.useState(() => {
     const today = new Date();
 
     const from = new Date(today);
@@ -44,10 +187,10 @@ export default function ThankYouPage() {
     to.setDate(today.getDate() + 4);
 
     const sameMonth =
-      from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+      from.getMonth() === to.getMonth() &&
+      from.getFullYear() === to.getFullYear();
 
     if (sameMonth) {
-      // Example: "January 5–6, 2026"
       const month = from.toLocaleDateString("en-US", { month: "long" });
       return `${month} ${from.getDate()}–${to.getDate()}, ${to.getFullYear()}`;
     }
@@ -59,12 +202,8 @@ export default function ThankYouPage() {
         year: "numeric",
       });
 
-    // Example: "January 30, 2026 – February 2, 2026"
     return `${fmt(from)} – ${fmt(to)}`;
   });
-
-  // ✅ store total as paisa
-  const [totalPaisa, setTotalPaisa] = React.useState<number>(0);
 
   const formatNPR = (paisa: number) => {
     const safe = Number.isFinite(paisa) ? paisa : 0;
@@ -77,11 +216,11 @@ export default function ThankYouPage() {
       setPaymentMethod(pm);
 
       const tp = localStorage.getItem("ufo_last_total_paisa");
+
       if (tp) {
         const v = Number(tp);
         setTotalPaisa(Number.isFinite(v) ? Math.round(v) : 0);
       } else {
-        // fallback: if older value stored in rupees
         const t = localStorage.getItem("ufo_last_total");
         const rupees = t ? Number(t) : 0;
         setTotalPaisa(Number.isFinite(rupees) ? Math.round(rupees * 100) : 0);
@@ -92,11 +231,12 @@ export default function ThankYouPage() {
 
       const oid = localStorage.getItem("ufo_last_order_id");
       if (oid) setOrderId(oid);
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, []);
 
   React.useEffect(() => {
-    // ✅ No pidx => treat as success (COD / eSewa)
     if (!pidx) {
       setVerifyState("paid");
       return;
@@ -105,6 +245,7 @@ export default function ThankYouPage() {
     const verifyKhalti = async () => {
       setVerifyState("checking");
       setVerifyMsg("Verifying Khalti payment...");
+      showToast("Verifying Khalti payment...", "info");
 
       try {
         const res = await fetch(joinUrl(apiBase, "/payments/khalti/lookup"), {
@@ -118,276 +259,363 @@ export default function ThankYouPage() {
         if (res.ok && data?.paid) {
           setVerifyState("paid");
           setVerifyMsg("");
+          showToast("Payment verified successfully.", "success");
 
-          // ✅ clear cart after successful payment
           try {
             localStorage.removeItem("ufo_cart");
-          } catch {}
+            window.dispatchEvent(new Event("ufo_cart_updated"));
+          } catch {
+            // ignore
+          }
 
           return;
         }
 
         setVerifyState("failed");
         setVerifyMsg("Payment not completed.");
+        showToast("Payment not completed. Please try again.", "error");
+
         router.replace(`/payment?status=failed&pidx=${encodeURIComponent(pidx)}`);
       } catch {
         setVerifyState("failed");
         setVerifyMsg("Payment verification failed.");
+        showToast("Payment verification failed.", "error");
+
         router.replace(`/payment?status=failed&pidx=${encodeURIComponent(pidx)}`);
       }
     };
 
     verifyKhalti();
-  }, [pidx, apiBase, router]);
+  }, [pidx, apiBase, router, showToast]);
 
   const handleViewOrder = () => {
     if (!orderId) {
-      alert("Order ID not found. Please check Order History.");
-      router.push("/order-history"); // change to your actual page if different
+      showToast("Order ID not found. Please check Order History.", "error");
+      window.setTimeout(() => {
+        router.push("/order-history");
+      }, 700);
       return;
     }
+
+    router.push(`/customerorderdetails/${encodeURIComponent(orderId)}`);
+  };
+
+  const handleTrackOrder = () => {
+    if (!orderId) {
+      showToast("Order ID not found. Redirecting to Order History.", "error");
+      window.setTimeout(() => {
+        router.push("/order-history");
+      }, 700);
+      return;
+    }
+
     router.push(`/customerorderdetails/${encodeURIComponent(orderId)}`);
   };
 
   if (verifyState === "checking") {
     return (
-      <main className="min-h-screen bg-[#070a12] text-white flex items-center justify-center px-4">
-        <div className="w-full max-w-[520px] rounded-[14px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-8 text-center">
-          <h1 className="text-[22px] font-semibold">Please wait…</h1>
-          <p className="mt-3 text-[14px] text-[#9aa3cc]">{verifyMsg}</p>
-        </div>
-      </main>
+      <>
+        <CartHeader />
+
+        <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
+        <main className={shellClass}>
+          <div
+            className={`${containerClass} flex min-h-[520px] items-center justify-center`}
+          >
+            <div
+              className={`${panelClass} w-full max-w-[560px] p-8 text-center sm:p-10`}
+            >
+              <StatusIcon type="checking" />
+
+              <h1 className="mt-5 text-[26px] font-semibold tracking-[-0.02em] text-white">
+                Please wait…
+              </h1>
+
+              <p className="mt-3 text-[14px] leading-7 text-[#a7aec4]">
+                {verifyMsg}
+              </p>
+
+              <div className="mx-auto mt-6 h-2 max-w-[280px] overflow-hidden rounded-full bg-white/5">
+                <div className="h-full w-2/3 animate-pulse rounded-full bg-blue-300/70" />
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <MainFooter />
+      </>
     );
   }
 
   if (verifyState === "failed") {
     return (
-      <main className="min-h-screen bg-[#070a12] text-white flex items-center justify-center px-4">
-        <div className="w-full max-w-[520px] rounded-[14px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-8 text-center">
-          <h1 className="text-[22px] font-semibold">Payment Failed</h1>
-          <p className="mt-3 text-[14px] text-[#9aa3cc]">
-            We couldn’t confirm your payment. Please try again.
-          </p>
-          <button
-            type="button"
-            onClick={() => router.push("/payment")}
-            className="mt-6 h-[46px] w-full rounded-[10px] bg-[#1f7cff] text-[14px] font-semibold text-white hover:bg-[#2a86ff]"
+      <>
+        <CartHeader />
+
+        <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
+        <main className={shellClass}>
+          <div
+            className={`${containerClass} flex min-h-[520px] items-center justify-center`}
           >
-            Go to Payment
-          </button>
-        </div>
-      </main>
+            <div
+              className={`${panelClass} w-full max-w-[560px] p-8 text-center sm:p-10`}
+            >
+              <StatusIcon type="failed" />
+
+              <div className="mt-5 text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                Payment Issue
+              </div>
+
+              <h1 className="mt-3 text-[30px] font-semibold tracking-[-0.03em] text-white">
+                Payment Failed
+              </h1>
+
+              <p className="mx-auto mt-3 max-w-[420px] text-[14px] leading-7 text-[#a7aec4]">
+                We couldn’t confirm your payment. Please try again or choose
+                another payment method.
+              </p>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                <button
+                  type="button"
+                  onClick={() => router.push("/payment")}
+                  className={primaryBtnClass}
+                >
+                  Go to Payment
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => router.push("/cartpage")}
+                  className={secondaryBtnClass}
+                >
+                  Back to Cart
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <MainFooter />
+      </>
     );
   }
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
-        <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="group flex items-center gap-2 rounded-full border border-[#2b2f45] bg-transparent px-3 py-[7px] text-[11px] font-medium uppercase tracking-[0.16em] text-white hover:bg-white hover:text-[#050611]"
-              aria-label="Back"
-              title="Back"
-            >
-              <Image
-                src="/images/backarrow.png"
-                width={18}
-                height={18}
-                alt=""
-                className="brightness-0 invert group-hover:brightness-100 group-hover:invert-0"
-              />
-              <span className="hidden sm:inline">Back</span>
-            </button>
+      <CartHeader />
 
-            <Link href="/homepage" className="flex items-center gap-[10px]">
-              <div className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white sm:h-[48px] sm:w-[48px]">
-                <Image
-                  src="/images/logo.png"
-                  alt="UFO Collection logo"
-                  width={48}
-                  height={48}
-                  className="h-full w-full object-cover"
-                  priority
-                />
+      <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
+      <main className={shellClass}>
+        <div className={containerClass}>
+          <StepIndicator />
+
+          <section className={`${panelClass} overflow-hidden`}>
+            <div className="relative px-5 py-10 text-center sm:px-8 sm:py-14 lg:px-12">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.16),transparent_42%)]" />
+
+              <div className="pointer-events-none absolute left-6 top-6 h-20 w-20 rounded-full bg-green-400/10 blur-2xl" />
+              <div className="pointer-events-none absolute bottom-6 right-6 h-24 w-24 rounded-full bg-[#d6c7ff]/10 blur-2xl" />
+
+              <div className="relative">
+                <StatusIcon type="success" />
               </div>
-              <div className="text-[22px] font-bold uppercase tracking-[0.18em] text-white sm:text-[26px]">
-                UFO Collection
+
+              <div className="relative mt-5 text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                Order Confirmed
               </div>
-            </Link>
-          </div>
 
-          <nav className="hidden items-center gap-[42px] md:flex">
-            <Link
-              href="/homepage"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              HOME
-            </Link>
-            <Link
-              href="/collection"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              COLLECTION
-            </Link>
-            <Link
-              href="/about"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              ABOUT
-            </Link>
-            <Link
-              href="/contact"
-              className="text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              CONTACT
-            </Link>
-          </nav>
+              <h1 className="relative mx-auto mt-3 max-w-[760px] text-[34px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[48px]">
+                Thank You for Your Order!
+              </h1>
 
-          <button
-            type="button"
-            onClick={() => router.push("/cartpage")}
-            aria-label="Wishlist"
-            title="Wishlist"
-          >
-            <Image
-              src="/images/wishlist.png"
-              width={26}
-              height={26}
-              alt=""
-              className="brightness-0 invert contrast-[2.8] saturate-[2.6]"
-            />
-          </button>
-        </div>
-
-        <div className="border-t border-[#14162a] bg-[rgba(5,6,17,0.92)] md:hidden">
-          <div className="mx-auto flex max-w-[1160px] flex-wrap items-center justify-center gap-x-8 gap-y-3 px-4 py-3">
-            <Link
-              href="/homepage"
-              className="text-[13px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              HOME
-            </Link>
-            <Link
-              href="/collection"
-              className="text-[13px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              COLLECTION
-            </Link>
-            <Link
-              href="/about"
-              className="text-[13px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              ABOUT
-            </Link>
-            <Link
-              href="/contact"
-              className="text-[13px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              CONTACT
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
-        <div className="mx-auto max-w-[1160px] px-4 pb-20 pt-14">
-          <div className="h-px w-full bg-[#2b2f45]" />
-
-          <div className="mx-auto mt-12 max-w-[920px] text-center">
-            <h1 className="text-[34px] font-semibold max-sm:text-[28px]">
-              Thank You for Your Order!
-            </h1>
-            <p className="mx-auto mt-3 max-w-[720px] text-[14px] text-[#9aa3cc]">
-              Your order has been successfully placed. You will receive an email
-              confirmation shortly with your order details.
-            </p>
-
-            {paymentMethod ? (
-              <p className="mt-4 text-[13px] text-[#93a0c8]">
-                Payment Method: <span className="text-white">{paymentMethod}</span>
+              <p className="relative mx-auto mt-4 max-w-[720px] text-[14px] leading-7 text-[#a7aec4] sm:text-[15px]">
+                Your order has been successfully placed. You will receive an
+                email confirmation shortly with your order details.
               </p>
-            ) : null}
 
-            {pidx ? (
-              <p className="mt-2 text-[13px] text-[#93a0c8]">
-                Khalti Ref: <span className="text-white">{pidx}</span>
-              </p>
-            ) : null}
-          </div>
+              <div className="relative mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={handleViewOrder}
+                  className={secondaryBtnClass}
+                >
+                  View Order
+                </button>
 
-          <div className="mx-auto mt-12 max-w-[920px] text-left">
-            <h2 className="text-[18px] font-semibold">Order Details</h2>
-            <div className="mt-5 h-px w-full bg-[#2b2f45]" />
+                <button
+                  type="button"
+                  onClick={handleTrackOrder}
+                  className={secondaryBtnClass}
+                >
+                  Track Order
+                </button>
 
-            <div className="divide-y divide-[#2b2f45]">
-              <div className="grid grid-cols-[220px_1fr] py-6 max-sm:grid-cols-1 max-sm:gap-2">
-                <div className="text-[14px] text-[#9aa3cc]">Order Number</div>
-                <div className="text-[14px] text-white">{orderNumber}</div>
+                <button
+                  type="button"
+                  onClick={() => router.push("/collection")}
+                  className={primaryBtnClass}
+                >
+                  Continue Shopping
+                </button>
               </div>
+            </div>
+          </section>
 
-              <div className="grid grid-cols-[220px_1fr] py-6 max-sm:grid-cols-1 max-sm:gap-2">
-                <div className="text-[14px] text-[#9aa3cc]">
-                  Estimated Delivery
+          <section className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <div className={`${panelClass} p-5 sm:p-7`}>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                    Receipt
+                  </div>
+
+                  <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
+                    Order Details
+                  </h2>
                 </div>
-                <div className="text-[14px] text-white">{estimatedDelivery}</div>
+
+                <span className="w-fit rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-[12px] font-semibold text-green-300">
+                  Confirmed
+                </span>
               </div>
 
-              <div className="grid grid-cols-[220px_1fr] py-6 max-sm:grid-cols-1 max-sm:gap-2">
-                <div className="text-[14px] text-[#9aa3cc]">Total</div>
-                <div className="text-[14px] text-white">{formatNPR(totalPaisa)}</div>
+              <div className="mt-6 divide-y divide-[#26293a]">
+                {[
+                  ["Order Number", orderNumber],
+                  ["Estimated Delivery", estimatedDelivery],
+                  ["Total", formatNPR(totalPaisa)],
+                  ["Payment Method", paymentMethod || "Not available"],
+                  ...(pidx ? [["Khalti Reference", pidx]] : []),
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="grid grid-cols-1 gap-2 py-5 sm:grid-cols-[220px_1fr]"
+                  >
+                    <div className="text-[14px] text-[#a7aec4]">{label}</div>
+
+                    <div className="break-words text-[14px] font-medium text-white">
+                      {value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
+                <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#cbd5f5]">
+                  Need Help?
+                </div>
+
+                <p className="mt-2 text-[13px] leading-6 text-[#a7aec4]">
+                  You can check your order status from order history or contact
+                  support if you have any issue with your order.
+                </p>
+
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/order-history")}
+                    className="rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
+                  >
+                    Order History
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => router.push("/contact")}
+                    className="rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
+                  >
+                    Contact Support
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="mx-auto mt-14 flex max-w-[920px] items-center justify-center gap-6">
-            <button
-              type="button"
-              onClick={handleViewOrder}
-              className="h-[46px] w-[190px] rounded-[10px] bg-[#243245] text-[14px] font-semibold text-white hover:bg-[#2b3b52]"
+            <aside
+              className={`${panelClass} p-5 sm:p-6 lg:sticky lg:top-[104px] lg:self-start`}
             >
-              View Order
-            </button>
+              <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                Next Steps
+              </div>
 
-            <button
-              type="button"
-              onClick={() => router.push("/collection")}
-              className="h-[46px] w-[240px] rounded-[10px] bg-[#1f7cff] text-[14px] font-semibold text-white hover:bg-[#2a86ff]"
-            >
-              Continue Shopping
-            </button>
-          </div>
+              <h3 className="mt-2 text-[22px] font-semibold tracking-[-0.02em] text-white">
+                What happens next?
+              </h3>
 
-          <div className="mt-28 flex flex-col items-center gap-6 text-center">
-            <div className="flex items-center gap-6 opacity-90">
-              <a href="#" aria-label="Instagram" className="hover:opacity-100">
-                <Image
-                  src="/images/instagram.png"
-                  width={18}
-                  height={18}
-                  alt=""
-                  className="brightness-0 invert"
-                />
-              </a>
-              <a href="#" aria-label="Facebook" className="hover:opacity-100">
-                <Image
-                  src="/images/facebook.png"
-                  width={18}
-                  height={18}
-                  alt=""
-                  className="brightness-0 invert"
-                />
-              </a>
-            </div>
+              <div className="mt-5 space-y-4">
+                {[
+                  [
+                    "1",
+                    "Order confirmation",
+                    "We confirm your order and payment details.",
+                  ],
+                  ["2", "Processing", "Your items will be packed carefully."],
+                  [
+                    "3",
+                    "Delivery",
+                    "Your order will be delivered to your address.",
+                  ],
+                ].map(([step, title, text]) => (
+                  <div key={step} className="flex gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[12px] font-semibold text-white">
+                      {step}
+                    </div>
 
-            <div className="text-[14px] text-[#93a0c8]">
-              © 2025 UFO Collection — All Rights Reserved
-            </div>
-          </div>
+                    <div>
+                      <div className="text-[14px] font-semibold text-white">
+                        {title}
+                      </div>
+
+                      <div className="mt-1 text-[12px] leading-5 text-[#a7aec4]">
+                        {text}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 rounded-[20px] border border-green-500/20 bg-green-500/10 p-4">
+                <div className="text-[13px] font-semibold text-green-200">
+                  Delivery Estimate
+                </div>
+
+                <div className="mt-1 text-[14px] text-white">
+                  {estimatedDelivery}
+                </div>
+
+                <p className="mt-2 text-[12px] leading-5 text-green-100/80">
+                  Delivery timing may vary depending on your location and order
+                  processing time.
+                </p>
+              </div>
+
+              <div className="mt-6 grid grid-cols-3 gap-2">
+                {[
+                  ["Secure", "Payment"],
+                  ["Easy", "Return"],
+                  ["COD", "Available"],
+                ].map(([a, b]) => (
+                  <div
+                    key={`${a}-${b}`}
+                    className="rounded-[16px] border border-[#26293a] bg-[#161824] p-3 text-center"
+                  >
+                    <div className="text-[12px] font-semibold text-white">
+                      {a}
+                    </div>
+
+                    <div className="text-[11px] text-[#a7aec4]">{b}</div>
+                  </div>
+                ))}
+              </div>
+            </aside>
+          </section>
         </div>
       </main>
+
+      <MainFooter />
     </>
   );
 }

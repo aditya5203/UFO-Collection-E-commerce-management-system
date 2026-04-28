@@ -1,4 +1,3 @@
-// modules/auth/product/services/product.service.ts
 import mongoose from "mongoose";
 import { Product } from "../../../models/Product.model";
 import {
@@ -9,12 +8,16 @@ import {
 import { generateProductSlug } from "../utils/slug.util";
 import cloudinary from "../../../config/cloudinary";
 
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export const productService = {
   async getAllForAdmin(query: ProductQueryDto) {
     const filter: { [key: string]: any } = {};
 
     if (query.search) {
-      const regex = new RegExp(query.search, "i");
+      const regex = new RegExp(escapeRegex(query.search), "i");
       filter.$or = [{ name: regex }, { slug: regex }];
     }
 
@@ -33,7 +36,7 @@ export const productService = {
     const filter: { [key: string]: any } = { status: "Active" };
 
     if (query.search) {
-      const regex = new RegExp(query.search, "i");
+      const regex = new RegExp(escapeRegex(query.search), "i");
       filter.$or = [{ name: regex }, { slug: regex }];
     }
 
@@ -49,10 +52,27 @@ export const productService = {
     return Product.findById(id).lean().exec();
   },
 
+  async getPublicById(id: string) {
+    if (!mongoose.Types.ObjectId.isValid(id)) return null;
+
+    return Product.findOne({
+      _id: id,
+      status: "Active",
+    })
+      .lean()
+      .exec();
+  },
+
   async getRelatedProducts(productId: string, limit = 4) {
     if (!mongoose.Types.ObjectId.isValid(productId)) return [];
 
-    const currentProduct = await Product.findById(productId).lean().exec();
+    const currentProduct = await Product.findOne({
+      _id: productId,
+      status: "Active",
+    })
+      .lean()
+      .exec();
+
     if (!currentProduct) return [];
 
     const excludeId = new mongoose.Types.ObjectId(productId);
@@ -106,10 +126,14 @@ export const productService = {
     const uploadIfNeeded = async (src?: string) => {
       if (!src) return src;
       if (src.includes("res.cloudinary.com")) return src;
+      if (src.startsWith("http://") || src.startsWith("https://")) return src;
+      if (src.startsWith("/uploads/") || src.startsWith("uploads/")) return src;
+
       const uploaded = await cloudinary.uploader.upload(src, {
         folder: "ufo-collection/products",
         resource_type: "image",
       });
+
       return uploaded.secure_url || uploaded.url;
     };
 

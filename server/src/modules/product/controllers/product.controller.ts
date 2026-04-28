@@ -1,11 +1,10 @@
-// modules/auth/product/controllers/product.controller.ts
+// server/src/modules/product/controllers/product.controller.ts
+
 import { Request, Response, NextFunction } from "express";
 import { productService } from "../services/product.service";
-import {
-  CreateProductDto,
-  UpdateProductDto,
-} from "../types/product.types";
+import { CreateProductDto, UpdateProductDto } from "../types/product.types";
 import { AppError } from "../../../middleware/error.middleware";
+import { Review } from "../../../models/Review.model";
 
 const mapToFrontend = (p: any) => ({
   id: p._id?.toString?.() ?? p.id,
@@ -21,7 +20,58 @@ const mapToFrontend = (p: any) => ({
   colors: p.colors ?? [],
   sizes: p.sizes ?? [],
   categoryId: p.categoryId ?? null,
+
+  // Real review data
+  rating: Number(p.avgRating || 0),
+  reviews: Number(p.reviewCount || 0),
+  avgRating: Number(p.avgRating || 0),
+  reviewCount: Number(p.reviewCount || 0),
 });
+
+async function attachReviewSummary(products: any[]) {
+  if (!Array.isArray(products) || products.length === 0) return products;
+
+  const ids = products.map((p: any) => p?._id).filter(Boolean);
+  if (ids.length === 0) return products;
+
+  const summaries = await Review.aggregate([
+    {
+      $match: {
+        product: { $in: ids },
+      },
+    },
+    {
+      $group: {
+        _id: "$product",
+        avgRating: { $avg: "$rating" },
+        reviewCount: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const summaryMap = new Map(
+    summaries.map((s: any) => [
+      String(s._id),
+      {
+        avgRating: Number(Number(s.avgRating || 0).toFixed(1)),
+        reviewCount: Number(s.reviewCount || 0),
+      },
+    ])
+  );
+
+  return products.map((p: any) => {
+    const summary = summaryMap.get(String(p._id)) || {
+      avgRating: 0,
+      reviewCount: 0,
+    };
+
+    return {
+      ...p,
+      avgRating: summary.avgRating,
+      reviewCount: summary.reviewCount,
+    };
+  });
+}
 
 /**
  * @swagger
@@ -34,12 +84,185 @@ const mapToFrontend = (p: any) => ({
 
 /**
  * @swagger
+ * components:
+ *   schemas:
+ *     ProductResponse:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           example: "65f1c4b9e3b6f27c0d1a1234"
+ *         name:
+ *           type: string
+ *           example: "Minimal Tee"
+ *         slug:
+ *           type: string
+ *           example: "minimal-tee"
+ *         description:
+ *           type: string
+ *           example: "Soft cotton tee"
+ *         price:
+ *           type: number
+ *           example: 1999
+ *         stock:
+ *           type: number
+ *           example: 50
+ *         status:
+ *           type: string
+ *           enum: [Active, Inactive]
+ *           example: "Active"
+ *         image:
+ *           type: string
+ *           example: "https://example.com/main.jpg"
+ *         images:
+ *           type: array
+ *           items:
+ *             type: string
+ *           example: ["https://example.com/a.jpg", "https://example.com/b.jpg"]
+ *         gender:
+ *           type: string
+ *           enum: [Male, Female]
+ *           example: "Male"
+ *         colors:
+ *           type: array
+ *           items:
+ *             type: string
+ *           example: ["#000000", "#ffffff"]
+ *         sizes:
+ *           type: array
+ *           items:
+ *             type: string
+ *             enum: [S, M, L, XL, XXL]
+ *           example: ["M", "L", "XL"]
+ *         categoryId:
+ *           type: string
+ *           nullable: true
+ *           example: "65f1c4b9e3b6f27c0d1a9999"
+ *         rating:
+ *           type: number
+ *           example: 4.5
+ *         reviews:
+ *           type: number
+ *           example: 12
+ *         avgRating:
+ *           type: number
+ *           example: 4.5
+ *         reviewCount:
+ *           type: number
+ *           example: 12
+ *
+ *     CreateProductRequest:
+ *       type: object
+ *       required:
+ *         - name
+ *         - price
+ *         - stock
+ *         - image
+ *         - gender
+ *         - colors
+ *         - sizes
+ *         - categoryId
+ *       properties:
+ *         name:
+ *           type: string
+ *           example: "Minimal Tee"
+ *         slug:
+ *           type: string
+ *           example: "minimal-tee"
+ *         description:
+ *           type: string
+ *           example: "Soft cotton tee"
+ *         price:
+ *           type: number
+ *           example: 1999
+ *         stock:
+ *           type: number
+ *           example: 50
+ *         status:
+ *           type: string
+ *           enum: [Active, Inactive]
+ *           example: "Active"
+ *         image:
+ *           type: string
+ *           example: "https://example.com/main.jpg"
+ *         images:
+ *           type: array
+ *           items:
+ *             type: string
+ *           example: ["https://example.com/a.jpg", "https://example.com/b.jpg"]
+ *         gender:
+ *           type: string
+ *           enum: [Male, Female]
+ *           example: "Male"
+ *         colors:
+ *           type: array
+ *           items:
+ *             type: string
+ *           example: ["#000000", "#ffffff"]
+ *         sizes:
+ *           type: array
+ *           items:
+ *             type: string
+ *             enum: [S, M, L, XL, XXL]
+ *           example: ["M", "L", "XL"]
+ *         categoryId:
+ *           type: string
+ *           example: "65f1c4b9e3b6f27c0d1a9999"
+ *
+ *     UpdateProductRequest:
+ *       type: object
+ *       properties:
+ *         name:
+ *           type: string
+ *           example: "Updated Tee"
+ *         slug:
+ *           type: string
+ *           example: "updated-tee"
+ *         description:
+ *           type: string
+ *           example: "Updated description"
+ *         price:
+ *           type: number
+ *           example: 2499
+ *         stock:
+ *           type: number
+ *           example: 25
+ *         status:
+ *           type: string
+ *           enum: [Active, Inactive]
+ *           example: "Active"
+ *         image:
+ *           type: string
+ *           example: "https://example.com/main-updated.jpg"
+ *         images:
+ *           type: array
+ *           items:
+ *             type: string
+ *         gender:
+ *           type: string
+ *           enum: [Male, Female]
+ *         colors:
+ *           type: array
+ *           items:
+ *             type: string
+ *         sizes:
+ *           type: array
+ *           items:
+ *             type: string
+ *             enum: [S, M, L, XL, XXL]
+ *         categoryId:
+ *           type: string
+ */
+
+/**
+ * @swagger
  * /api/admin/products:
  *   get:
  *     security:
  *       - bearerAuth: []
  *     tags: [Products - Admin]
- *     summary: List products (admin)
+ *     summary: List products with real review summary
+ *     description: Returns all products for admin with average rating and review count.
  *     parameters:
  *       - in: query
  *         name: search
@@ -67,7 +290,13 @@ const mapToFrontend = (p: any) => ({
  *           type: string
  *     responses:
  *       200:
- *         description: List of products
+ *         description: Product list fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/ProductResponse'
  */
 const getAllForAdmin = async (
   req: Request,
@@ -83,7 +312,9 @@ const getAllForAdmin = async (
       categoryId: req.query.categoryId as string | undefined,
     });
 
-    res.json(products.map(mapToFrontend));
+    const productsWithReviews = await attachReviewSummary(products);
+
+    res.json(productsWithReviews.map(mapToFrontend));
   } catch (err) {
     next(err);
   }
@@ -94,7 +325,8 @@ const getAllForAdmin = async (
  * /api/products:
  *   get:
  *     tags: [Products]
- *     summary: List products (public, Active only)
+ *     summary: List active products with real review summary
+ *     description: Returns only active public products with average rating and review count.
  *     parameters:
  *       - in: query
  *         name: search
@@ -117,7 +349,13 @@ const getAllForAdmin = async (
  *           type: string
  *     responses:
  *       200:
- *         description: List of active products
+ *         description: Active product list fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/ProductResponse'
  */
 const getAllPublic = async (
   req: Request,
@@ -132,7 +370,9 @@ const getAllPublic = async (
       categoryId: req.query.categoryId as string | undefined,
     });
 
-    res.json(products.map(mapToFrontend));
+    const productsWithReviews = await attachReviewSummary(products);
+
+    res.json(productsWithReviews.map(mapToFrontend));
   } catch (err) {
     next(err);
   }
@@ -143,16 +383,22 @@ const getAllPublic = async (
  * /api/products/{id}:
  *   get:
  *     tags: [Products]
- *     summary: Get product by ID (public)
+ *     summary: Get active product by ID with real review summary
+ *     description: Returns one active public product. Inactive products are hidden from public users.
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *         description: Product ID
  *     responses:
  *       200:
- *         description: Product found
+ *         description: Product fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ProductResponse'
  *       404:
  *         description: Product not found
  *
@@ -161,26 +407,38 @@ const getAllPublic = async (
  *     security:
  *       - bearerAuth: []
  *     tags: [Products - Admin]
- *     summary: Get product by ID (admin)
+ *     summary: Get product by ID with real review summary
+ *     description: Admin can fetch active or inactive product by ID.
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *         description: Product ID
  *     responses:
  *       200:
- *         description: Product found
+ *         description: Product fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ProductResponse'
  *       404:
  *         description: Product not found
  */
 const getById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const product = await productService.getById(req.params.id);
+    const isAdminRoute = req.originalUrl.includes("/api/admin/products");
+
+    const product = isAdminRoute
+      ? await productService.getById(req.params.id)
+      : await productService.getPublicById(req.params.id);
 
     if (!product) throw new AppError("Product not found", 404);
 
-    res.json(mapToFrontend(product));
+    const [productWithReviews] = await attachReviewSummary([product]);
+
+    res.json(mapToFrontend(productWithReviews));
   } catch (err) {
     next(err);
   }
@@ -191,8 +449,8 @@ const getById = async (req: Request, res: Response, next: NextFunction) => {
  * /api/products/{id}/related:
  *   get:
  *     tags: [Products]
- *     summary: Get related products
- *     description: Returns up to 4 related products. First matches by categoryId, then falls back to gender if needed. Excludes the current product.
+ *     summary: Get related active products with review summary
+ *     description: Returns up to 4 active related products. First matches by categoryId, then falls back to gender. Excludes the current product.
  *     parameters:
  *       - in: path
  *         name: id
@@ -203,8 +461,15 @@ const getById = async (req: Request, res: Response, next: NextFunction) => {
  *     responses:
  *       200:
  *         description: Related products fetched successfully
- *       404:
- *         description: Product not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/ProductResponse'
  */
 const getRelated = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -213,8 +478,10 @@ const getRelated = async (req: Request, res: Response, next: NextFunction) => {
       4
     );
 
+    const productsWithReviews = await attachReviewSummary(relatedProducts);
+
     res.json({
-      data: relatedProducts.map(mapToFrontend),
+      data: productsWithReviews.map(mapToFrontend),
     });
   } catch (err) {
     next(err);
@@ -229,6 +496,7 @@ const getRelated = async (req: Request, res: Response, next: NextFunction) => {
  *       - bearerAuth: []
  *     tags: [Products - Admin]
  *     summary: Create a new product
+ *     description: Creates a product. Required fields include name, price, stock, image, gender, colors, sizes, and categoryId.
  *     requestBody:
  *       required: true
  *       content:
@@ -252,7 +520,11 @@ const getRelated = async (req: Request, res: Response, next: NextFunction) => {
  *                 categoryId: "65f1c4b9e3b6f27c0d1a1234"
  *     responses:
  *       201:
- *         description: Product created
+ *         description: Product created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ProductResponse'
  *       400:
  *         description: Validation error
  */
@@ -281,6 +553,7 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
     }
 
     const product = await productService.create(body);
+
     res.status(201).json(mapToFrontend(product));
   } catch (err) {
     next(err);
@@ -295,12 +568,14 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
  *       - bearerAuth: []
  *     tags: [Products - Admin]
  *     summary: Update product
+ *     description: Updates product details and returns the product with current review summary.
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *         description: Product ID
  *     requestBody:
  *       required: true
  *       content:
@@ -313,9 +588,17 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
  *               value:
  *                 status: "Inactive"
  *                 stock: 0
+ *             updatePrice:
+ *               summary: Update price
+ *               value:
+ *                 price: 2499
  *     responses:
  *       200:
- *         description: Product updated
+ *         description: Product updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ProductResponse'
  *       404:
  *         description: Product not found
  */
@@ -327,7 +610,9 @@ const update = async (req: Request, res: Response, next: NextFunction) => {
 
     if (!product) throw new AppError("Product not found", 404);
 
-    res.json(mapToFrontend(product));
+    const [productWithReviews] = await attachReviewSummary([product]);
+
+    res.json(mapToFrontend(productWithReviews));
   } catch (err) {
     next(err);
   }
@@ -341,15 +626,17 @@ const update = async (req: Request, res: Response, next: NextFunction) => {
  *       - bearerAuth: []
  *     tags: [Products - Admin]
  *     summary: Delete product
+ *     description: Deletes a product by ID.
  *     parameters:
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
+ *         description: Product ID
  *     responses:
  *       204:
- *         description: Product deleted
+ *         description: Product deleted successfully
  *       404:
  *         description: Product not found
  */

@@ -5,17 +5,37 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
+import CollectionHeader from "@/components/layout/InfoHeader";
+import MainFooter from "@/components/layout/MainFooter";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
+
+const shellClass =
+  "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+const containerClass =
+  "mx-auto w-full max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const inputClass =
+  "h-[48px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7c86b1] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60";
+const primaryBtnClass =
+  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0 },
+};
 
 export default function LoginPage() {
   const router = useRouter();
 
   const [showPassword, setShowPassword] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string>("");
+  const [error, setError] = React.useState("");
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -43,9 +63,11 @@ export default function LoginPage() {
       const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        setError(data?.message || "Login failed");
+        setError(data?.message || "Login failed.");
         return;
       }
+
+      localStorage.removeItem("ufo_redirect_after_login");
 
       router.push("/collection");
     } catch (err) {
@@ -57,248 +79,205 @@ export default function LoginPage() {
   };
 
   const onGoogleLogin = () => {
+    localStorage.removeItem("ufo_redirect_after_login");
     window.location.href = `${API}/auth/google/oauth`;
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.45, ease: "easeOut" }}
-      className="min-h-screen bg-[#050611] text-[#f5f5f7]"
-    >
-      <header className="sticky top-0 z-40 h-20 border-b border-[#191b2d] bg-[#050611]/95 backdrop-blur-[12px]">
-        <div className="mx-auto flex h-full w-full max-w-[1160px] items-center justify-between px-4 max-[640px]:flex-col max-[640px]:items-start max-[640px]:gap-2 max-[640px]:py-3">
+    <>
+      <CollectionHeader />
+
+      <main className={shellClass}>
+        <section className={containerClass}>
           <motion.div
-            initial={{ opacity: 0, y: -14 }}
-            animate={{ opacity: 1, y: 0 }}
+            variants={fadeUp}
+            initial="hidden"
+            animate="show"
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className="flex items-center gap-[10px]"
+            className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
           >
-            <motion.div
-              whileHover={{ scale: 1.06, rotate: 2 }}
-              transition={{ type: "spring", stiffness: 280, damping: 18 }}
-              className="h-[44px] w-[44px] overflow-hidden rounded-full border-2 border-white"
-            >
-              <Image
-                src="/images/logo.png"
-                alt="UFO Collection logo"
-                width={44}
-                height={44}
-                className="h-full w-full object-cover"
-              />
-            </motion.div>
+            <div>
+              <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[44px]">
+                Welcome Back
+              </h1>
 
-            <div className="text-[28px] font-bold uppercase tracking-[0.18em] text-white max-[640px]:text-[22px]">
-              UFO Collection
+              <p className="mt-2 max-w-[560px] text-[13px] leading-6 text-[#a7aec4]">
+                Log in to track orders, manage your wishlist, use collected
+                discounts, and continue shopping faster.
+              </p>
             </div>
+
+            <Link href="/signup" className={secondaryBtnClass}>
+              Create Account
+            </Link>
           </motion.div>
 
-          <motion.nav
-            initial={{ opacity: 0, y: -14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: "easeOut", delay: 0.08 }}
-            className="flex gap-[42px] max-[640px]:flex-wrap max-[640px]:gap-5"
-          >
-            {[
-              { href: "/", label: "HOME" },
-              { href: "/collection", label: "COLLECTION" },
-              { href: "/about", label: "ABOUT" },
-              { href: "/contact", label: "CONTACT" },
-            ].map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="group relative text-[15px] font-medium uppercase tracking-[0.16em] text-[#8b90ad] transition hover:text-[#c9b9ff]"
-              >
-                {item.label}
-                <span className="absolute -bottom-1 left-0 h-[1px] w-0 bg-[#c9b9ff] transition-all duration-300 group-hover:w-full" />
-              </Link>
-            ))}
-          </motion.nav>
-
-          <motion.div
-            initial={{ opacity: 0, y: -14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: "easeOut", delay: 0.14 }}
-            className="flex items-center gap-5 max-[640px]:mt-1"
-          >
-            {[
-              { href: "/collection", src: "/images/search.png", alt: "Search" },
-              { href: "/login", src: "/images/profile.png", alt: "Profile" },
-              {
-                href: "/wishlist",
-                src: "/images/wishlist.png",
-                alt: "Wishlist",
-              },
-            ].map((item) => (
-              <motion.div
-                key={item.href}
-                whileHover={{ y: -2, scale: 1.08 }}
-                whileTap={{ scale: 0.94 }}
-              >
-                <Link href={item.href}>
-                  <Image
-                    src={item.src}
-                    width={26}
-                    height={26}
-                    alt={item.alt}
-                    className="opacity-100 brightness-0 invert contrast-[2.8] saturate-[2.6]"
-                  />
-                </Link>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </header>
-
-      <main className="min-h-[calc(100vh-80px)] bg-[radial-gradient(circle_at_top_left,rgba(102,76,255,0.14),transparent_55%)]">
-        <section className="py-10 pb-[60px]">
-          <div className="mx-auto grid w-full max-w-[1160px] grid-cols-2 items-center gap-12 px-4 max-[900px]:grid-cols-1">
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_460px] lg:items-start">
             <motion.div
-              initial={{ opacity: 0, x: -40 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.75, ease: "easeOut" }}
-              className="relative min-h-[420px] w-full overflow-hidden rounded-[18px] border border-[#20233a] bg-[#111324] shadow-[0_22px_60px_rgba(0,0,0,0.45)] max-[900px]:min-h-[320px]"
+              variants={fadeUp}
+              initial="hidden"
+              animate="show"
+              transition={{ duration: 0.55, ease: "easeOut", delay: 0.08 }}
+              className={`${panelClass} overflow-hidden`}
             >
-              <Image
-                src="/images/loginw.jpg"
-                alt="Model sitting on stool"
-                fill
-                priority
-                className="object-cover transition duration-700 hover:scale-[1.04]"
-              />
+              <div className="relative min-h-[360px] bg-[#161824] sm:min-h-[520px]">
+                <Image
+                  src="/images/loginw.jpg"
+                  alt="UFO Collection login"
+                  fill
+                  priority
+                  className="object-cover opacity-80"
+                />
 
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-black/20 to-transparent" />
+
+                <div className="absolute bottom-6 left-5 right-5 sm:bottom-8 sm:left-8 sm:right-8">
+                  <div className="w-fit rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur">
+                    Member shopping experience
+                  </div>
+
+                  <h2 className="mt-4 max-w-[560px] text-[30px] font-semibold leading-[1.1] tracking-[-0.04em] text-white sm:text-[44px]">
+                    Continue your UFO Collection journey.
+                  </h2>
+
+                  <p className="mt-3 max-w-[520px] text-[14px] leading-7 text-[#d6dbeb]">
+                    Access saved items, order history, exclusive discounts, and
+                    checkout with your saved profile.
+                  </p>
+                </div>
+              </div>
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.75, ease: "easeOut", delay: 0.12 }}
-              className="rounded-[18px] border border-[#22253a] bg-[#101223]/95 px-10 py-10 pb-[34px] shadow-[0_18px_40px_rgba(0,0,0,0.65)] backdrop-blur-xl max-[900px]:px-[22px] max-[900px]:py-7"
+            <motion.aside
+              variants={fadeUp}
+              initial="hidden"
+              animate="show"
+              transition={{ duration: 0.55, ease: "easeOut", delay: 0.16 }}
+              className={`${panelClass} p-5 sm:p-6 lg:sticky lg:top-[104px]`}
             >
-              <motion.div
-                initial={{ opacity: 0, y: 22 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, ease: "easeOut", delay: 0.22 }}
-              >
-                <h1 className="mb-1 text-[40px] font-semibold leading-[1.15] max-[900px]:text-[30px]">
-                  Welcome Back
-                </h1>
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                  Login
+                </div>
 
-                <p className="mb-[26px] max-w-[340px] text-[14px] text-[#8b90ad]">
-                  Log in to continue with your fashion journey. Track your
-                  orders, manage your wishlist and never miss a drop from UFO
-                  Collection.
+                <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
+                  Sign in to your account
+                </h2>
+
+                <p className="mt-2 text-[13px] leading-6 text-[#a7aec4]">
+                  Use your email or continue with Google.
                 </p>
-              </motion.div>
+              </div>
 
               <motion.form
-                initial={{ opacity: 0, y: 22 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, ease: "easeOut", delay: 0.3 }}
-                className="grid gap-[14px]"
+                variants={fadeUp}
+                initial="hidden"
+                animate="show"
+                transition={{ duration: 0.45, ease: "easeOut", delay: 0.22 }}
+                className="mt-6 grid gap-4"
                 onSubmit={onSubmit}
               >
                 <div>
-                  <div className="mb-1.5 flex items-center justify-between text-[12px]">
-                    <span className="font-medium text-[#daddff]">
-                      Email Address
-                    </span>
-                  </div>
+                  <label
+                    htmlFor="email"
+                    className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
+                  >
+                    Email Address
+                  </label>
 
                   <input
+                    id="email"
                     name="email"
                     type="email"
                     placeholder="Enter your email"
                     required
                     disabled={loading}
-                    className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-[11px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] transition focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)] disabled:opacity-60"
+                    aria-label="Email address"
+                    className={inputClass}
                   />
                 </div>
 
-                <div className="mt-1.5">
-                  <div className="mb-1.5 flex items-center justify-between text-[12px]">
-                    <span className="font-medium text-[#daddff]">Password</span>
+                <div>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <label
+                      htmlFor="password"
+                      className="block text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
+                    >
+                      Password
+                    </label>
 
                     <Link
                       href="/forgot-password"
-                      className="cursor-pointer text-[11px] text-[#c9b9ff] transition hover:text-white hover:underline"
+                      className="text-[12px] font-medium text-[#d6c7ff] transition hover:text-white hover:underline"
                     >
-                      Forgot your password?
+                      Forgot password?
                     </Link>
                   </div>
 
-                  <div className="relative w-full">
+                  <div className="relative">
                     <input
+                      id="password"
                       name="password"
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
                       required
                       disabled={loading}
-                      className="w-full rounded-lg border border-[#23253a] bg-[#181a2c] px-3 py-3 pr-[42px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] transition focus:border-[#c9b9ff] focus:shadow-[0_0_0_1px_rgba(180,156,255,0.4)] disabled:opacity-60"
+                      aria-label="Password"
+                      className={`${inputClass} pr-12`}
                     />
 
-                    <motion.button
-                      whileHover={{ scale: 1.08 }}
-                      whileTap={{ scale: 0.94 }}
+                    <button
                       type="button"
                       aria-label={
                         showPassword ? "Hide password" : "Show password"
                       }
                       onClick={() => setShowPassword((s) => !s)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 border-0 bg-transparent p-0 opacity-90 hover:opacity-100"
+                      className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:bg-white/10"
                     >
                       <Image
                         src="/images/view.png"
                         alt="Toggle password visibility"
-                        width={20}
-                        height={20}
+                        width={18}
+                        height={18}
+                        className="brightness-0 invert"
                       />
-                    </motion.button>
+                    </button>
                   </div>
                 </div>
 
-                <AnimatePresence>
+                <AnimatePresence mode="wait">
                   {error ? (
                     <motion.div
-                      initial={{ opacity: 0, y: -8, scale: 0.98 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -8, scale: 0.98 }}
-                      transition={{ duration: 0.25, ease: "easeOut" }}
-                      className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-200"
+                      key="error"
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="rounded-[16px] border border-red-400/30 bg-red-500/10 px-4 py-3 text-[13px] leading-6 text-red-200"
                     >
                       {error}
                     </motion.div>
                   ) : null}
                 </AnimatePresence>
 
-                <motion.button
-                  whileHover={{ scale: loading ? 1 : 1.018 }}
-                  whileTap={{ scale: loading ? 1 : 0.98 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                <button
                   type="submit"
                   disabled={loading}
-                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#b49cff] px-4 py-3 text-[14px] font-medium text-[#070818] shadow-[0_10px_26px_rgba(116,92,255,0.5)] transition hover:brightness-[1.05] disabled:opacity-60"
+                  className={`${primaryBtnClass} mt-2 w-full`}
                 >
                   {loading ? "Logging in..." : "Login"}
-                </motion.button>
+                </button>
 
-                <div className="my-2 flex items-center gap-2.5 text-[11px] text-[#8b90ad]">
-                  <div className="h-px flex-1 bg-[#292c45]" />
-                  <span className="whitespace-nowrap">OR</span>
-                  <div className="h-px flex-1 bg-[#292c45]" />
+                <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                  <div className="h-px flex-1 bg-[#26293a]" />
+                  <span>or</span>
+                  <div className="h-px flex-1 bg-[#26293a]" />
                 </div>
 
-                <motion.button
-                  whileHover={{ scale: loading ? 1 : 1.018 }}
-                  whileTap={{ scale: loading ? 1 : 0.98 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                <button
                   type="button"
                   disabled={loading}
-                  className="mt-1 flex w-full items-center justify-center gap-2.5 rounded-full border border-[#23253a] bg-transparent px-4 py-[10px] text-[13px] text-[#f5f5f7] transition hover:border-[#2b3050] hover:bg-[#15182a] disabled:opacity-60"
                   onClick={onGoogleLogin}
+                  className={`${secondaryBtnClass} flex w-full items-center justify-center gap-2`}
                 >
                   <Image
                     src="/images/google.png"
@@ -306,141 +285,44 @@ export default function LoginPage() {
                     height={18}
                     alt="Google"
                   />
-                  <span>Log in with Google</span>
-                </motion.button>
+                  Continue with Google
+                </button>
               </motion.form>
 
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.45, delay: 0.55 }}
-                className="mt-4 text-center text-[12px] text-[#8b90ad]"
-              >
-                New here?{" "}
+              <div className="mt-5 text-center text-[13px] text-[#a7aec4]">
+                New to UFO Collection?{" "}
                 <Link
                   href="/signup"
-                  className="font-medium text-[#c9b9ff] transition hover:text-white"
+                  className="font-semibold text-[#d6c7ff] transition hover:text-white"
                 >
                   Create an account
                 </Link>
-              </motion.div>
-            </motion.div>
+              </div>
+
+              <div className="mt-6 grid grid-cols-3 gap-2">
+                {[
+                  ["Track", "Orders"],
+                  ["Save", "Wishlist"],
+                  ["Use", "Coupons"],
+                ].map(([a, b]) => (
+                  <div
+                    key={`${a}-${b}`}
+                    className="rounded-[16px] border border-[#26293a] bg-[#161824] p-3 text-center"
+                  >
+                    <div className="text-[12px] font-semibold text-white">
+                      {a}
+                    </div>
+
+                    <div className="text-[11px] text-[#a7aec4]">{b}</div>
+                  </div>
+                ))}
+              </div>
+            </motion.aside>
           </div>
         </section>
-
-        <motion.section
-          initial={{ opacity: 0, y: 32 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.25 }}
-          transition={{ duration: 0.65, ease: "easeOut" }}
-          className="mt-10 border-y border-[#171a32] bg-[#0a1020] py-[46px] text-center max-[640px]:py-9"
-        >
-          <div className="mx-auto w-full max-w-[1160px] px-4">
-            <h3 className="mb-1.5 text-[20px] font-semibold">
-              Subscribe now &amp; get 20% off
-            </h3>
-
-            <p className="mb-[18px] text-[13px] text-[#8b90ad]">
-              Discover the latest trends in fashion with UFO Collection.
-              Stylish, comfortable and made for everyone.
-            </p>
-
-            <form
-              className="flex flex-wrap justify-center gap-2.5"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const inp = e.currentTarget.querySelector(
-                  "input"
-                ) as HTMLInputElement;
-                if (inp.value) alert(`Subscribed: ${inp.value}`);
-                inp.value = "";
-              }}
-            >
-              <input
-                className="w-[420px] max-w-[80vw] min-w-[260px] rounded-full border border-[#23253a] bg-[#090c1a] px-[14px] py-[10px] text-[13px] text-[#f5f5f7] outline-none placeholder:text-[#787e99] transition focus:border-[#c9b9ff]"
-                type="email"
-                required
-                placeholder="Enter your email id"
-              />
-
-              <motion.button
-                whileHover={{ scale: 1.04 }}
-                whileTap={{ scale: 0.97 }}
-                className="rounded-full bg-white px-5 py-[10px] text-[13px] font-medium text-[#050616]"
-                type="submit"
-              >
-                SUBSCRIBE
-              </motion.button>
-            </form>
-          </div>
-        </motion.section>
       </main>
 
-      <footer className="bg-[#050611] pb-[18px] pt-10">
-        <motion.div
-          initial={{ opacity: 0, y: 28 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.2 }}
-          transition={{ duration: 0.65, ease: "easeOut" }}
-          className="mx-auto grid w-full max-w-[1160px] grid-cols-[1.4fr_0.8fr_0.8fr] gap-10 border-b border-[#191b2e] px-4 pb-6 max-[900px]:grid-cols-1"
-        >
-          <div>
-            <div className="text-[16px] font-semibold tracking-[0.11em]">
-              UFO Collection
-            </div>
-
-            <p className="mt-2 max-w-[420px] text-[12px] leading-[1.9] text-[#8b90ad]">
-              UFO Collection brings minimal, premium streetwear to your
-              wardrobe. Discover curated looks, everyday essentials and pieces
-              made to last.
-            </p>
-          </div>
-
-          <div>
-            <div className="mb-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
-              COMPANY
-            </div>
-
-            <ul className="grid gap-2 text-[12px] text-[#d4d6ea]">
-              <li>
-                <Link className="transition hover:text-[#c9b9ff]" href="/">
-                  Home
-                </Link>
-              </li>
-              <li>
-                <Link className="transition hover:text-[#c9b9ff]" href="/about">
-                  About us
-                </Link>
-              </li>
-              <li>
-                <a className="transition hover:text-[#c9b9ff]" href="#">
-                  Delivery
-                </a>
-              </li>
-              <li>
-                <a className="transition hover:text-[#c9b9ff]" href="#">
-                  Privacy policy
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <div className="mb-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#8b90ad]">
-              GET IN TOUCH
-            </div>
-
-            <ul className="grid gap-2 text-[12px] text-[#d4d6ea]">
-              <li>+977 9804880758</li>
-              <li>ufocollection@gmail.com</li>
-            </ul>
-          </div>
-        </motion.div>
-
-        <div className="pt-3.5 text-center text-[11px] text-[#6d7192]">
-          Copyright 2025 © UFO Collection — All Rights Reserved.
-        </div>
-      </footer>
-    </motion.div>
+      <MainFooter />
+    </>
   );
 }

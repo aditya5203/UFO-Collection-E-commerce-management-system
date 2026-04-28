@@ -5,6 +5,10 @@ import Link from "next/link";
 import Image from "next/image";
 import { io, Socket } from "socket.io-client";
 import { useParams, useRouter } from "next/navigation";
+import CartHeader from "@/components/layout/CartHeader";
+import MainFooter from "@/components/layout/MainFooter";
+
+type ToastType = "success" | "error" | "info";
 
 type OrderItem = {
   id: string;
@@ -36,31 +40,25 @@ type DeliveryAssignmentStatus =
 type Order = {
   orderId: string;
   status: OrderStatus;
-
   customer: {
     name: string;
     email: string;
     shippingAddress: string;
   };
-
   items: OrderItem[];
-
   payment: {
     method: string;
   };
-
   shipping: {
     method: string;
     estimatedDelivery: string;
   };
-
   summary: {
     subtotal: number;
     shipping: number;
     taxes: number;
     total: number;
   };
-
   deliveryAssignment?: {
     deliveryManId?: string;
     name?: string;
@@ -91,6 +89,94 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
 
+const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+const containerClass =
+  "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+
+function getColorDotClass(color?: string) {
+  const c = String(color || "").trim().toLowerCase();
+
+  const map: Record<string, string> = {
+    black: "bg-black",
+    "#000000": "bg-black",
+    white: "bg-white",
+    "#ffffff": "bg-white",
+    red: "bg-red-500",
+    "#ef4444": "bg-red-500",
+    blue: "bg-blue-500",
+    "#3b82f6": "bg-blue-500",
+    green: "bg-green-500",
+    "#22c55e": "bg-green-500",
+    yellow: "bg-yellow-500",
+    "#eab308": "bg-yellow-500",
+    pink: "bg-pink-500",
+    "#ec4899": "bg-pink-500",
+    purple: "bg-purple-500",
+    "#a855f7": "bg-purple-500",
+    orange: "bg-orange-500",
+    "#f97316": "bg-orange-500",
+    gray: "bg-gray-500",
+    grey: "bg-gray-500",
+    "#808080": "bg-gray-500",
+    navy: "bg-[#000080]",
+    "navy blue": "bg-[#000080]",
+    "#000080": "bg-[#000080]",
+  };
+
+  return map[c] || "bg-[#16191f]";
+}
+
+function ToastMessage({
+  toast,
+  onClose,
+}: {
+  toast: { type: ToastType; message: string } | null;
+  onClose: () => void;
+}) {
+  if (!toast) return null;
+
+  const tone =
+    toast.type === "error"
+      ? "border-red-400/30 bg-red-500/15 text-red-100"
+      : toast.type === "info"
+        ? "border-blue-400/30 bg-blue-500/15 text-blue-100"
+        : "border-emerald-400/30 bg-emerald-500/15 text-emerald-100";
+
+  const dot =
+    toast.type === "error"
+      ? "bg-red-300"
+      : toast.type === "info"
+        ? "bg-blue-300"
+        : "bg-emerald-300";
+
+  return (
+    <div className="fixed right-4 top-24 z-[100] w-[calc(100%-32px)] max-w-[380px] sm:right-6">
+      <div
+        className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
+      >
+        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
+        <div className="flex-1 text-[13px] font-medium leading-6">
+          {toast.message}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full px-2 text-[14px] text-white/75 transition hover:bg-white/10 hover:text-white"
+          aria-label="Close notification"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StatusBadge({ status }: { status: OrderStatus }) {
   const map: Record<OrderStatus, string> = {
     Pending: "bg-yellow-500/15 text-yellow-200 border-yellow-500/30",
@@ -103,7 +189,7 @@ function StatusBadge({ status }: { status: OrderStatus }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${map[status]}`}
+      className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[12px] font-semibold ${map[status]}`}
     >
       {status}
     </span>
@@ -129,9 +215,8 @@ function DeliveryStatusBadge({
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${
-        map[value] ||
-        "bg-slate-500/15 text-slate-200 border-slate-500/30"
+      className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
+        map[value] || "bg-slate-500/15 text-slate-200 border-slate-500/30"
       }`}
     >
       {value}
@@ -150,6 +235,7 @@ function formatDateTime(value?: string | null) {
   if (!value) return "—";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "—";
+
   return d.toLocaleString("en-US", {
     year: "numeric",
     month: "short",
@@ -197,6 +283,151 @@ function mergeLiveOrder(prev: Order | null, payload: any): Order | null {
   };
 }
 
+function SectionTitle({
+  eyebrow,
+  title,
+}: {
+  eyebrow?: string;
+  title: string;
+}) {
+  return (
+    <div>
+      {eyebrow ? (
+        <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+          {eyebrow}
+        </div>
+      ) : null}
+
+      <h2 className="mt-2 text-[22px] font-semibold tracking-[-0.02em] text-white">
+        {title}
+      </h2>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-1 gap-2 border-b border-[#26293a] py-5 last:border-0 md:grid-cols-[220px_1fr]">
+      <div className="text-[14px] text-[#a7aec4]">{label}</div>
+      <div className="break-words text-[14px] font-medium text-white">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function OrderTimeline({ status }: { status: OrderStatus }) {
+  const steps: OrderStatus[] = [
+    "Pending",
+    "Confirmed",
+    "Shipped",
+    "Transit",
+    "Delivered",
+  ];
+
+  const currentIndex =
+    status === "Cancelled" ? -1 : Math.max(0, steps.indexOf(status));
+
+  return (
+    <div className={`${panelClass} p-5 sm:p-7`}>
+      <SectionTitle eyebrow="Progress" title="Order Timeline" />
+
+      {status === "Cancelled" ? (
+        <div className="mt-5 rounded-[18px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          This order has been cancelled.
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-4 sm:grid-cols-5">
+          {steps.map((step, index) => {
+            const done = index <= currentIndex;
+            const active = index === currentIndex;
+
+            return (
+              <div key={step} className="relative">
+                <div
+                  className={`flex h-11 w-11 items-center justify-center rounded-full border text-[13px] font-bold ${
+                    done
+                      ? "border-green-400/30 bg-green-500/15 text-green-200"
+                      : "border-white/10 bg-white/5 text-[#7f879f]"
+                  }`}
+                >
+                  {done ? "✓" : index + 1}
+                </div>
+
+                <div
+                  className={`mt-3 text-[13px] font-semibold ${
+                    active
+                      ? "text-white"
+                      : done
+                        ? "text-green-200"
+                        : "text-[#a7aec4]"
+                  }`}
+                >
+                  {step}
+                </div>
+
+                <div className="mt-1 text-[11px] text-[#7f879f]">
+                  {active ? "Current status" : done ? "Completed" : "Pending"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeliveryRiderCard({
+  assignment,
+}: {
+  assignment: Order["deliveryAssignment"];
+}) {
+  if (!assignment?.name && !assignment?.status) return null;
+
+  return (
+    <section className={`${panelClass} p-5 sm:p-6`}>
+      <SectionTitle eyebrow="Delivery" title="Rider Details" />
+
+      <div className="mt-5 rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-[15px] font-semibold text-white">
+              {assignment?.name || "Delivery Partner"}
+            </div>
+
+            <div className="mt-1 text-[13px] text-[#a7aec4]">
+              {assignment?.vehicleType || "Vehicle not assigned"}
+            </div>
+          </div>
+
+          <DeliveryStatusBadge status={assignment?.status} />
+        </div>
+
+        <div className="mt-4 grid gap-3 text-[13px] text-[#a7aec4]">
+          {assignment?.phone ? (
+            <div>
+              Phone: <span className="text-white">{assignment.phone}</span>
+            </div>
+          ) : null}
+
+          {assignment?.email ? (
+            <div>
+              Email: <span className="text-white">{assignment.email}</span>
+            </div>
+          ) : null}
+
+          {assignment?.note ? (
+            <div>
+              Note: <span className="text-white">{assignment.note}</span>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function CustomerOrderDetailsPage() {
   const router = useRouter();
   const params = useParams<{ orderId: string }>();
@@ -215,7 +446,36 @@ export default function CustomerOrderDetailsPage() {
   const [reviewOk, setReviewOk] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<ReviewDraft | null>(null);
 
+  const [toast, setToast] = React.useState<{
+    type: ToastType;
+    message: string;
+  } | null>(null);
+
+  const toastTimerRef = React.useRef<number | null>(null);
   const socketRef = React.useRef<Socket | null>(null);
+
+  const showToast = React.useCallback(
+    (message: string, type: ToastType = "success") => {
+      setToast({ message, type });
+
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+
+      toastTimerRef.current = window.setTimeout(() => {
+        setToast(null);
+      }, 2800);
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   const loadOrder = React.useCallback(async () => {
     try {
@@ -225,6 +485,7 @@ export default function CustomerOrderDetailsPage() {
       if (!orderIdFromUrl) {
         setOrder(null);
         setError("Order ID is missing in the URL.");
+        showToast("Order ID is missing in the URL.", "error");
         return;
       }
 
@@ -235,6 +496,7 @@ export default function CustomerOrderDetailsPage() {
       });
 
       if (meRes.status === 401) {
+        showToast("Please login to view order details.", "info");
         router.push("/login");
         return;
       }
@@ -253,25 +515,16 @@ export default function CustomerOrderDetailsPage() {
 
       setOrder(data?.order || null);
     } catch (e: any) {
-      setError(e?.message || "Something went wrong");
+      const msg = e?.message || "Something went wrong";
+      setError(msg);
+      showToast(msg, "error");
     } finally {
       setLoading(false);
     }
-  }, [orderIdFromUrl, router]);
+  }, [orderIdFromUrl, router, showToast]);
 
   React.useEffect(() => {
-    let mounted = true;
-
-    const run = async () => {
-      if (!mounted) return;
-      await loadOrder();
-    };
-
-    run();
-
-    return () => {
-      mounted = false;
-    };
+    loadOrder();
   }, [loadOrder]);
 
   React.useEffect(() => {
@@ -291,6 +544,7 @@ export default function CustomerOrderDetailsPage() {
 
       if (payloadCode && currentCode && payloadCode === currentCode) {
         setOrder((prev) => mergeLiveOrder(prev, payload));
+        showToast("Order status updated in real time.", "info");
       }
     });
 
@@ -299,9 +553,21 @@ export default function CustomerOrderDetailsPage() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [order?.orderId, orderIdFromUrl]);
+  }, [order?.orderId, orderIdFromUrl, showToast]);
 
   const trackingNumber = (order?.orderId || orderIdFromUrl).replace("#", "");
+
+  const copyOrderId = async () => {
+    const value = order?.orderId || orderIdFromUrl;
+    if (!value) return;
+
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast("Order ID copied.", "success");
+    } catch {
+      showToast("Unable to copy Order ID.", "error");
+    }
+  };
 
   const raiseTicket = (item: OrderItem) => {
     const params = new URLSearchParams({
@@ -362,14 +628,16 @@ export default function CustomerOrderDetailsPage() {
       if (!res.ok) throw new Error(data?.message || "Failed to submit review");
 
       setReviewOk("Review submitted successfully!");
-
+      showToast("Review submitted successfully.", "success");
       window.dispatchEvent(new Event("ufo_review_updated"));
 
       setTimeout(() => {
         closeReviewModal();
       }, 900);
     } catch (e: any) {
-      setReviewError(e?.message || "Failed to submit review");
+      const msg = e?.message || "Failed to submit review";
+      setReviewError(msg);
+      showToast(msg, "error");
     } finally {
       setReviewSaving(false);
     }
@@ -410,8 +678,12 @@ export default function CustomerOrderDetailsPage() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+
+      showToast("Invoice downloaded successfully.", "success");
     } catch (e: any) {
-      setInvoiceError(e?.message || "Invoice download failed");
+      const msg = e?.message || "Invoice download failed";
+      setInvoiceError(msg);
+      showToast(msg, "error");
     } finally {
       setInvoiceLoading(false);
     }
@@ -419,184 +691,229 @@ export default function CustomerOrderDetailsPage() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
-        <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="group flex items-center gap-2 rounded-full border border-[#2b2f45] px-3 py-[7px] text-[11px] uppercase tracking-[0.16em] text-white hover:bg-white hover:text-[#050611]"
-              aria-label="Back"
-              title="Back"
-            >
-              <Image
-                src="/images/backarrow.png"
-                width={18}
-                height={18}
-                alt="Back icon"
-                className="brightness-0 invert group-hover:invert-0"
-              />
-              <span className="hidden sm:inline">Back</span>
-            </button>
+      <CartHeader />
 
-            <Link href="/homepage" className="flex items-center gap-2">
-              <div className="h-[48px] w-[48px] overflow-hidden rounded-full border-2 border-white">
-                <Image
-                  src="/images/logo.png"
-                  alt="UFO Collection logo"
-                  width={48}
-                  height={48}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <span className="text-[26px] font-bold uppercase tracking-[0.18em] text-white">
-                UFO Collection
-              </span>
+      <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
+      <main className={shellClass}>
+        <div className={containerClass}>
+          <div className="mb-8 text-[13px] text-[#a7aec4]">
+            <Link href="/homepage" className="hover:text-white">
+              Home
             </Link>
+            <span className="mx-2">/</span>
+            <Link href="/order-history" className="hover:text-white">
+              Orders
+            </Link>
+            <span className="mx-2">/</span>
+            <span className="text-white">Order Details</span>
           </div>
 
-          <nav className="hidden md:flex gap-10">
-            <Link
-              href="/homepage"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              HOME
-            </Link>
-            <Link
-              href="/collection"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              COLLECTION
-            </Link>
-            <Link
-              href="/about"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              ABOUT
-            </Link>
-            <Link
-              href="/contact"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              CONTACT
-            </Link>
-          </nav>
+          <section className={`${panelClass} overflow-hidden`}>
+            <div className="relative px-5 py-8 sm:px-8 lg:px-10">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(214,199,255,0.14),transparent_38%)]" />
 
-          <div className="w-[26px]" />
-        </div>
-      </header>
+              <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                    Customer Order
+                  </div>
 
-      <main className="min-h-[calc(100vh-80px)] bg-[#070a12] text-white">
-        <div className="mx-auto max-w-[1280px] px-6 py-10">
-          <h1 className="text-[36px] font-semibold">Order Details</h1>
+                  <h1 className="mt-3 text-[34px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[48px]">
+                    Order Details
+                  </h1>
 
-          {loading && (
-            <div className="mt-8 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6 text-[#9aa3cc]">
-              Loading order...
-            </div>
-          )}
+                  <p className="mt-3 max-w-[680px] text-[14px] leading-7 text-[#a7aec4]">
+                    Track your order, view delivery progress, download invoice,
+                    raise support tickets, and submit product reviews after
+                    delivery.
+                  </p>
+                </div>
 
-          {error && (
-            <div className="mt-8 rounded-[12px] border border-red-500/40 bg-red-500/10 p-6 text-red-200">
-              {error}
-            </div>
-          )}
+                {!loading && !error && order ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <StatusBadge status={order.status} />
 
-          {!loading && !error && !order && (
-            <div className="mt-8 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6 text-[#9aa3cc]">
-              Order not found.
-            </div>
-          )}
+                    {order.deliveryAssignment?.status ? (
+                      <DeliveryStatusBadge
+                        status={order.deliveryAssignment.status}
+                      />
+                    ) : null}
 
-          {!loading && !error && order && (
-            <>
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <span className="rounded-full border border-[#2b2f45] bg-[#0b0f1a]/60 px-4 py-2 text-[13px] text-[#dfe3ff]">
-                  Order ID:{" "}
-                  <span className="font-semibold text-white">
-                    {order.orderId}
-                  </span>
-                </span>
+                    <button
+                      type="button"
+                      onClick={copyOrderId}
+                      className={secondaryBtnClass}
+                    >
+                      Copy Order ID
+                    </button>
 
-                <StatusBadge status={order.status} />
-
-                {order.deliveryAssignment?.status ? (
-                  <DeliveryStatusBadge status={order.deliveryAssignment.status} />
+                    <button
+                      type="button"
+                      onClick={downloadInvoice}
+                      disabled={invoiceLoading}
+                      className={secondaryBtnClass}
+                    >
+                      {invoiceLoading ? "Downloading..." : "Download Invoice"}
+                    </button>
+                  </div>
                 ) : null}
-
-                <button
-                  type="button"
-                  onClick={downloadInvoice}
-                  disabled={invoiceLoading}
-                  className="ml-auto inline-flex items-center gap-2 rounded-full border border-[#2b2f45] bg-[#0b0f1a]/60 px-4 py-2 text-[12px] font-semibold text-white hover:bg-white hover:text-[#050611] disabled:cursor-not-allowed disabled:opacity-60"
-                  title="Download Invoice PDF"
-                >
-                  {invoiceLoading ? "Downloading..." : "Download Invoice (PDF)"}
-                </button>
               </div>
 
-              {invoiceError ? (
-                <div className="mt-4 rounded-[12px] border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
-                  {invoiceError}
+              {!loading && !error && order ? (
+                <div className="relative mt-7 flex flex-wrap gap-3">
+                  <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[13px] text-[#a7aec4]">
+                    Order ID:{" "}
+                    <span className="font-semibold text-white">
+                      {order.orderId}
+                    </span>
+                  </span>
+
+                  <Link
+                    href={`/order-tracking?code=${encodeURIComponent(
+                      trackingNumber
+                    )}`}
+                    className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-white/10"
+                  >
+                    Track Order
+                  </Link>
                 </div>
               ) : null}
+            </div>
+          </section>
 
-              <div className="mt-6 h-px bg-[#2b2f45]" />
+          {loading ? (
+            <div className={`${panelClass} mt-8 p-6 text-[#a7aec4]`}>
+              Loading order...
+            </div>
+          ) : null}
 
-              <section className="mt-10">
-                <h2 className="text-[18px] font-semibold">
-                  Customer Information
-                </h2>
+          {error ? (
+            <div className="mt-8 rounded-[24px] border border-red-500/30 bg-red-500/10 p-6 text-red-200">
+              {error}
+            </div>
+          ) : null}
 
-                <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-2">
-                  <div className="grid grid-cols-12 gap-4 py-4 text-sm">
-                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                      Name
-                    </div>
-                    <div className="col-span-12 text-white md:col-span-9">
-                      {order.customer.name}
-                    </div>
-                    <div className="col-span-12 h-px bg-[#2b2f45]" />
+          {!loading && !error && !order ? (
+            <div className={`${panelClass} mt-8 p-6 text-[#a7aec4]`}>
+              Order not found.
+            </div>
+          ) : null}
 
-                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                      Email
-                    </div>
-                    <div className="col-span-12 text-white md:col-span-9">
-                      {order.customer.email}
-                    </div>
-                    <div className="col-span-12 h-px bg-[#2b2f45]" />
-
-                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                      Shipping Address
-                    </div>
-                    <div className="col-span-12 whitespace-pre-line text-white md:col-span-9">
-                      {order.customer.shippingAddress}
-                    </div>
+          {!loading && !error && order ? (
+            <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+              <div className="space-y-8">
+                {invoiceError ? (
+                  <div className="rounded-[20px] border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+                    {invoiceError}
                   </div>
-                </div>
-              </section>
+                ) : null}
 
-              <section className="mt-12">
-                <h2 className="text-[18px] font-semibold">Items Purchased</h2>
+                <OrderTimeline status={order.status} />
 
-                <div className="mt-5 overflow-hidden rounded-[10px] border border-[#2b2f45] bg-[#0b0f1a]/60">
-                  <div className="hidden grid-cols-[1.2fr_0.6fr_0.8fr_0.9fr_0.6fr_0.6fr] border-b border-[#2b2f45] px-6 py-4 text-[#dfe3ff] md:grid">
-                    <div>Product</div>
-                    <div>Size</div>
-                    <div>Color</div>
-                    <div className="text-center">Quantity</div>
-                    <div>Price</div>
-                    <div>Total</div>
+                <section className={`${panelClass} p-5 sm:p-7`}>
+                  <SectionTitle
+                    eyebrow="Customer"
+                    title="Customer Information"
+                  />
+
+                  <div className="mt-5">
+                    <InfoRow label="Name" value={order.customer.name} />
+                    <InfoRow label="Email" value={order.customer.email} />
+                    <InfoRow
+                      label="Shipping Address"
+                      value={
+                        <span className="whitespace-pre-line">
+                          {order.customer.shippingAddress}
+                        </span>
+                      }
+                    />
                   </div>
+                </section>
 
-                  {order.items.map((it) => (
-                    <div
-                      key={`${it.id}-${it.size}-${it.color}`}
-                      className="border-b border-[#1b2034] px-6 py-6 last:border-0"
-                    >
-                      <div className="hidden grid-cols-[1.2fr_0.6fr_0.8fr_0.9fr_0.6fr_0.6fr] items-center gap-4 md:grid">
-                        <div className="flex items-center gap-4">
-                          <div className="relative h-[46px] w-[46px] overflow-hidden rounded-full border border-[#2b2f45]">
+                <section className={`${panelClass} p-5 sm:p-7`}>
+                  <SectionTitle eyebrow="Products" title="Items Purchased" />
+
+                  <div className="mt-5 overflow-hidden rounded-[20px] border border-[#26293a] bg-[#161824]">
+                    <div className="hidden grid-cols-[1.4fr_0.6fr_0.8fr_0.7fr_0.7fr] border-b border-[#26293a] px-5 py-4 text-[12px] uppercase tracking-[0.14em] text-[#a7aec4] md:grid">
+                      <div>Product</div>
+                      <div>Size</div>
+                      <div>Color</div>
+                      <div className="text-center">Qty</div>
+                      <div>Total</div>
+                    </div>
+
+                    {order.items.map((it) => (
+                      <div
+                        key={`${it.id}-${it.size}-${it.color}`}
+                        className="border-b border-[#26293a] p-5 last:border-0"
+                      >
+                        <div className="hidden grid-cols-[1.4fr_0.6fr_0.8fr_0.7fr_0.7fr] items-center gap-4 md:grid">
+                          <div className="flex items-center gap-4">
+                            <div className="relative h-[72px] w-[72px] overflow-hidden rounded-[18px] border border-[#26293a] bg-[#0d0f17]">
+                              <Image
+                                src={it.image}
+                                alt={it.name}
+                                fill
+                                className="object-cover"
+                              />
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="line-clamp-1 font-semibold text-white">
+                                {it.name}
+                              </div>
+
+                              <div className="mt-1 text-[12px] text-[#a7aec4]">
+                                Rs. {it.price} per item
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => raiseTicket(it)}
+                                  disabled={order.status === "Cancelled"}
+                                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  Need Help?
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => openReviewModal(it)}
+                                  disabled={order.status !== "Delivered"}
+                                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  Write Review
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <span className="text-[#a7aec4]">
+                            {it.size || "-"}
+                          </span>
+
+                          <div className="flex items-center gap-2 text-[#a7aec4]">
+                            <span
+                              className={`h-4 w-4 rounded-full border border-white/30 ${getColorDotClass(
+                                it.color || it.colorLabel
+                              )}`}
+                            />
+                            <span>{it.colorLabel || "-"}</span>
+                          </div>
+
+                          <div className="text-center text-[#a7aec4]">
+                            {it.qty}
+                          </div>
+
+                          <span className="font-semibold text-[#d6c7ff]">
+                            Rs. {it.price * it.qty}
+                          </span>
+                        </div>
+
+                        <div className="flex gap-4 md:hidden">
+                          <div className="relative h-[82px] w-[82px] shrink-0 overflow-hidden rounded-[18px] border border-[#26293a] bg-[#0d0f17]">
                             <Image
                               src={it.image}
                               alt={it.name}
@@ -604,15 +921,38 @@ export default function CustomerOrderDetailsPage() {
                               className="object-cover"
                             />
                           </div>
-                          <div className="flex flex-col">
-                            <span>{it.name}</span>
 
-                            <div className="mt-2 flex flex-wrap gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="line-clamp-2 font-semibold text-white">
+                              {it.name}
+                            </div>
+
+                            <div className="mt-2 grid gap-1 text-sm text-[#a7aec4]">
+                              <div>Size: {it.size || "-"}</div>
+
+                              <div className="flex items-center gap-2">
+                                <span>Color:</span>
+                                <span
+                                  className={`h-4 w-4 rounded-full border border-white/30 ${getColorDotClass(
+                                    it.color || it.colorLabel
+                                  )}`}
+                                />
+                                <span>{it.colorLabel || "-"}</span>
+                              </div>
+
+                              <div>Qty: {it.qty}</div>
+                              <div>Price: Rs. {it.price}</div>
+                              <div className="font-semibold text-[#d6c7ff]">
+                                Total: Rs. {it.price * it.qty}
+                              </div>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap gap-2">
                               <button
                                 type="button"
                                 onClick={() => raiseTicket(it)}
                                 disabled={order.status === "Cancelled"}
-                                className="w-fit rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#c9b9ff] hover:bg-[#1f7cff] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Need Help?
                               </button>
@@ -621,243 +961,180 @@ export default function CustomerOrderDetailsPage() {
                                 type="button"
                                 onClick={() => openReviewModal(it)}
                                 disabled={order.status !== "Delivered"}
-                                className="w-fit rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#7dd3fc] hover:bg-[#1d9bf0] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 Write Review
                               </button>
                             </div>
                           </div>
                         </div>
-
-                        <span className="text-[#9aa3cc]">
-                          {it.size ? it.size : "-"}
-                        </span>
-
-                        <div className="flex items-center gap-2 text-[#9aa3cc]">
-                          <span
-                            className="h-4 w-4 rounded-full border border-[#3a3f58]"
-                            style={{ backgroundColor: it.color || "#16191f" }}
-                          />
-                          <span>{it.colorLabel || "-"}</span>
-                        </div>
-
-                        <div className="text-center text-[#9aa3cc]">
-                          {it.qty}
-                        </div>
-                        <span className="text-[#9aa3cc]">Rs. {it.price}</span>
-                        <span className="text-white">Rs. {it.price * it.qty}</span>
                       </div>
-
-                      <div className="flex gap-4 md:hidden">
-                        <div className="relative h-[62px] w-[62px] overflow-hidden rounded-[12px] border border-[#2b2f45]">
-                          <Image
-                            src={it.image}
-                            alt={it.name}
-                            fill
-                            className="object-cover"
-                          />
-                        </div>
-
-                        <div className="flex-1">
-                          <div className="font-medium">{it.name}</div>
-                          <div className="mt-1 text-sm text-[#9aa3cc]">
-                            Size: {it.size || "-"}
-                          </div>
-
-                          <div className="mt-1 flex items-center gap-2 text-sm text-[#9aa3cc]">
-                            <span>Color:</span>
-                            <span
-                              className="h-4 w-4 rounded-full border border-[#3a3f58]"
-                              style={{ backgroundColor: it.color || "#16191f" }}
-                            />
-                            <span>{it.colorLabel || "-"}</span>
-                          </div>
-
-                          <div className="mt-1 text-sm text-[#9aa3cc]">
-                            Qty: {it.qty}
-                          </div>
-                          <div className="mt-1 text-sm text-[#9aa3cc]">
-                            Price: Rs. {it.price}
-                          </div>
-                          <div className="mt-1 text-sm text-white">
-                            Total: Rs. {it.price * it.qty}
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              onClick={() => raiseTicket(it)}
-                              disabled={order.status === "Cancelled"}
-                              className="rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#c9b9ff] hover:bg-[#1f7cff] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              Need Help?
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openReviewModal(it)}
-                              disabled={order.status !== "Delivered"}
-                              className="rounded-md border border-[#2b2f45] px-3 py-1 text-[12px] text-[#7dd3fc] hover:bg-[#1d9bf0] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              Write Review
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="mt-12">
-                <h2 className="text-[18px] font-semibold">
-                  Payment Information
-                </h2>
-
-                <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-4">
-                  <div className="grid grid-cols-12 gap-4 py-2 text-sm">
-                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                      Method
-                    </div>
-                    <div className="col-span-12 text-white md:col-span-9">
-                      {order.payment.method}
-                    </div>
+                    ))}
                   </div>
-                </div>
-              </section>
+                </section>
 
-              <section className="mt-12">
-                <h2 className="text-[18px] font-semibold">
-                  Shipping Information
-                </h2>
+                <section className={`${panelClass} p-5 sm:p-7`}>
+                  <SectionTitle eyebrow="Payment" title="Payment Information" />
 
-                <div className="mt-5 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 px-6 py-2">
-                  <div className="grid grid-cols-12 gap-4 py-4 text-sm">
-                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                      Method
-                    </div>
-                    <div className="col-span-12 text-white md:col-span-9">
-                      {order.shipping.method}
-                    </div>
-                    <div className="col-span-12 h-px bg-[#2b2f45]" />
+                  <div className="mt-5">
+                    <InfoRow label="Method" value={order.payment.method} />
+                  </div>
+                </section>
 
-                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                      Estimated Delivery
-                    </div>
-                    <div className="col-span-12 text-white md:col-span-9">
-                      {order.shipping.estimatedDelivery || "—"}
-                    </div>
+                <section className={`${panelClass} p-5 sm:p-7`}>
+                  <SectionTitle
+                    eyebrow="Shipping"
+                    title="Shipping Information"
+                  />
+
+                  <div className="mt-5">
+                    <InfoRow label="Method" value={order.shipping.method} />
+                    <InfoRow
+                      label="Estimated Delivery"
+                      value={order.shipping.estimatedDelivery || "—"}
+                    />
 
                     {order.deliveryAssignment?.status ? (
-                      <>
-                        <div className="col-span-12 h-px bg-[#2b2f45]" />
-                        <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                          Delivery Status
-                        </div>
-                        <div className="col-span-12 text-white md:col-span-9">
+                      <InfoRow
+                        label="Delivery Status"
+                        value={
                           <DeliveryStatusBadge
                             status={order.deliveryAssignment.status}
                           />
-                        </div>
-                      </>
+                        }
+                      />
                     ) : null}
 
                     {order.deliveryAssignment?.name ? (
-                      <>
-                        <div className="col-span-12 h-px bg-[#2b2f45]" />
-                        <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                          Delivery Rider
-                        </div>
-                        <div className="col-span-12 text-white md:col-span-9">
-                          {order.deliveryAssignment.name}
-                          {order.deliveryAssignment.phone
+                      <InfoRow
+                        label="Delivery Rider"
+                        value={`${order.deliveryAssignment.name}${
+                          order.deliveryAssignment.phone
                             ? ` • ${order.deliveryAssignment.phone}`
-                            : ""}
-                        </div>
-                      </>
+                            : ""
+                        }`}
+                      />
                     ) : null}
 
                     {order.deliveryAssignment?.outForDeliveryAt ? (
-                      <>
-                        <div className="col-span-12 h-px bg-[#2b2f45]" />
-                        <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                          Out for Delivery At
-                        </div>
-                        <div className="col-span-12 text-white md:col-span-9">
-                          {formatDateTime(order.deliveryAssignment.outForDeliveryAt)}
-                        </div>
-                      </>
+                      <InfoRow
+                        label="Out for Delivery At"
+                        value={formatDateTime(
+                          order.deliveryAssignment.outForDeliveryAt
+                        )}
+                      />
                     ) : null}
 
                     {order.deliveryAssignment?.deliveredAt ? (
-                      <>
-                        <div className="col-span-12 h-px bg-[#2b2f45]" />
-                        <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                          Delivered At
-                        </div>
-                        <div className="col-span-12 text-white md:col-span-9">
-                          {formatDateTime(order.deliveryAssignment.deliveredAt)}
-                        </div>
-                      </>
+                      <InfoRow
+                        label="Delivered At"
+                        value={formatDateTime(
+                          order.deliveryAssignment.deliveredAt
+                        )}
+                      />
                     ) : null}
 
-                    <div className="col-span-12 h-px bg-[#2b2f45]" />
-
-                    <div className="col-span-12 text-[#9aa3cc] md:col-span-3">
-                      Track Order
-                    </div>
-                    <div className="col-span-12 md:col-span-9">
-                      <Link
-                        href={`/order-tracking?code=${encodeURIComponent(
-                          trackingNumber
-                        )}`}
-                        className="text-white underline underline-offset-4 hover:text-[#c9b9ff]"
-                      >
-                        Click here to track
-                      </Link>
-                    </div>
+                    <InfoRow
+                      label="Track Order"
+                      value={
+                        <Link
+                          href={`/order-tracking?code=${encodeURIComponent(
+                            trackingNumber
+                          )}`}
+                          className="text-white underline underline-offset-4 hover:text-[#d6c7ff]"
+                        >
+                          Click here to track
+                        </Link>
+                      }
+                    />
                   </div>
-                </div>
-              </section>
+                </section>
+              </div>
 
-              <section className="ml-auto mt-12 max-w-[460px]">
-                <h2 className="text-[22px] font-semibold">Summary</h2>
+              <aside className="space-y-6 lg:sticky lg:top-[104px] lg:self-start">
+                <section className={`${panelClass} p-5 sm:p-6`}>
+                  <div className="flex items-center justify-between gap-4">
+                    <SectionTitle eyebrow="Receipt" title="Summary" />
+                    <StatusBadge status={order.status} />
+                  </div>
 
-                <div className="mt-6 rounded-[12px] border border-[#2b2f45] bg-[#0b0f1a]/60 p-6">
-                  <div className="space-y-4 text-[#9aa3cc]">
-                    <div className="flex justify-between">
+                  <div className="mt-6 space-y-4 text-[14px] text-[#a7aec4]">
+                    <div className="flex justify-between gap-4">
                       <span>Subtotal</span>
                       <span className="text-white">
                         Rs. {order.summary.subtotal}
                       </span>
                     </div>
-                    <div className="flex justify-between">
+
+                    <div className="flex justify-between gap-4">
                       <span>Shipping</span>
                       <span className="text-white">
                         Rs. {order.summary.shipping}
                       </span>
                     </div>
-                    <div className="flex justify-between">
+
+                    <div className="flex justify-between gap-4">
                       <span>Taxes</span>
-                      <span className="text-white">Rs. {order.summary.taxes}</span>
+                      <span className="text-white">
+                        Rs. {order.summary.taxes}
+                      </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Total</span>
-                      <span className="font-semibold text-white">
+
+                    <div className="h-px bg-[#26293a]" />
+
+                    <div className="flex justify-between gap-4 text-[18px] font-semibold">
+                      <span className="text-white">Total</span>
+                      <span className="text-white">
                         Rs. {order.summary.total}
                       </span>
                     </div>
                   </div>
-                </div>
-              </section>
 
-              <div className="mt-16 text-center text-sm text-[#8b90ad]">
-                © 2025 UFO Collection — All Rights Reserved
-              </div>
-            </>
-          )}
+                  <button
+                    type="button"
+                    onClick={downloadInvoice}
+                    disabled={invoiceLoading}
+                    className={`${primaryBtnClass} mt-7 w-full justify-center`}
+                  >
+                    {invoiceLoading ? "Downloading..." : "Download Invoice"}
+                  </button>
+                </section>
+
+                <DeliveryRiderCard assignment={order.deliveryAssignment} />
+
+                <section className={`${panelClass} p-5 sm:p-6`}>
+                  <SectionTitle eyebrow="Support" title="Need help?" />
+
+                  <p className="mt-3 text-[13px] leading-6 text-[#a7aec4]">
+                    For damaged items, late delivery, wrong size, or other
+                    issues, use the Need Help button beside each product.
+                  </p>
+
+                  <div className="mt-5 grid grid-cols-3 gap-2">
+                    {[
+                      ["Secure", "Payment"],
+                      ["Easy", "Return"],
+                      ["COD", "Available"],
+                    ].map(([a, b]) => (
+                      <div
+                        key={`${a}-${b}`}
+                        className="rounded-[16px] border border-[#26293a] bg-[#161824] p-3 text-center"
+                      >
+                        <div className="text-[12px] font-semibold text-white">
+                          {a}
+                        </div>
+                        <div className="text-[11px] text-[#a7aec4]">{b}</div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </aside>
+            </div>
+          ) : null}
         </div>
       </main>
+
+      <MainFooter />
 
       {reviewOpen && draft ? (
         <div
@@ -869,24 +1146,29 @@ export default function CustomerOrderDetailsPage() {
           <button
             type="button"
             onClick={closeReviewModal}
-            className="absolute inset-0 bg-black/70"
+            className="absolute inset-0 bg-black/75 backdrop-blur-sm"
             aria-label="Close modal backdrop"
             title="Close"
           />
 
-          <div className="relative w-full max-w-[560px] rounded-[16px] border border-[#2b2f45] bg-[#0b0f1a] p-6 shadow-[0_30px_80px_rgba(0,0,0,0.8)]">
+          <div
+            className={`${panelClass} relative w-full max-w-[580px] p-6 sm:p-7`}
+          >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-[18px] font-semibold text-white">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                  Product Review
+                </div>
+                <div className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
                   Write a Review
                 </div>
-                <div className="mt-1 text-sm text-[#9aa3cc]">
+                <div className="mt-2 text-sm text-[#a7aec4]">
                   Product:{" "}
                   <span className="font-medium text-white">
                     {draft.productName}
                   </span>
                 </div>
-                <div className="mt-1 text-xs text-[#9aa3cc]">
+                <div className="mt-1 text-xs text-[#a7aec4]">
                   Order: {draft.orderId}
                 </div>
               </div>
@@ -894,9 +1176,7 @@ export default function CustomerOrderDetailsPage() {
               <button
                 type="button"
                 onClick={closeReviewModal}
-                className="rounded-lg border border-[#2b2f45] px-3 py-2 text-xs text-[#dfe3ff] hover:bg-white hover:text-[#050611]"
-                aria-label="Close modal"
-                title="Close"
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
               >
                 Close
               </button>
@@ -904,23 +1184,21 @@ export default function CustomerOrderDetailsPage() {
 
             <div className="mt-6 space-y-4">
               <div>
-                <div className="text-[13px] uppercase tracking-[0.12em] text-[#cbd5f5]">
+                <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#cbd5f5]">
                   Rating
                 </div>
 
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-3 flex items-center gap-2">
                   {[1, 2, 3, 4, 5].map((n) => (
                     <button
                       key={n}
                       type="button"
                       onClick={() => setDraft({ ...draft, rating: n })}
-                      className={`h-10 w-10 rounded-xl border text-sm font-semibold ${
+                      className={`h-11 w-11 rounded-full border text-sm font-semibold transition ${
                         draft.rating >= n
-                          ? "border-[#1d9bf0] bg-[#1d9bf0] text-white"
-                          : "border-[#2b2f45] bg-transparent text-[#9aa3cc]"
+                          ? "border-white bg-white text-[#090a12]"
+                          : "border-white/15 bg-white/5 text-[#a7aec4] hover:bg-white/10"
                       }`}
-                      aria-label={`Set rating ${n}`}
-                      title={`Set rating ${n}`}
                     >
                       {n}
                     </button>
@@ -929,21 +1207,25 @@ export default function CustomerOrderDetailsPage() {
               </div>
 
               <div>
-                <div className="text-[13px] uppercase tracking-[0.12em] text-[#cbd5f5]">
+                <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#cbd5f5]">
                   Title
                 </div>
+
                 <input
                   value={draft.title}
-                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                  onChange={(e) =>
+                    setDraft({ ...draft, title: e.target.value })
+                  }
                   placeholder="Short title (optional)"
-                  className="mt-2 w-full rounded-xl border border-[#2b2f45] bg-[#070a12] px-4 py-3 text-sm text-white placeholder:text-[#6b7280] outline-none focus:border-[#1d9bf0]"
+                  className="mt-2 h-[48px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-4 text-sm text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
                 />
               </div>
 
               <div>
-                <div className="text-[13px] uppercase tracking-[0.12em] text-[#cbd5f5]">
+                <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#cbd5f5]">
                   Comment
                 </div>
+
                 <textarea
                   value={draft.comment}
                   onChange={(e) =>
@@ -951,18 +1233,18 @@ export default function CustomerOrderDetailsPage() {
                   }
                   placeholder="Write your experience..."
                   rows={5}
-                  className="mt-2 w-full resize-none rounded-xl border border-[#2b2f45] bg-[#070a12] px-4 py-3 text-sm text-white placeholder:text-[#6b7280] outline-none focus:border-[#1d9bf0]"
+                  className="mt-2 w-full resize-none rounded-[20px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-sm text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
                 />
               </div>
 
               {reviewError ? (
-                <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                <div className="rounded-[18px] border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                   {reviewError}
                 </div>
               ) : null}
 
               {reviewOk ? (
-                <div className="rounded-xl border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-200">
+                <div className="rounded-[18px] border border-green-500/30 bg-green-500/10 px-4 py-3 text-sm text-green-200">
                   {reviewOk}
                 </div>
               ) : null}
@@ -971,7 +1253,7 @@ export default function CustomerOrderDetailsPage() {
                 <button
                   type="button"
                   onClick={closeReviewModal}
-                  className="rounded-xl border border-[#2b2f45] px-5 py-3 text-sm text-[#dfe3ff] hover:bg-white hover:text-[#050611]"
+                  className={secondaryBtnClass}
                 >
                   Cancel
                 </button>
@@ -980,7 +1262,7 @@ export default function CustomerOrderDetailsPage() {
                   type="button"
                   onClick={submitReview}
                   disabled={reviewSaving}
-                  className="rounded-xl bg-[#1d9bf0] px-5 py-3 text-sm font-semibold text-white hover:bg-[#1580c5] disabled:cursor-not-allowed disabled:opacity-60"
+                  className={primaryBtnClass}
                 >
                   {reviewSaving ? "Submitting..." : "Submit Review"}
                 </button>

@@ -4,6 +4,8 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import CartHeader from "@/components/layout/CartHeader";
+import MainFooter from "@/components/layout/MainFooter";
 
 type CartItem = {
   id: string;
@@ -35,10 +37,28 @@ type CollectedCouponRow = {
   };
 };
 
+type Toast = {
+  id: number;
+  type: "success" | "error";
+  message: string;
+  undo?: () => void;
+};
+
+const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+const containerClass =
+  "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
-    return JSON.parse(text);
+    return text ? JSON.parse(text) : {};
   } catch {
     return { raw: text };
   }
@@ -53,8 +73,10 @@ function fmtCoupon(c: {
     const cap = c.maxDiscountCap ? ` (Max Rs ${c.maxDiscountCap})` : "";
     return `${c.value}% OFF${cap}`;
   }
+
   if (c.type === "FLAT") return `Rs ${c.value} OFF`;
   if (c.type === "FREESHIP") return "FREE SHIPPING";
+
   return "";
 }
 
@@ -70,37 +92,27 @@ function getColorSwatchClass(color: string) {
     "#000000": "bg-black",
     "#16191f": "bg-black",
     "#111827": "bg-black",
-
     white: "bg-white",
     "#ffffff": "bg-white",
-
     red: "bg-red-500",
     "#ef4444": "bg-red-500",
-
     blue: "bg-blue-500",
     "#3b82f6": "bg-blue-500",
-
     navy: "bg-blue-900",
     "navy blue": "bg-blue-900",
     "#000080": "bg-blue-900",
-
     green: "bg-green-500",
     "#22c55e": "bg-green-500",
-
     yellow: "bg-yellow-400",
     "#eab308": "bg-yellow-400",
-
     gray: "bg-gray-500",
     grey: "bg-gray-500",
     "#808080": "bg-gray-500",
     "#9ca3af": "bg-gray-400",
-
     pink: "bg-pink-500",
     "#ec4899": "bg-pink-500",
-
     purple: "bg-purple-500",
     "#a855f7": "bg-purple-500",
-
     orange: "bg-orange-500",
     "#f97316": "bg-orange-500",
   };
@@ -108,20 +120,8 @@ function getColorSwatchClass(color: string) {
   return map[c] || "bg-neutral-800";
 }
 
-function isCustomerLoggedIn() {
-  if (typeof window === "undefined") return false;
-
-  const token =
-    localStorage.getItem("token") ||
-    localStorage.getItem("accessToken") ||
-    localStorage.getItem("ufo_token");
-
-  const user =
-    localStorage.getItem("user") ||
-    localStorage.getItem("ufo_user") ||
-    localStorage.getItem("ufo_customer");
-
-  return Boolean(token || user);
+function hasRealStockValue(stock: unknown) {
+  return typeof stock === "number" && Number.isFinite(stock);
 }
 
 export default function CartPage() {
@@ -134,13 +134,57 @@ export default function CartPage() {
   const [appliedCouponLabel, setAppliedCouponLabel] = React.useState("");
   const [couponMessage, setCouponMessage] = React.useState("");
   const [isApplyingCoupon, setIsApplyingCoupon] = React.useState(false);
-  const [stockMessage, setStockMessage] = React.useState("");
+
+  const [authChecked, setAuthChecked] = React.useState(false);
+  const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+  const [toast, setToast] = React.useState<Toast | null>(null);
 
   const shipping = 100;
 
   const API_BASE =
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
     "http://localhost:8080/api";
+
+  const showToast = React.useCallback(
+    (type: "success" | "error", message: string, undo?: () => void) => {
+      const nextToast = { id: Date.now(), type, message, undo };
+      setToast(nextToast);
+
+      window.setTimeout(() => {
+        setToast((current) => (current?.id === nextToast.id ? null : current));
+      }, 3000);
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    let alive = true;
+
+    async function checkAuth() {
+      try {
+        const res = await fetch(`${API_BASE}/auth/me`, {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!alive) return;
+        setIsLoggedIn(res.ok);
+      } catch {
+        if (!alive) return;
+        setIsLoggedIn(false);
+      } finally {
+        if (!alive) return;
+        setAuthChecked(true);
+      }
+    }
+
+    checkAuth();
+
+    return () => {
+      alive = false;
+    };
+  }, [API_BASE]);
 
   React.useEffect(() => {
     try {
@@ -152,21 +196,29 @@ export default function CartPage() {
     }
   }, []);
 
-  const saveCart = (next: CartItem[]) => {
+  const saveCart = React.useCallback((next: CartItem[]) => {
     setItems(next);
     localStorage.setItem("ufo_cart", JSON.stringify(next));
     window.dispatchEvent(new Event("ufo_cart_updated"));
-  };
+  }, []);
 
   const subtotal = React.useMemo(
-    () => items.reduce((sum, it) => sum + it.price * it.qty, 0),
+    () =>
+      items.reduce(
+        (sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0),
+        0
+      ),
     [items]
   );
 
   const hasStockIssue = React.useMemo(() => {
     return items.some((it) => {
-      const stock = Number(it.stock ?? 0);
-      return stock <= 0 || Number(it.qty || 0) > stock;
+      if (!hasRealStockValue(it.stock)) return false;
+
+      const stock = Number(it.stock);
+      const qty = Number(it.qty || 0);
+
+      return stock <= 0 || qty > stock;
     });
   }, [items]);
 
@@ -185,15 +237,17 @@ export default function CartPage() {
       (it) => it.id === id && it.size === size && it.color === color
     );
 
-    const maxStock = Number(item?.stock ?? 0);
-    const safe = Math.max(1, Math.min(maxStock > 0 ? maxStock : 1, qty || 1));
+    const hasKnownStock = hasRealStockValue(item?.stock);
+    const stock = Number(item?.stock || 0);
 
-    if (maxStock <= 0) {
-      setStockMessage("This item is out of stock. Please remove it from cart.");
-    } else if (qty > maxStock) {
-      setStockMessage(`Only ${maxStock} item(s) available in stock.`);
-    } else {
-      setStockMessage("");
+    const safe = hasKnownStock
+      ? Math.max(1, Math.min(stock > 0 ? stock : 1, qty || 1))
+      : Math.max(1, Math.min(99, qty || 1));
+
+    if (hasKnownStock && stock <= 0) {
+      showToast("error", "This item is out of stock. Please remove it.");
+    } else if (hasKnownStock && qty > stock) {
+      showToast("error", `Only ${stock} item(s) available in stock.`);
     }
 
     const next = items.map((it) =>
@@ -206,11 +260,21 @@ export default function CartPage() {
   };
 
   const removeItem = (id: string, size: string, color: string) => {
+    const removedItem = items.find(
+      (it) => it.id === id && it.size === size && it.color === color
+    );
+
     const next = items.filter(
       (it) => !(it.id === id && it.size === size && it.color === color)
     );
+
     saveCart(next);
-    setStockMessage("");
+
+    if (removedItem) {
+      showToast("success", "Item removed.", () => {
+        saveCart([...next, removedItem]);
+      });
+    }
   };
 
   const buildValidatePayload = React.useCallback(
@@ -255,17 +319,25 @@ export default function CartPage() {
     [API_BASE, buildValidatePayload]
   );
 
-  const clearAppliedCoupon = React.useCallback(() => {
-    setDiscountAmount(0);
-    setAppliedCouponCode("");
-    setAppliedCouponLabel("");
-    setCouponMessage("");
-    localStorage.removeItem("ufo_coupon_selected");
-  }, []);
+  const clearAppliedCoupon = React.useCallback(
+    (silent = false) => {
+      setDiscount("");
+      setDiscountAmount(0);
+      setAppliedCouponCode("");
+      setAppliedCouponLabel("");
+      setCouponMessage("");
+      localStorage.removeItem("ufo_coupon_selected");
+
+      if (!silent) {
+        showToast("success", "Coupon removed.");
+      }
+    },
+    [showToast]
+  );
 
   const autoApplyBestCoupon = React.useCallback(async () => {
     if (!items.length) {
-      clearAppliedCoupon();
+      clearAppliedCoupon(true);
       return;
     }
 
@@ -297,7 +369,7 @@ export default function CartPage() {
       );
 
       if (!validCollected.length) {
-        clearAppliedCoupon();
+        clearAppliedCoupon(true);
         return;
       }
 
@@ -320,6 +392,7 @@ export default function CartPage() {
       for (const code of orderedCodes) {
         try {
           const result = await validateCoupon(code);
+
           if (!result.ok || result.discountRs <= 0) continue;
 
           const row = validCollected.find(
@@ -328,25 +401,23 @@ export default function CartPage() {
 
           if (!row) continue;
 
+          const label = fmtCoupon({
+            type: row.coupon.type,
+            value: row.coupon.value,
+            maxDiscountCap: row.coupon.maxDiscountCap,
+          });
+
           if (preferredCode && code === preferredCode) {
             bestDiscountRs = result.discountRs;
             bestCode = code;
-            bestLabel = fmtCoupon({
-              type: row.coupon.type,
-              value: row.coupon.value,
-              maxDiscountCap: row.coupon.maxDiscountCap,
-            });
+            bestLabel = label;
             break;
           }
 
           if (result.discountRs > bestDiscountRs) {
             bestDiscountRs = result.discountRs;
             bestCode = code;
-            bestLabel = fmtCoupon({
-              type: row.coupon.type,
-              value: row.coupon.value,
-              maxDiscountCap: row.coupon.maxDiscountCap,
-            });
+            bestLabel = label;
           }
         } catch {
           // ignore invalid coupon
@@ -361,10 +432,10 @@ export default function CartPage() {
         setCouponMessage("Best available coupon applied automatically.");
         localStorage.setItem("ufo_coupon_selected", bestCode);
       } else {
-        clearAppliedCoupon();
+        clearAppliedCoupon(true);
       }
     } catch {
-      clearAppliedCoupon();
+      clearAppliedCoupon(true);
     } finally {
       setIsApplyingCoupon(false);
     }
@@ -375,7 +446,10 @@ export default function CartPage() {
   }, [autoApplyBestCoupon]);
 
   const applyManualCoupon = async () => {
-    if (!items.length || !discount.trim()) return;
+    if (!items.length || !discount.trim()) {
+      showToast("error", "Please enter a coupon code.");
+      return;
+    }
 
     setIsApplyingCoupon(true);
     setCouponMessage("");
@@ -388,23 +462,26 @@ export default function CartPage() {
         setAppliedCouponCode("");
         setAppliedCouponLabel("");
         setCouponMessage("Coupon is invalid or not applicable for this cart.");
+        showToast("error", "Coupon failed.");
         return;
       }
 
-      setDiscount(result.appliedCode || discount.trim().toUpperCase());
+      const code = result.appliedCode || discount.trim().toUpperCase();
+
+      setDiscount(code);
       setDiscountAmount(result.discountRs);
-      setAppliedCouponCode(result.appliedCode || discount.trim().toUpperCase());
+      setAppliedCouponCode(code);
       setAppliedCouponLabel("Coupon applied successfully.");
       setCouponMessage("Coupon applied successfully.");
-      localStorage.setItem(
-        "ufo_coupon_selected",
-        (result.appliedCode || discount.trim()).toUpperCase()
-      );
+
+      localStorage.setItem("ufo_coupon_selected", code);
+      showToast("success", "Coupon applied.");
     } catch {
       setDiscountAmount(0);
       setAppliedCouponCode("");
       setAppliedCouponLabel("");
       setCouponMessage("Failed to apply coupon.");
+      showToast("error", "Failed to apply coupon.");
     } finally {
       setIsApplyingCoupon(false);
     }
@@ -412,9 +489,15 @@ export default function CartPage() {
 
   const proceedToCheckout = () => {
     if (hasStockIssue) {
-      setStockMessage(
-        "Some cart items are out of stock or exceed available stock. Please update your cart."
+      showToast(
+        "error",
+        "Some cart items are out of stock or exceed available stock."
       );
+      return;
+    }
+
+    if (!authChecked) {
+      showToast("error", "Checking login status. Please try again.");
       return;
     }
 
@@ -430,8 +513,9 @@ export default function CartPage() {
 
     localStorage.setItem("ufo_order_summary", JSON.stringify(orderSummary));
 
-    if (!isCustomerLoggedIn()) {
+    if (!isLoggedIn) {
       localStorage.setItem("ufo_redirect_after_login", "/checkout");
+      showToast("error", "Redirecting to login...");
       router.push("/login");
       return;
     }
@@ -441,136 +525,115 @@ export default function CartPage() {
 
   return (
     <>
-      <style jsx global>{`
-        @import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
-        html,
-        body {
-          font-family: Poppins, system-ui, -apple-system, BlinkMacSystemFont,
-            "Segoe UI", sans-serif;
-          background: #0a0a0f;
-        }
-      `}</style>
+      <CartHeader />
 
-      <header className="sticky top-0 z-40 border-b border-[#1b1e2b] bg-[rgba(10,10,15,0.92)] backdrop-blur-xl">
-        <div className="mx-auto flex min-h-[76px] w-full max-w-[1280px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-            <button
-              type="button"
-              onClick={() => router.push("/collection")}
-              className="group flex shrink-0 items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white transition hover:bg-white hover:text-[#090a12]"
-              aria-label="Back to collection"
-              title="Back to collection"
-            >
-              <Image
-                src="/images/backarrow.png"
-                width={18}
-                height={18}
-                alt="Back icon"
-                className="brightness-0 invert group-hover:invert-0"
-              />
-              <span className="hidden sm:inline">Back</span>
-            </button>
+      {toast ? (
+        <div className="fixed right-4 top-24 z-[9999]">
+          <div
+            className={`flex items-center gap-3 rounded-2xl border px-5 py-3 text-sm font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur ${
+              toast.type === "error"
+                ? "border-red-400/30 bg-red-500/20 text-red-100"
+                : "border-emerald-400/30 bg-emerald-500/20 text-emerald-100"
+            }`}
+          >
+            <span>{toast.message}</span>
 
-            <Link
-              href="/homepage"
-              className="flex min-w-0 items-center gap-2 sm:gap-3"
-            >
-              <div className="h-[42px] w-[42px] overflow-hidden rounded-full border border-white/15 bg-white/5 sm:h-[48px] sm:w-[48px]">
-                <Image
-                  src="/images/logo.png"
-                  alt="UFO Collection logo"
-                  width={48}
-                  height={48}
-                  className="h-full w-full object-cover"
-                />
+            {toast.undo ? (
+              <button
+                type="button"
+                onClick={() => {
+                  toast.undo?.();
+                  setToast(null);
+                }}
+                className="rounded-full border border-white/20 px-3 py-1 text-xs text-white transition hover:bg-white/10"
+              >
+                Undo
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <main className={shellClass}>
+        <div className={containerClass}>
+          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                Your Bag
               </div>
-              <span className="truncate text-[16px] font-bold uppercase tracking-[0.14em] text-white sm:text-[22px] lg:text-[26px]">
-                UFO Collection
-              </span>
+
+              <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[44px]">
+                Shopping Cart
+              </h1>
+
+              <p className="mt-2 text-[13px] text-[#a7aec4]">
+                Review your selected products before checkout.
+              </p>
+            </div>
+
+            <Link href="/collection" className={secondaryBtnClass}>
+              Continue Shopping
             </Link>
           </div>
 
-          <nav className="hidden items-center gap-6 lg:flex xl:gap-10">
-            <Link
-              href="/homepage"
-              className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
-            >
-              Home
-            </Link>
-            <Link
-              href="/collection"
-              className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
-            >
-              Collection
-            </Link>
-            <Link
-              href="/about"
-              className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
-            >
-              About
-            </Link>
-            <Link
-              href="/contact"
-              className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
-            >
-              Contact
-            </Link>
-          </nav>
-
-          <Link
-            href="/wishlist"
-            aria-label="Wishlist"
-            title="Wishlist"
-            className="shrink-0 rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
-          >
-            <Image
-              src="/images/wishlist.png"
-              width={18}
-              height={18}
-              alt="Wishlist icon"
-              className="brightness-0 invert"
-            />
-          </Link>
-        </div>
-      </header>
-
-      <main className="min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-white">
-        <div className="mx-auto max-w-[1280px] px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-          <h1 className="text-[28px] font-semibold sm:text-[32px] lg:text-[36px]">
-            Shopping Cart
-          </h1>
-          <div className="mt-5 h-px bg-[#2b2f45]" />
-
           {items.length === 0 ? (
-            <div className="mt-8 rounded-[18px] border border-[#26293a] bg-[#11121a] p-6 text-[#a7aec4] sm:mt-10 sm:p-8">
-              <p className="text-sm sm:text-base">Your cart is empty.</p>
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => router.push("/collection")}
-                  className="rounded-full bg-white px-5 py-2.5 text-sm font-medium text-[#090a12] sm:text-base"
-                  aria-label="Go to collection"
-                  title="Go to collection"
-                >
-                  Go to Collection
-                </button>
+            <div className={`${panelClass} p-8 text-center sm:p-12`}>
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[24px] border border-white/10 bg-white/5">
+                <Image
+                  src="/images/cart-empty.png"
+                  alt="Empty cart"
+                  width={44}
+                  height={44}
+                  className="opacity-90"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+                <span className="text-[28px]">🛒</span>
               </div>
+
+              <h2 className="mt-5 text-[24px] font-semibold text-white">
+                Your cart is empty
+              </h2>
+
+              <p className="mx-auto mt-2 max-w-[420px] text-[14px] leading-7 text-[#a7aec4]">
+                Browse the latest UFO Collection products and add your favorite
+                items to your cart.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => router.push("/collection")}
+                className={`${primaryBtnClass} mt-6`}
+              >
+                Go to Collection
+              </button>
             </div>
           ) : (
-            <div className="mt-8 grid gap-8 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-start">
-              <section className="overflow-hidden rounded-[18px] border border-[#26293a] bg-[#11121a]">
-                <div className="hidden grid-cols-[1.5fr_0.7fr_0.9fr_0.9fr_0.6fr_0.25fr] gap-4 border-b border-[#26293a] px-6 py-4 text-sm text-[#dfe3ff] md:grid">
+            <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-start">
+              <section className={`${panelClass} overflow-hidden`}>
+                <div className="hidden grid-cols-[1.5fr_0.65fr_0.85fr_0.9fr_0.9fr_0.35fr] gap-4 border-b border-[#26293a] px-6 py-4 text-[12px] uppercase tracking-[0.14em] text-[#a7aec4] md:grid">
                   <div>Product</div>
                   <div>Size</div>
                   <div>Color</div>
                   <div className="text-center">Quantity</div>
-                  <div>Price</div>
+                  <div>Total</div>
                   <div />
                 </div>
 
                 {items.map((it) => {
-                  const stock = Number(it.stock ?? 0);
-                  const itemHasStockIssue = stock <= 0 || it.qty > stock;
+                  const hasKnownStock = hasRealStockValue(it.stock);
+                  const stock = Number(it.stock || 0);
+                  const qty = Number(it.qty || 0);
+                  const itemTotal = Number(it.price || 0) * qty;
+
+                  const itemHasStockIssue =
+                    hasKnownStock && (stock <= 0 || qty > stock);
+
+                  const lowStockText =
+                    hasKnownStock && stock > 0 && stock <= 5
+                      ? `Only ${stock} left 🔥`
+                      : "";
 
                   return (
                     <div
@@ -581,9 +644,9 @@ export default function CartPage() {
                           : "border-[#1b2034]"
                       }`}
                     >
-                      <div className="hidden grid-cols-[1.5fr_0.7fr_0.9fr_0.9fr_0.6fr_0.25fr] items-center gap-4 md:grid">
+                      <div className="hidden grid-cols-[1.5fr_0.65fr_0.85fr_0.9fr_0.9fr_0.35fr] items-center gap-4 md:grid">
                         <div className="flex min-w-0 items-center gap-4">
-                          <div className="relative h-[56px] w-[56px] shrink-0 overflow-hidden rounded-full border border-[#2b2f45]">
+                          <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[18px] border border-[#2b2f45] bg-[#0d0f17]">
                             <Image
                               src={it.image}
                               alt={it.name}
@@ -593,23 +656,35 @@ export default function CartPage() {
                               }`}
                             />
                           </div>
+
                           <div className="min-w-0">
-                            <span className="block truncate">{it.name}</span>
-                            <span
-                              className={`mt-1 block text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                                itemHasStockIssue
-                                  ? "text-red-300"
-                                  : "text-emerald-300"
-                              }`}
-                            >
-                              {stock <= 0
-                                ? "Out of Stock"
-                                : `${stock} in stock`}
-                            </span>
+                            <div className="truncate font-medium text-white">
+                              {it.name}
+                            </div>
+
+                            <div className="mt-1 text-[12px] text-[#a7aec4]">
+                              Rs. {it.price} × {it.qty} = Rs. {itemTotal}
+                            </div>
+
+                            {hasKnownStock ? (
+                              <div
+                                className={`mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                                  itemHasStockIssue
+                                    ? "text-red-300"
+                                    : lowStockText
+                                      ? "text-orange-300"
+                                      : "text-emerald-300"
+                                }`}
+                              >
+                                {stock <= 0
+                                  ? "Out of Stock"
+                                  : lowStockText || `${stock} in stock`}
+                              </div>
+                            ) : null}
                           </div>
                         </div>
 
-                        <span>{it.size}</span>
+                        <span className="text-[#d6dbeb]">{it.size}</span>
 
                         <div className="flex items-center gap-2">
                           <span
@@ -617,50 +692,74 @@ export default function CartPage() {
                               it.color
                             )}`}
                           />
-                          <span className="truncate">
+
+                          <span className="truncate text-[#d6dbeb]">
                             {it.colorLabel || "Color"}
                           </span>
                         </div>
 
                         <div className="flex justify-center">
-                          <label
-                            htmlFor={`qty-${it.id}-${it.size}-${it.color}`}
-                            className="sr-only"
-                          >
-                            Quantity for {it.name}
-                          </label>
-                          <input
-                            id={`qty-${it.id}-${it.size}-${it.color}`}
-                            type="number"
-                            min={1}
-                            max={stock > 0 ? stock : 1}
-                            value={it.qty}
-                            disabled={stock <= 0}
-                            onChange={(e) =>
-                              updateQty(
-                                it.id,
-                                it.size,
-                                it.color,
-                                Number(e.target.value)
-                              )
-                            }
-                            className="w-[82px] rounded-[10px] border border-[#3a3f58] bg-transparent px-3 py-2 text-white outline-none transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-50"
-                          />
+                          <div className="flex items-center rounded-full border border-[#3a3f58] bg-[#0d0f17] p-1">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateQty(
+                                  it.id,
+                                  it.size,
+                                  it.color,
+                                  Number(it.qty || 1) - 1
+                                )
+                              }
+                              disabled={hasKnownStock && stock <= 0}
+                              className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                              aria-label={`Decrease quantity for ${it.name}`}
+                            >
+                              -
+                            </button>
+
+                            <span className="min-w-[38px] text-center text-sm font-semibold text-white">
+                              {it.qty}
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateQty(
+                                  it.id,
+                                  it.size,
+                                  it.color,
+                                  Number(it.qty || 1) + 1
+                                )
+                              }
+                              disabled={hasKnownStock && stock <= 0}
+                              className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                              aria-label={`Increase quantity for ${it.name}`}
+                            >
+                              +
+                            </button>
+                          </div>
                         </div>
 
-                        <span>Rs. {it.price}</span>
+                        <div>
+                          <div className="font-semibold text-[#d6c7ff]">
+                            Rs. {itemTotal}
+                          </div>
+
+                          <div className="mt-1 text-[11px] text-[#a7aec4]">
+                            Rs. {it.price} × {it.qty}
+                          </div>
+                        </div>
 
                         <button
                           type="button"
                           onClick={() => removeItem(it.id, it.size, it.color)}
-                          className="flex justify-center"
+                          className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:bg-red-500/15"
                           aria-label={`Remove ${it.name} from cart`}
-                          title={`Remove ${it.name}`}
                         >
                           <Image
                             src="/images/delete.png"
-                            width={24}
-                            height={24}
+                            width={18}
+                            height={18}
                             alt="Remove icon"
                             className="brightness-0 invert"
                           />
@@ -668,7 +767,7 @@ export default function CartPage() {
                       </div>
 
                       <div className="flex gap-4 md:hidden">
-                        <div className="relative h-[76px] w-[76px] shrink-0 overflow-hidden rounded-[12px] border border-[#2b2f45] sm:h-[88px] sm:w-[88px]">
+                        <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[18px] border border-[#2b2f45] bg-[#0d0f17]">
                           <Image
                             src={it.image}
                             alt={it.name}
@@ -680,73 +779,95 @@ export default function CartPage() {
                         </div>
 
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[15px] font-medium sm:text-base">
+                          <div className="truncate text-[15px] font-semibold text-white">
                             {it.name}
                           </div>
 
-                          <div
-                            className={`mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                              itemHasStockIssue
-                                ? "text-red-300"
-                                : "text-emerald-300"
-                            }`}
-                          >
-                            {stock <= 0
-                              ? "Out of Stock"
-                              : `${stock} in stock`}
-                          </div>
+                          {hasKnownStock ? (
+                            <div
+                              className={`mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
+                                itemHasStockIssue
+                                  ? "text-red-300"
+                                  : lowStockText
+                                    ? "text-orange-300"
+                                    : "text-emerald-300"
+                              }`}
+                            >
+                              {stock <= 0
+                                ? "Out of Stock"
+                                : lowStockText || `${stock} in stock`}
+                            </div>
+                          ) : null}
 
                           <div className="mt-2 grid gap-1 text-sm text-[#a7aec4]">
                             <div>Size: {it.size}</div>
 
                             <div className="flex items-center gap-2">
                               <span>Color:</span>
+
                               <span
                                 className={`h-4 w-4 rounded-full border border-[#3a3f58] ${getColorSwatchClass(
                                   it.color
                                 )}`}
                               />
+
                               <span className="truncate">
                                 {it.colorLabel || "Color"}
                               </span>
                             </div>
 
-                            <div>Price: Rs. {it.price}</div>
+                            <div className="font-semibold text-[#d6c7ff]">
+                              Rs. {it.price} × {it.qty} = Rs. {itemTotal}
+                            </div>
                           </div>
 
                           <div className="mt-4 flex flex-wrap items-center gap-3">
-                            <label
-                              htmlFor={`mobile-qty-${it.id}-${it.size}-${it.color}`}
-                              className="sr-only"
-                            >
-                              Quantity for {it.name}
-                            </label>
-                            <input
-                              id={`mobile-qty-${it.id}-${it.size}-${it.color}`}
-                              type="number"
-                              min={1}
-                              max={stock > 0 ? stock : 1}
-                              value={it.qty}
-                              disabled={stock <= 0}
-                              onChange={(e) =>
-                                updateQty(
-                                  it.id,
-                                  it.size,
-                                  it.color,
-                                  Number(e.target.value)
-                                )
-                              }
-                              className="w-[92px] rounded-[10px] border border-[#3a3f58] bg-transparent px-3 py-2 text-white outline-none transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-50"
-                            />
+                            <div className="flex items-center rounded-full border border-[#3a3f58] bg-[#0d0f17] p-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateQty(
+                                    it.id,
+                                    it.size,
+                                    it.color,
+                                    Number(it.qty || 1) - 1
+                                  )
+                                }
+                                disabled={hasKnownStock && stock <= 0}
+                                className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                                aria-label={`Decrease quantity for ${it.name}`}
+                              >
+                                -
+                              </button>
+
+                              <span className="min-w-[38px] text-center text-sm font-semibold text-white">
+                                {it.qty}
+                              </span>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateQty(
+                                    it.id,
+                                    it.size,
+                                    it.color,
+                                    Number(it.qty || 1) + 1
+                                  )
+                                }
+                                disabled={hasKnownStock && stock <= 0}
+                                className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                                aria-label={`Increase quantity for ${it.name}`}
+                              >
+                                +
+                              </button>
+                            </div>
 
                             <button
                               type="button"
                               onClick={() =>
                                 removeItem(it.id, it.size, it.color)
                               }
-                              className="rounded-[10px] border border-[#2b2f45] px-3 py-2 text-sm text-white transition hover:bg-white/5"
-                              aria-label={`Remove ${it.name} from cart`}
-                              title={`Remove ${it.name}`}
+                              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-red-500/15"
                             >
                               Remove
                             </button>
@@ -759,76 +880,98 @@ export default function CartPage() {
               </section>
 
               <aside className="xl:sticky xl:top-[104px]">
-                <h2 className="text-[22px] font-semibold">Order Summary</h2>
+                <div className={`${panelClass} p-5 sm:p-6`}>
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                        Summary
+                      </div>
 
-                <div className="mt-5 rounded-[18px] border border-[#26293a] bg-[#11121a] p-5 sm:p-6">
+                      <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
+                        Order Summary
+                      </h2>
+                    </div>
+
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-[#a7aec4]">
+                      {items.length} item{items.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+
                   {hasStockIssue ? (
-                    <div className="mb-5 rounded-[12px] border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    <div className="mt-5 rounded-[16px] border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-200">
                       Some cart items are out of stock or exceed available
                       stock. Please update or remove them before checkout.
                     </div>
                   ) : null}
 
-                  {stockMessage ? (
-                    <div className="mb-5 rounded-[12px] border border-yellow-400/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
-                      {stockMessage}
+                  <div className="mt-6 rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
+                    <div className="flex flex-col gap-3">
+                      <label htmlFor="discount-code" className="sr-only">
+                        Discount code
+                      </label>
+
+                      <input
+                        id="discount-code"
+                        value={discount}
+                        onChange={(e) =>
+                          setDiscount(e.target.value.toUpperCase())
+                        }
+                        placeholder="Discount code"
+                        className="h-[48px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-4 text-white outline-none placeholder:text-[#7c86b1] transition focus:border-[#d6c7ff]"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={applyManualCoupon}
+                        disabled={isApplyingCoupon}
+                        className={secondaryBtnClass}
+                      >
+                        {isApplyingCoupon ? "Applying..." : "Apply Coupon"}
+                      </button>
                     </div>
-                  ) : null}
 
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <label htmlFor="discount-code" className="sr-only">
-                      Discount code
-                    </label>
-                    <input
-                      id="discount-code"
-                      value={discount}
-                      onChange={(e) =>
-                        setDiscount(e.target.value.toUpperCase())
-                      }
-                      placeholder="Discount code (optional)"
-                      className="w-full rounded-[12px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-white placeholder:text-[#7c86b1] outline-none transition focus:border-[#d6c7ff]"
-                    />
-                    <button
-                      type="button"
-                      onClick={applyManualCoupon}
-                      disabled={isApplyingCoupon}
-                      className="rounded-[12px] border border-[#26293a] bg-white/5 px-4 py-3 text-sm transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[96px]"
-                    >
-                      {isApplyingCoupon ? "Applying..." : "Apply"}
-                    </button>
-                  </div>
+                    <div className="mt-3 text-[12px] leading-5 text-[#a7aec4]">
+                      Collect coupons from{" "}
+                      <Link href="/discounts" className="text-white underline">
+                        Discounts
+                      </Link>{" "}
+                      and the best valid coupon will auto-apply here.
+                    </div>
 
-                  <div className="mt-3 text-[12px] leading-5 text-[#a7aec4]">
-                    Tip: Collect coupons from{" "}
-                    <Link href="/discounts" className="text-white underline">
-                      Discounts
-                    </Link>{" "}
-                    and the best valid coupon will auto-apply here.
-                  </div>
-
-                  {appliedCouponCode ? (
-                    <div className="mt-4 rounded-[12px] border border-green-500/20 bg-green-500/10 px-4 py-3">
-                      <div className="text-[12px] uppercase tracking-[0.14em] text-green-300">
-                        Applied Coupon
-                      </div>
-                      <div className="mt-1 text-sm font-semibold text-white">
-                        {appliedCouponCode}
-                      </div>
-                      {appliedCouponLabel ? (
-                        <div className="mt-1 text-xs text-green-200">
-                          {appliedCouponLabel}
+                    {appliedCouponCode ? (
+                      <div className="mt-4 rounded-[16px] border border-green-500/20 bg-green-500/10 px-4 py-3">
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-green-300">
+                          Applied Coupon
                         </div>
-                      ) : null}
-                    </div>
-                  ) : null}
 
-                  {couponMessage ? (
-                    <div className="mt-4 text-[12px] text-[#a7aec4]">
-                      {couponMessage}
-                    </div>
-                  ) : null}
+                        <div className="mt-1 text-sm font-semibold text-white">
+                          {appliedCouponCode}
+                        </div>
 
-                  <div className="mt-8 space-y-4 text-sm text-[#a7aec4] sm:text-[15px]">
+                        {appliedCouponLabel ? (
+                          <div className="mt-1 text-xs text-green-200">
+                            {appliedCouponLabel}
+                          </div>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={() => clearAppliedCoupon(false)}
+                          className="mt-3 rounded-full border border-green-300/20 px-3 py-1 text-xs font-semibold text-green-100 transition hover:bg-green-500/10"
+                        >
+                          Remove Coupon
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {couponMessage ? (
+                      <div className="mt-4 text-[12px] text-[#a7aec4]">
+                        {couponMessage}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-6 space-y-4 text-sm text-[#a7aec4] sm:text-[15px]">
                     <div className="flex items-center justify-between gap-4">
                       <span>Subtotal</span>
                       <span className="text-right text-white">
@@ -850,9 +993,9 @@ export default function CartPage() {
                       </span>
                     </div>
 
-                    <div className="h-px bg-[#222741]" />
+                    <div className="h-px bg-[#26293a]" />
 
-                    <div className="flex items-center justify-between gap-4 text-base font-semibold sm:text-lg">
+                    <div className="flex items-center justify-between gap-4 text-[18px] font-semibold">
                       <span className="text-white">Total</span>
                       <span className="text-right text-white">Rs. {total}</span>
                     </div>
@@ -861,21 +1004,55 @@ export default function CartPage() {
                   <button
                     type="button"
                     onClick={proceedToCheckout}
-                    disabled={hasStockIssue}
-                    className={`mt-8 w-full rounded-[12px] py-3 text-sm font-semibold text-white transition sm:text-base ${
-                      hasStockIssue
-                        ? "cursor-not-allowed bg-gray-600 opacity-60"
-                        : "bg-[#1f7cff] hover:opacity-90"
-                    }`}
+                    disabled={hasStockIssue || !authChecked}
+                    className={`${primaryBtnClass} mt-8 w-full justify-center`}
                   >
-                    {hasStockIssue ? "Fix Stock Issues" : "Proceed to Checkout"}
+                    {hasStockIssue
+                      ? "Fix Stock Issues"
+                      : !authChecked
+                        ? "Checking..."
+                        : "Proceed to Checkout"}
                   </button>
+
+                  <div className="mt-5 grid grid-cols-3 gap-2">
+                    {[
+                      ["/images/payment.png", "Secure", "Payment"],
+                      ["/images/return.png", "Easy", "Return"],
+                      ["/images/cod.png", "COD", "Available"],
+                    ].map(([icon, a, b]) => (
+                      <div
+                        key={`${a}-${b}`}
+                        className="rounded-[16px] border border-[#26293a] bg-[#161824] p-3 text-center"
+                      >
+                        <div className="mx-auto mb-2 flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
+                          <Image
+                            src={icon}
+                            alt={`${a} ${b}`}
+                            width={18}
+                            height={18}
+                            className="object-contain"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        </div>
+
+                        <div className="text-[12px] font-semibold text-white">
+                          {a}
+                        </div>
+
+                        <div className="text-[11px] text-[#a7aec4]">{b}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </aside>
             </div>
           )}
         </div>
       </main>
+
+      <MainFooter />
     </>
   );
 }

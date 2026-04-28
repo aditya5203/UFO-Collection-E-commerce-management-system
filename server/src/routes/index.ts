@@ -32,6 +32,9 @@ import adsRoutes from "../modules/ads/routes/ads.routes";
 // Discounts
 import discountRoutes from "../modules/discounts/routes/discount.routes";
 
+// Newsletter
+import newsletterRoutes from "../modules/newsletter/routes/newsletter.routes";
+
 // Settings + Admins
 import adminSettingsRoutes from "../modules/admin/routes/settings.routes";
 import adminsRoutes from "../modules/admin/routes/admins.routes";
@@ -71,6 +74,9 @@ router.use("/tickets", ticketRoutes);
 
 // PUBLIC DISCOUNTS
 router.use("/discounts", discountRoutes.publicRouter);
+
+// PUBLIC NEWSLETTER
+router.use("/newsletter", newsletterRoutes);
 
 // AI TRY-ON
 console.log("mounting /ai routes");

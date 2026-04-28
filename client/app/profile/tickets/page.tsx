@@ -1,11 +1,16 @@
+// client/app/profile/tickets/page.tsx
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import CartHeader from "@/components/layout/CartHeader";
+import MainFooter from "@/components/layout/MainFooter";
 
 type TicketStatus = "Open" | "Pending" | "Closed" | "Resolved" | "In Progress";
+type ToastType = "success" | "error" | "info";
+type StatusFilter = "All" | "Open" | "In Progress" | "Resolved" | "Closed";
+type SortValue = "newest" | "oldest";
 
 type MyTicketRow = {
   id: string;
@@ -25,18 +30,14 @@ type TicketDetail = {
   ticketCode: string;
   status: TicketStatus;
   submittedAt: string;
-
   issueType: string;
   subject: string;
   message: string;
   imageUrl?: string | null;
-
   orderId?: string | null;
   size?: string | null;
   color?: string | null;
-
   product: { id?: string | null; name: string };
-
   replies: Array<{
     id: string;
     sender: "customer" | "admin";
@@ -49,6 +50,18 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
 
+const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+const containerClass =
+  "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
+const panelClass =
+  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+const primaryBtnClass =
+  "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+const secondaryBtnClass =
+  "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+const inputClass =
+  "h-12 w-full rounded-full border border-[#2b3042] bg-[#0d0f17] px-5 text-[13px] text-[#f5f7fb] outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60";
+
 function displayStatus(s: TicketStatus) {
   if (s === "Pending") return "In Progress";
   return s;
@@ -57,10 +70,107 @@ function displayStatus(s: TicketStatus) {
 function pillClass(s: TicketStatus) {
   const ds = displayStatus(s);
 
-  if (ds === "Open") return "bg-[#1d2a3b] text-white border-[#2b3a52]";
-  if (ds === "In Progress") return "bg-[#2a2a1d] text-white border-[#3a3a2b]";
-  if (ds === "Resolved") return "bg-[#202a2a] text-white border-[#2b3a3a]";
-  return "bg-[#202024] text-white border-[#2b2f45]";
+  if (ds === "Open") {
+    return "border-sky-500/30 bg-sky-500/10 text-sky-200";
+  }
+
+  if (ds === "In Progress") {
+    return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+  }
+
+  if (ds === "Resolved") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+  }
+
+  if (ds === "Closed") {
+    return "border-slate-500/30 bg-slate-500/10 text-slate-200";
+  }
+
+  return "border-[#d6c7ff]/30 bg-[#d6c7ff]/10 text-[#d6c7ff]";
+}
+
+function formatDate(value?: string) {
+  if (!value) return "-";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 10);
+
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+}
+
+function parseDateSafe(value?: string) {
+  if (!value) return 0;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? t : 0;
+}
+
+function getOrderUrl(orderId?: string | null) {
+  const clean = String(orderId || "").trim().replace("#", "");
+  if (!clean) return "";
+  return `/customerorderdetails/${encodeURIComponent(clean)}`;
+}
+
+function ToastMessage({
+  toast,
+  onClose,
+}: {
+  toast: { type: ToastType; message: string } | null;
+  onClose: () => void;
+}) {
+  if (!toast) return null;
+
+  const tone =
+    toast.type === "error"
+      ? "border-red-400/30 bg-red-500/15 text-red-100"
+      : toast.type === "info"
+        ? "border-blue-400/30 bg-blue-500/15 text-blue-100"
+        : "border-emerald-400/30 bg-emerald-500/15 text-emerald-100";
+
+  const dot =
+    toast.type === "error"
+      ? "bg-red-300"
+      : toast.type === "info"
+        ? "bg-blue-300"
+        : "bg-emerald-300";
+
+  return (
+    <div className="fixed right-4 top-24 z-[10000] w-[calc(100%-32px)] max-w-[380px] sm:right-6">
+      <div
+        className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
+      >
+        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
+
+        <div className="flex-1 text-[13px] font-medium leading-6">
+          {toast.message}
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full px-2 text-[14px] text-white/75 transition hover:bg-white/10 hover:text-white"
+          aria-label="Close notification"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: TicketStatus }) {
+  return (
+    <span
+      className={`inline-flex items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${pillClass(
+        status
+      )}`}
+    >
+      {displayStatus(status)}
+    </span>
+  );
 }
 
 export default function ProfileTicketsPage() {
@@ -71,6 +181,10 @@ export default function ProfileTicketsPage() {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState("");
 
+  const [statusFilter, setStatusFilter] =
+    React.useState<StatusFilter>("All");
+  const [sortValue, setSortValue] = React.useState<SortValue>("newest");
+
   const [modalOpen, setModalOpen] = React.useState(false);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [ticket, setTicket] = React.useState<TicketDetail | null>(null);
@@ -79,18 +193,52 @@ export default function ProfileTicketsPage() {
   const [reply, setReply] = React.useState("");
   const [sending, setSending] = React.useState(false);
   const [modalErr, setModalErr] = React.useState("");
-  const [modalOk, setModalOk] = React.useState("");
 
+  const [attachmentPreview, setAttachmentPreview] = React.useState<string | null>(
+    null
+  );
+
+  const [toast, setToast] = React.useState<{
+    type: ToastType;
+    message: string;
+  } | null>(null);
+
+  const toastTimerRef = React.useRef<number | null>(null);
   const modalRef = React.useRef<HTMLDivElement | null>(null);
+
+  const showToast = React.useCallback(
+    (message: string, type: ToastType = "success") => {
+      setToast({ message, type });
+
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+
+      toastTimerRef.current = window.setTimeout(() => {
+        setToast(null);
+      }, 2800);
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
 
   const load = React.useCallback(async () => {
     setLoading(true);
     setErr("");
+
     try {
       const res = await fetch(`${API}/tickets/my?q=${encodeURIComponent(q)}`, {
         credentials: "include",
         cache: "no-store",
       });
+
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
@@ -98,16 +246,19 @@ export default function ProfileTicketsPage() {
           router.push("/login");
           return;
         }
+
         throw new Error(data?.message || "Failed to load tickets");
       }
 
       setRows(Array.isArray(data?.items) ? data.items : []);
     } catch (e: any) {
-      setErr(e?.message || "Something went wrong");
+      const msg = e?.message || "Something went wrong";
+      setErr(msg);
+      showToast(msg, "error");
     } finally {
       setLoading(false);
     }
-  }, [q, router]);
+  }, [q, router, showToast]);
 
   React.useEffect(() => {
     load();
@@ -117,13 +268,13 @@ export default function ProfileTicketsPage() {
     async (id: string) => {
       setTicketLoading(true);
       setModalErr("");
-      setModalOk("");
 
       try {
         const res = await fetch(`${API}/tickets/my/${id}`, {
           credentials: "include",
           cache: "no-store",
         });
+
         const data = await res.json().catch(() => null);
 
         if (!res.ok) {
@@ -131,6 +282,7 @@ export default function ProfileTicketsPage() {
             router.push("/login");
             return;
           }
+
           throw new Error(data?.message || "Failed to load ticket");
         }
 
@@ -148,13 +300,15 @@ export default function ProfileTicketsPage() {
             : null
         );
       } catch (e: any) {
+        const msg = e?.message || "Failed to load ticket";
         setTicket(null);
-        setModalErr(e?.message || "Failed to load ticket");
+        setModalErr(msg);
+        showToast(msg, "error");
       } finally {
         setTicketLoading(false);
       }
     },
-    [router]
+    [router, showToast]
   );
 
   const openTicket = async (id: string) => {
@@ -162,47 +316,62 @@ export default function ProfileTicketsPage() {
     setTicket(null);
     setReply("");
     setModalErr("");
-    setModalOk("");
     setModalOpen(true);
     await loadTicket(id);
   };
 
-  const closeModal = () => {
+  const closeModal = React.useCallback(() => {
     setModalOpen(false);
     setActiveId(null);
     setTicket(null);
     setReply("");
     setModalErr("");
-    setModalOk("");
-  };
+  }, []);
 
   React.useEffect(() => {
-    if (!modalOpen) return;
+    if (!modalOpen && !attachmentPreview) return;
+
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
     const onDown = (e: MouseEvent) => {
       const target = e.target as Node;
-      if (modalRef.current && !modalRef.current.contains(target)) closeModal();
+      if (modalOpen && modalRef.current && !modalRef.current.contains(target)) {
+        closeModal();
+      }
     };
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeModal();
+      if (e.key === "Escape") {
+        if (attachmentPreview) {
+          setAttachmentPreview(null);
+          return;
+        }
+
+        if (modalOpen) closeModal();
+      }
     };
 
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
+
     return () => {
+      document.body.style.overflow = previous;
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [modalOpen]);
+  }, [modalOpen, attachmentPreview, closeModal]);
 
   const sendReply = async () => {
     const text = reply.trim();
-    if (!text || !activeId) return;
+
+    if (!text || !activeId) {
+      showToast("Please write a message first.", "error");
+      return;
+    }
 
     setSending(true);
     setModalErr("");
-    setModalOk("");
 
     try {
       const res = await fetch(`${API}/tickets/my/${activeId}/reply`, {
@@ -211,6 +380,7 @@ export default function ProfileTicketsPage() {
         credentials: "include",
         body: JSON.stringify({ text }),
       });
+
       const data = await res.json().catch(() => null);
 
       if (!res.ok) {
@@ -218,323 +388,642 @@ export default function ProfileTicketsPage() {
           router.push("/login");
           return;
         }
+
         throw new Error(data?.message || "Failed to send reply");
       }
 
       setReply("");
-      setModalOk("Message sent.");
+      showToast("Reply sent successfully.", "success");
+
       await loadTicket(activeId);
       await load();
     } catch (e: any) {
-      setModalErr(e?.message || "Failed to send reply");
+      const msg = e?.message || "Failed to send reply";
+      setModalErr(msg);
+      showToast(msg, "error");
     } finally {
       setSending(false);
     }
   };
 
+  const copyTicketId = async (ticketId?: string) => {
+    const clean = String(ticketId || "").trim();
+
+    if (!clean) {
+      showToast("Ticket ID not found.", "error");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(clean);
+      showToast("Ticket ID copied.", "success");
+    } catch {
+      showToast("Unable to copy ticket ID.", "error");
+    }
+  };
+
+  const clearFilters = () => {
+    setQ("");
+    setStatusFilter("All");
+    setSortValue("newest");
+    showToast("Filters cleared.", "info");
+  };
+
+  const filteredRows = React.useMemo(() => {
+    let list = [...rows];
+
+    if (statusFilter !== "All") {
+      list = list.filter(
+        (row) => displayStatus(row.status).toLowerCase() === statusFilter.toLowerCase()
+      );
+    }
+
+    list.sort((a, b) => {
+      const da = parseDateSafe(a.submittedAt);
+      const db = parseDateSafe(b.submittedAt);
+
+      if (sortValue === "oldest") return da - db;
+      return db - da;
+    });
+
+    return list;
+  }, [rows, statusFilter, sortValue]);
+
+  const summary = React.useMemo(() => {
+    const total = rows.length;
+    const open = rows.filter((r) => displayStatus(r.status) === "Open").length;
+    const progress = rows.filter(
+      (r) => displayStatus(r.status) === "In Progress"
+    ).length;
+    const resolved = rows.filter(
+      (r) => displayStatus(r.status) === "Resolved"
+    ).length;
+
+    return { total, open, progress, resolved };
+  }, [rows]);
+
   return (
-    <div className="min-h-screen bg-[#050611] text-white">
-      <header className="sticky top-0 z-40 border-b border-[#191b2d] bg-[rgba(5,6,17,0.96)] backdrop-blur-[12px]">
-        <div className="mx-auto flex h-[80px] w-full max-w-[1160px] items-center justify-between px-4">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="group flex items-center gap-2 rounded-full border border-[#2b2f45] px-3 py-[7px] text-[11px] uppercase tracking-[0.16em] text-white hover:bg-white hover:text-[#050611]"
-            >
-              <Image
-                src="/images/backarrow.png"
-                width={18}
-                height={18}
-                alt="Back"
-                className="brightness-0 invert group-hover:invert-0"
-              />
-              <span className="hidden sm:inline">Back</span>
-            </button>
+    <>
+      <CartHeader />
 
-            <Link href="/homepage" className="flex items-center gap-2">
-              <div className="h-[48px] w-[48px] overflow-hidden rounded-full border-2 border-white">
-                <Image
-                  src="/images/logo.png"
-                  alt="UFO Collection logo"
-                  width={48}
-                  height={48}
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <span className="text-[26px] font-bold uppercase tracking-[0.18em] text-white">
-                UFO Collection
-              </span>
+      <ToastMessage toast={toast} onClose={() => setToast(null)} />
+
+      <main className={shellClass}>
+        <div className={containerClass}>
+          <div className="mb-6 text-[13px] text-[#a7aec4]">
+            <Link href="/profile" className="transition hover:text-white">
+              Profile
             </Link>
+            <span className="mx-2">/</span>
+            <span className="text-white">Support Tickets</span>
           </div>
 
-          <nav className="hidden md:flex gap-10">
-            <Link
-              href="/homepage"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              HOME
-            </Link>
-            <Link
-              href="/collection"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              COLLECTION
-            </Link>
-            <Link
-              href="/about"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              ABOUT
-            </Link>
-            <Link
-              href="/contact"
-              className="text-[15px] uppercase tracking-[0.16em] text-[#8b90ad] hover:text-[#c9b9ff]"
-            >
-              CONTACT
-            </Link>
-          </nav>
-
-          <div className="w-[44px]" />
-        </div>
-      </header>
-
-      <main className="mx-auto w-full max-w-[1160px] px-4 py-10">
-        {err ? (
-          <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
-            {err}
-          </div>
-        ) : null}
-
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-[34px] font-extrabold tracking-tight">
-              Your Support Tickets
-            </h1>
-          </div>
-
-          <div className="hidden sm:flex items-center gap-3">
-            <div className="flex items-center rounded-[10px] border border-[#2b2f45] bg-[#101223] px-3 py-2">
-              <span className="mr-2 text-[#9aa3cc]">🔎</span>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Search"
-                className="w-[220px] bg-transparent text-sm text-white placeholder:text-[#7f8aa6] outline-none"
-              />
+          {err ? (
+            <div className="mb-6 rounded-[20px] border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-200">
+              {err}
             </div>
+          ) : null}
 
-            <button
-              type="button"
-              onClick={load}
-              disabled={loading}
-              className="rounded-[10px] border border-[#2b2f45] bg-[#1a1d30] px-5 py-2 text-[13px] font-semibold text-white hover:bg-[#232844] disabled:opacity-60"
-            >
-              {loading ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-        </div>
+          <section className={`${panelClass} overflow-hidden p-6 sm:p-8`}>
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                  Customer Support
+                </div>
 
-        <section className="mt-6 rounded-[10px] border border-[#2b2f45] bg-[#0f1116]">
-          <div className="w-full overflow-x-auto">
-            <div className="min-w-[1040px]">
-              <div className="grid grid-cols-[170px_1fr_200px_190px_170px_150px] items-center border-b border-[#2b2f45] bg-[#1a1d22] px-6 py-4 text-[13px] font-semibold text-white/90">
-                <div>Ticket ID</div>
-                <div>Subject</div>
-                <div>Product</div>
-                <div>Order ID</div>
-                <div className="text-center">Status</div>
-                <div className="text-right text-white/60">Action</div>
+                <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[44px]">
+                  Your Support Tickets
+                </h1>
+
+                <p className="mt-3 max-w-[720px] text-[14px] leading-7 text-[#a7aec4] sm:text-[15px]">
+                  Track your submitted issues, view admin replies, and continue
+                  conversations with the support team.
+                </p>
+
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search ticket, subject, product, order..."
+                    className={inputClass}
+                    aria-label="Search support tickets"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={load}
+                    disabled={loading}
+                    className={secondaryBtnClass}
+                  >
+                    {loading ? "Refreshing..." : "Refresh"}
+                  </button>
+                </div>
               </div>
 
-              <div className="divide-y divide-[#2b2f45]">
-                {!loading && rows.length === 0 ? (
-                  <div className="px-6 py-10 text-center text-[#8b90ad]">
-                    No tickets found.
-                  </div>
-                ) : null}
-
-                {rows.map((t) => (
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ["Total", summary.total],
+                  ["Open", summary.open],
+                  ["Progress", summary.progress],
+                  ["Resolved", summary.resolved],
+                ].map(([label, value]) => (
                   <div
-                    key={t.id}
-                    className="grid grid-cols-[170px_1fr_200px_190px_170px_150px] items-center px-6 py-5"
+                    key={String(label)}
+                    className="rounded-[20px] border border-[#26293a] bg-[#161824] p-4"
                   >
-                    <div className="text-white/95">{t.ticketId || "-"}</div>
-                    <div className="text-[#9aa3cc]">{t.subject || "-"}</div>
-                    <div className="text-[#9aa3cc]">{t.productName || "-"}</div>
-                    <div className="text-[#9aa3cc]">{t.orderId || "-"}</div>
-
-                    <div className="flex justify-center">
-                      <span
-                        className={`inline-flex min-w-[140px] justify-center rounded-[10px] border px-4 py-2 text-[13px] ${pillClass(
-                          t.status
-                        )}`}
-                      >
-                        {displayStatus(t.status)}
-                      </span>
+                    <div className="text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                      {label}
                     </div>
 
-                    <div className="text-right">
-                      <button
-                        type="button"
-                        onClick={() => openTicket(t.id)}
-                        className="text-[13px] font-semibold text-[#8b90ad] hover:text-white"
-                      >
-                        View Details
-                      </button>
+                    <div className="mt-2 text-[26px] font-semibold text-white">
+                      {value}
                     </div>
                   </div>
                 ))}
               </div>
-
-              <div className="h-2" />
             </div>
-          </div>
-        </section>
+          </section>
+
+          <section className={`${panelClass} mt-8 p-4 sm:p-5`}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="text-[20px] font-semibold tracking-[-0.02em] text-white">
+                  Filter Tickets
+                </div>
+
+                <div className="mt-1 text-[13px] text-[#a7aec4]">
+                  Filter by ticket status and sort by submitted date.
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={clearFilters}
+                className={secondaryBtnClass}
+              >
+                Clear Filters
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 md:grid-cols-[1fr_220px_190px]">
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search ticket ID, subject, product..."
+                className={inputClass}
+                aria-label="Search tickets"
+              />
+
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                className={inputClass}
+                aria-label="Filter tickets by status"
+              >
+                <option value="All">All Status</option>
+                <option value="Open">Open</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+                <option value="Closed">Closed</option>
+              </select>
+
+              <select
+                value={sortValue}
+                onChange={(e) => setSortValue(e.target.value as SortValue)}
+                className={inputClass}
+                aria-label="Sort tickets by date"
+              >
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+              </select>
+            </div>
+
+            <div className="mt-4 text-[13px] text-[#a7aec4]">
+              Showing{" "}
+              <span className="font-semibold text-white">
+                {filteredRows.length}
+              </span>{" "}
+              of <span className="font-semibold text-white">{rows.length}</span>{" "}
+              tickets.
+            </div>
+          </section>
+
+          <section className={`${panelClass} mt-8 overflow-hidden`}>
+            <div className="border-b border-[#26293a] px-5 py-4 sm:px-6">
+              <div className="text-[20px] font-semibold text-white">
+                Ticket History
+              </div>
+
+              <div className="mt-1 text-[13px] text-[#a7aec4]">
+                Manage support conversations and view ticket status.
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="grid gap-4 p-5 sm:p-6">
+                {[1, 2, 3].map((n) => (
+                  <div
+                    key={n}
+                    className="rounded-[22px] border border-[#26293a] bg-[#161824] p-5"
+                  >
+                    <div className="h-4 w-40 animate-pulse rounded bg-white/5" />
+                    <div className="mt-4 h-5 w-3/4 animate-pulse rounded bg-white/5" />
+                    <div className="mt-4 h-4 w-56 animate-pulse rounded bg-white/5" />
+                  </div>
+                ))}
+              </div>
+            ) : filteredRows.length === 0 ? (
+              <div className="px-6 py-14 text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white/5 text-2xl">
+                  🎫
+                </div>
+
+                <h2 className="mt-5 text-[22px] font-semibold text-white">
+                  No tickets found
+                </h2>
+
+                <p className="mx-auto mt-2 max-w-[460px] text-[14px] leading-7 text-[#a7aec4]">
+                  Your search or filter did not match any tickets.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className={`${primaryBtnClass} mt-5`}
+                >
+                  Reset Filters
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="hidden overflow-x-auto lg:block">
+                  <div className="min-w-[1120px]">
+                    <div className="grid grid-cols-[170px_minmax(0,1fr)_190px_160px_150px_220px] items-center border-b border-[#26293a] bg-[#161824] px-6 py-4 text-[12px] uppercase tracking-[0.14em] text-[#a7aec4]">
+                      <div>Ticket ID</div>
+                      <div>Subject</div>
+                      <div>Product</div>
+                      <div>Order ID</div>
+                      <div className="text-center">Status</div>
+                      <div className="text-right">Action</div>
+                    </div>
+
+                    <div className="divide-y divide-[#26293a]">
+                      {filteredRows.map((t) => {
+                        const orderUrl = getOrderUrl(t.orderId);
+
+                        return (
+                          <div
+                            key={t.id}
+                            className="grid grid-cols-[170px_minmax(0,1fr)_190px_160px_150px_220px] items-center px-6 py-5 transition hover:bg-white/[0.025]"
+                          >
+                            <div className="min-w-0">
+                              <button
+                                type="button"
+                                onClick={() => copyTicketId(t.ticketId)}
+                                className="truncate font-semibold text-white transition hover:text-[#d6c7ff]"
+                                title="Copy ticket ID"
+                              >
+                                {t.ticketId || "-"}
+                              </button>
+
+                              <div className="mt-1 text-[11px] text-[#7f879f]">
+                                Click to copy
+                              </div>
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="truncate text-[14px] font-medium text-white">
+                                {t.subject || "-"}
+                              </div>
+
+                              <div className="mt-1 text-[12px] text-[#a7aec4]">
+                                {t.issueType || "-"} • {formatDate(t.submittedAt)}
+                              </div>
+                            </div>
+
+                            <div className="truncate text-[13px] text-[#a7aec4]">
+                              {t.productName || "-"}
+                            </div>
+
+                            <div className="truncate text-[13px] text-[#a7aec4]">
+                              {t.orderId || "-"}
+                            </div>
+
+                            <div className="flex justify-center">
+                              <StatusBadge status={t.status} />
+                            </div>
+
+                            <div className="flex justify-end gap-3">
+                              {orderUrl ? (
+                                <button
+                                  type="button"
+                                  onClick={() => router.push(orderUrl)}
+                                  className="text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:text-[#d6c7ff]"
+                                >
+                                  Order
+                                </button>
+                              ) : null}
+
+                              <button
+                                type="button"
+                                onClick={() => openTicket(t.id)}
+                                className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#d6c7ff] transition hover:text-white"
+                              >
+                                View
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 p-5 lg:hidden">
+                  {filteredRows.map((t) => {
+                    const orderUrl = getOrderUrl(t.orderId);
+
+                    return (
+                      <div
+                        key={t.id}
+                        className="rounded-[22px] border border-[#26293a] bg-[#161824] p-5"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => copyTicketId(t.ticketId)}
+                              className="text-[13px] font-semibold text-[#d6c7ff]"
+                            >
+                              {t.ticketId || "-"}
+                            </button>
+
+                            <h3 className="mt-2 text-[18px] font-semibold text-white">
+                              {t.subject || "-"}
+                            </h3>
+                          </div>
+
+                          <StatusBadge status={t.status} />
+                        </div>
+
+                        <div className="mt-4 grid gap-2 text-[13px] text-[#a7aec4]">
+                          <div>
+                            Product:{" "}
+                            <span className="text-[#d6dbeb]">
+                              {t.productName || "-"}
+                            </span>
+                          </div>
+
+                          <div>
+                            Order ID:{" "}
+                            <span className="text-[#d6dbeb]">
+                              {t.orderId || "-"}
+                            </span>
+                          </div>
+
+                          <div>
+                            Issue:{" "}
+                            <span className="text-[#d6dbeb]">
+                              {t.issueType || "-"}
+                            </span>
+                          </div>
+
+                          <div>
+                            Submitted:{" "}
+                            <span className="text-[#d6dbeb]">
+                              {formatDate(t.submittedAt)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                          <button
+                            type="button"
+                            onClick={() => openTicket(t.id)}
+                            className={`${primaryBtnClass} flex-1`}
+                          >
+                            View Details
+                          </button>
+
+                          {orderUrl ? (
+                            <button
+                              type="button"
+                              onClick={() => router.push(orderUrl)}
+                              className={`${secondaryBtnClass} flex-1`}
+                            >
+                              View Order
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
       </main>
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-[9999] flex items-start justify-center bg-black/60 p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-[4px] sm:p-6">
           <div
             ref={modalRef}
-            className="w-full max-w-[760px] rounded-2xl border border-[#23253a] bg-[#101223] shadow-[0_30px_80px_rgba(0,0,0,0.7)]"
+            className="my-6 w-full max-w-[860px] overflow-hidden rounded-[28px] border border-[#26293a] bg-[#11121a] shadow-[0_30px_100px_rgba(0,0,0,0.65)]"
           >
-            <div className="flex items-center justify-between border-b border-[#23253a] px-6 py-4">
-              <div className="text-[18px] font-bold">Ticket Details</div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#26293a] px-5 py-4 sm:px-6">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+                  Support Conversation
+                </div>
+
+                <div className="mt-1 text-[22px] font-semibold text-white">
+                  Ticket Details
+                </div>
+              </div>
 
               <button
                 type="button"
                 onClick={closeModal}
-                className="rounded-full border border-[#2b2f45] px-3 py-1 text-sm text-[#cbd5ff] hover:bg-white/10"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
+                aria-label="Close ticket modal"
               >
                 ✕
               </button>
             </div>
 
-            <div className="p-6">
+            <div className="p-5 sm:p-6">
               {modalErr ? (
-                <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-200">
+                <div className="mb-5 rounded-[18px] border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                   {modalErr}
                 </div>
               ) : null}
 
-              {modalOk ? (
-                <div className="mb-4 rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-200">
-                  {modalOk}
-                </div>
-              ) : null}
-
               {ticketLoading || !ticket ? (
-                <div className="rounded-xl border border-[#22253a] bg-[#101223] p-6 text-[#8b90ad]">
+                <div className="rounded-[22px] border border-[#26293a] bg-[#161824] p-6 text-[#a7aec4]">
                   Loading ticket...
                 </div>
               ) : (
                 <>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="text-[22px] font-bold">
-                        {ticket.ticketCode}
-                      </div>
-                      <div className="mt-1 text-[13px] text-[#8b90ad]">
-                        Submitted: {String(ticket.submittedAt).slice(0, 10)} •
-                        Issue: {ticket.issueType}
-                      </div>
-                      <div className="mt-1 text-[13px] text-[#8b90ad]">
-                        Product:{" "}
-                        <span className="text-white/90">
-                          {ticket.product?.name || "-"}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-[13px] text-[#8b90ad]">
-                        Order ID:{" "}
-                        <span className="text-white/90">
-                          {ticket.orderId || "-"}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-[13px] text-[#8b90ad]">
-                        Size:{" "}
-                        <span className="text-white/90">
-                          {ticket.size || "-"}
-                        </span>{" "}
-                        • Color:{" "}
-                        <span className="text-white/90">
-                          {ticket.color || "-"}
-                        </span>
-                      </div>
-                    </div>
+                  <div className="rounded-[24px] border border-[#26293a] bg-[#161824] p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <div className="text-[24px] font-semibold text-white">
+                            {ticket.ticketCode}
+                          </div>
 
-                    <span
-                      className={`inline-flex min-w-[92px] justify-center rounded-[10px] border px-4 py-2 text-[13px] ${pillClass(
-                        ticket.status
-                      )}`}
-                    >
-                      {displayStatus(ticket.status)}
-                    </span>
+                          <button
+                            type="button"
+                            onClick={() => copyTicketId(ticket.ticketCode)}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
+                          >
+                            Copy ID
+                          </button>
+                        </div>
+
+                        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2 text-[13px] text-[#a7aec4]">
+                          <span>
+                            Submitted:{" "}
+                            <span className="text-[#d6dbeb]">
+                              {formatDate(ticket.submittedAt)}
+                            </span>
+                          </span>
+
+                          <span>
+                            Issue:{" "}
+                            <span className="text-[#d6dbeb]">
+                              {ticket.issueType}
+                            </span>
+                          </span>
+
+                          <span>
+                            Order ID:{" "}
+                            <span className="text-[#d6dbeb]">
+                              {ticket.orderId || "-"}
+                            </span>
+                          </span>
+                        </div>
+
+                        <div className="mt-2 text-[13px] text-[#a7aec4]">
+                          Product:{" "}
+                          <span className="text-[#d6dbeb]">
+                            {ticket.product?.name || "-"}
+                          </span>
+                        </div>
+
+                        <div className="mt-2 text-[13px] text-[#a7aec4]">
+                          Size:{" "}
+                          <span className="text-[#d6dbeb]">
+                            {ticket.size || "-"}
+                          </span>{" "}
+                          • Color:{" "}
+                          <span className="text-[#d6dbeb]">
+                            {ticket.color || "-"}
+                          </span>
+                        </div>
+
+                        {getOrderUrl(ticket.orderId) ? (
+                          <button
+                            type="button"
+                            onClick={() => router.push(getOrderUrl(ticket.orderId))}
+                            className={`${secondaryBtnClass} mt-4`}
+                          >
+                            View Order
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <StatusBadge status={ticket.status} />
+                    </div>
                   </div>
 
-                  <div className="mt-6 space-y-6">
-                    <div className="rounded-2xl border border-[#23253a] bg-[#101223] p-5">
-                      <div className="text-xs uppercase tracking-[0.18em] text-[#8b90ad]">
+                  <div className="mt-5 grid gap-5">
+                    <div className="rounded-[24px] border border-[#26293a] bg-[#161824] p-5">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
                         Subject
                       </div>
-                      <div className="mt-2 text-white/95">{ticket.subject}</div>
 
-                      <div className="mt-4 text-xs uppercase tracking-[0.18em] text-[#8b90ad]">
+                      <div className="mt-2 text-[16px] font-semibold text-white">
+                        {ticket.subject}
+                      </div>
+
+                      <div className="mt-5 text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
                         Your Message
                       </div>
-                      <div className="mt-2 rounded-[12px] border border-[#23253a] bg-[#0b1220] p-4 text-[#d7def3] leading-7">
+
+                      <div className="mt-2 rounded-[18px] border border-[#26293a] bg-[#0d0f17] p-4 text-[14px] leading-7 text-[#d6dbeb]">
                         {ticket.message}
                       </div>
 
-                      <div className="mt-4 text-xs uppercase tracking-[0.18em] text-[#8b90ad]">
-                        Attachment
-                      </div>
-                      <div className="mt-2 rounded-[12px] border border-[#23253a] bg-[#0b1220] p-4">
+                      <div className="mt-5 flex items-center justify-between gap-3">
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+                          Attachment
+                        </div>
+
                         {ticket.imageUrl ? (
-                          <div className="relative aspect-[16/9] w-full overflow-hidden rounded-[10px] border border-[#2b2f45]">
+                          <button
+                            type="button"
+                            onClick={() => setAttachmentPreview(ticket.imageUrl || null)}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
+                          >
+                            Fullscreen
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-2 rounded-[18px] border border-[#26293a] bg-[#0d0f17] p-4">
+                        {ticket.imageUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => setAttachmentPreview(ticket.imageUrl || null)}
+                            className="relative aspect-[16/9] w-full overflow-hidden rounded-[14px] border border-[#26293a]"
+                          >
                             <img
                               src={ticket.imageUrl}
-                              alt="Attachment"
-                              className="h-full w-full object-cover"
+                              alt="Ticket attachment"
+                              className="h-full w-full object-cover transition hover:scale-[1.02]"
                             />
-                          </div>
+                          </button>
                         ) : (
-                          <div className="py-8 text-center text-sm text-[#8b90ad]">
+                          <div className="py-8 text-center text-[14px] text-[#a7aec4]">
                             No image uploaded.
                           </div>
                         )}
                       </div>
                     </div>
 
-                    <div className="rounded-2xl border border-[#23253a] bg-[#101223] p-5">
-                      <div className="text-xs uppercase tracking-[0.18em] text-[#8b90ad]">
+                    <div className="rounded-[24px] border border-[#26293a] bg-[#161824] p-5">
+                      <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
                         Conversation
                       </div>
 
-                      <div className="mt-3 space-y-3">
+                      <div className="mt-4 space-y-3">
                         {ticket.replies.length === 0 ? (
-                          <div className="rounded-[12px] border border-[#23253a] bg-[#0b1220] px-4 py-6 text-sm text-[#8b90ad]">
+                          <div className="rounded-[18px] border border-[#26293a] bg-[#0d0f17] px-4 py-6 text-center text-[14px] text-[#a7aec4]">
                             No replies yet.
                           </div>
                         ) : (
                           ticket.replies.map((r) => (
                             <div
                               key={r.id}
-                              className={`rounded-[12px] border px-4 py-3 ${
+                              className={`rounded-[18px] border px-4 py-3 ${
                                 r.sender === "admin"
-                                  ? "border-[#2b3a52] bg-[#0b172a]"
-                                  : "border-[#23253a] bg-[#0b1220]"
+                                  ? "border-[#d6c7ff]/25 bg-[#d6c7ff]/10"
+                                  : "border-[#26293a] bg-[#0d0f17]"
                               }`}
                             >
                               <div className="flex items-center justify-between gap-3">
-                                <div className="text-sm text-[#a9c1ff]">
+                                <div className="text-[13px] font-semibold text-white">
                                   {r.sender === "admin" ? "Admin" : "You"}
                                 </div>
-                                <div className="text-xs text-[#7f8aa6]">
+
+                                <div className="text-[12px] text-[#7f879f]">
                                   {String(r.createdAt).slice(0, 19)}
                                 </div>
                               </div>
-                              <div className="mt-2 text-sm text-[#d7def3] leading-6">
+
+                              <div className="mt-2 text-[14px] leading-6 text-[#d6dbeb]">
                                 {r.text}
                               </div>
                             </div>
@@ -542,33 +1031,34 @@ export default function ProfileTicketsPage() {
                         )}
                       </div>
 
-                      <div className="mt-6 text-xs uppercase tracking-[0.18em] text-[#8b90ad]">
+                      <div className="mt-6 text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
                         Reply
                       </div>
+
                       <textarea
                         value={reply}
                         onChange={(e) => setReply(e.target.value)}
                         rows={4}
                         placeholder="Write a message..."
-                        className="mt-2 w-full resize-none rounded-[12px] border border-[#23253a] bg-[#0b1220] px-4 py-3 text-sm text-white placeholder:text-[#7f8aa6] outline-none focus:border-[#2f7efc]"
+                        className="mt-2 w-full resize-none rounded-[18px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-[14px] leading-7 text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]"
                       />
 
-                      <div className="mt-4 flex items-center justify-end gap-3">
+                      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
                         <button
                           type="button"
                           onClick={() => setReply("")}
-                          className="rounded-full border border-[#2b2f45] bg-transparent px-6 py-3 text-sm text-white hover:bg-white/10"
+                          className={secondaryBtnClass}
                         >
-                          Cancel
+                          Clear
                         </button>
 
                         <button
                           type="button"
                           onClick={sendReply}
                           disabled={sending || !reply.trim()}
-                          className="rounded-full bg-[#2f7efc] px-6 py-3 text-sm hover:brightness-105 disabled:opacity-60"
+                          className={primaryBtnClass}
                         >
-                          {sending ? "Sending..." : "Send"}
+                          {sending ? "Sending..." : "Send Reply"}
                         </button>
                       </div>
                     </div>
@@ -579,6 +1069,42 @@ export default function ProfileTicketsPage() {
           </div>
         </div>
       ) : null}
-    </div>
+
+      {attachmentPreview ? (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/85 p-4 backdrop-blur-[4px]">
+          <div className="relative w-full max-w-[1100px] overflow-hidden rounded-[26px] border border-[#26293a] bg-[#11121a] shadow-[0_30px_100px_rgba(0,0,0,0.75)]">
+            <div className="flex items-center justify-between border-b border-[#26293a] px-5 py-4">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+                  Attachment Preview
+                </div>
+                <div className="mt-1 text-[18px] font-semibold text-white">
+                  Support Ticket Image
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAttachmentPreview(null)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
+                aria-label="Close attachment preview"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="max-h-[78vh] overflow-auto bg-[#0d0f17] p-4">
+              <img
+                src={attachmentPreview}
+                alt="Fullscreen ticket attachment"
+                className="mx-auto max-h-[72vh] w-auto max-w-full rounded-[18px] object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <MainFooter />
+    </>
   );
 }
