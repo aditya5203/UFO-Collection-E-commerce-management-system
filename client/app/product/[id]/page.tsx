@@ -64,6 +64,7 @@ type Toast = {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
 const DEFAULT_SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
 const PRODUCT_PLACEHOLDER = "/images/products/placeholder.png";
+const LAST_PRODUCT_ID_KEY = "last_product_id";
 
 const FIXED_DESCRIPTION =
   "UFO Collection is an e-commerce website that allows customers to browse and purchase products online with ease. It functions as a digital marketplace where products are organized into well-defined collections, such as clothing and accessories, enabling users to explore items efficiently. Each collection displays product images, names, prices, and brief details to help customers compare options quickly. When a product is selected from a collection, the user is taken to a dedicated product page that provides complete information, including descriptions, available sizes, colors, and pricing. UFO Collection offers a convenient, accessible, and user-friendly shopping experience, allowing customers to shop anytime and from anywhere with global reach.";
@@ -611,6 +612,12 @@ export default function ProductPage() {
   }, [product?.id, fetchReviews]);
 
   React.useEffect(() => {
+  if (!product?.id) return;
+
+  localStorage.setItem(LAST_PRODUCT_ID_KEY, product.id);
+}, [product?.id]);
+
+  React.useEffect(() => {
     if (!product?.id) return;
 
     const handleReviewRefresh = () => {
@@ -863,8 +870,9 @@ export default function ProductPage() {
       cart.push(item);
     }
 
-    localStorage.setItem("ufo_cart", JSON.stringify(cart));
-    window.dispatchEvent(new Event("ufo_cart_updated"));
+    localStorage.setItem(LAST_PRODUCT_ID_KEY, product.id);
+localStorage.setItem("ufo_cart", JSON.stringify(cart));
+window.dispatchEvent(new Event("ufo_cart_updated"));
 
     showToast("success", "Added to cart successfully.");
     return true;
@@ -1309,9 +1317,9 @@ export default function ProductPage() {
 
                             <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
                               <div
-                              className="h-full rounded-full bg-[#d6c7ff] transition-all duration-500"
-                              data-width={row.percent}
-                              />
+  className="h-full rounded-full bg-[#d6c7ff] transition-all duration-500"
+  style={{ width: `${row.percent}%` }}
+/>
                             </div>
 
                             <span className="w-8 text-right text-[#a7aec4]">

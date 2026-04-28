@@ -671,14 +671,15 @@ export const authController = {
       const userId = (req.user as any)?.userId;
       if (!userId) throw new AppError("User not authenticated", 401);
 
-      const { name, height, weight, address } = req.body;
+      const { name, height, weight, address, phone } = req.body;
 
       const updatedUser = await authService.updateProfile(userId, {
-        name,
-        height,
-        weight,
-        address,
-      });
+  name,
+  phone,
+  height,
+  weight,
+  address,
+});
 
       res.status(200).json({
         success: true,

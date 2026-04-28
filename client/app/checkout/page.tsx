@@ -31,9 +31,9 @@ const containerClass =
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 const primaryBtnClass =
-  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+  "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+  "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 const inputClass =
   "h-[50px] w-full rounded-full border border-[#2b3042] bg-[#0d0f17] px-5 text-[13px] text-[#f5f7fb] outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60";
 
@@ -57,20 +57,50 @@ type OrderSummary = {
   discountRs?: number;
   totalRs?: number;
   itemCount?: number;
+  couponCode?: string | null;
+  currency?: string;
+  updatedAt?: string;
 };
 
 function formatMoney(value: number) {
-  return `Rs. ${Math.round(value).toLocaleString("en-IN")}`;
+  return `Rs. ${Math.round(Number(value || 0)).toLocaleString("en-NP")}`;
 }
 
-function getMoney(summary: OrderSummary | null, rsKey: keyof OrderSummary, key: keyof OrderSummary) {
-  const rsValue = Number(summary?.[rsKey]);
-  if (Number.isFinite(rsValue) && rsValue > 0) return rsValue;
+function getMoney(
+  summary: OrderSummary | null,
+  rsKey: keyof OrderSummary,
+  key: keyof OrderSummary
+) {
+  const rsRaw = summary?.[rsKey];
+  const raw = summary?.[key];
 
-  const rawValue = Number(summary?.[key]);
-  if (Number.isFinite(rawValue) && rawValue > 0) return rawValue;
+  if (rsRaw !== undefined && rsRaw !== null && rsRaw !== "") {
+    const rsValue = Number(rsRaw);
+    if (Number.isFinite(rsValue)) return rsValue;
+  }
+
+  if (raw !== undefined && raw !== null && raw !== "") {
+    const rawValue = Number(raw);
+    if (Number.isFinite(rawValue)) return rawValue;
+  }
 
   return 0;
+}
+
+function getCartCountFromStorage() {
+  try {
+    const raw = localStorage.getItem("ufo_cart");
+    const parsed = raw ? JSON.parse(raw) : [];
+
+    if (!Array.isArray(parsed)) return 0;
+
+    return parsed.reduce(
+      (sum: number, item: any) => sum + Number(item?.qty || 0),
+      0
+    );
+  } catch {
+    return 0;
+  }
 }
 
 export default function CheckoutPage() {
@@ -98,6 +128,7 @@ export default function CheckoutPage() {
   const [orderSummary, setOrderSummary] = React.useState<OrderSummary | null>(
     null
   );
+  const [cartChecked, setCartChecked] = React.useState(false);
 
   const [mapCenter, setMapCenter] = React.useState<LatLng>(defaultCenter);
   const [markerPosition, setMarkerPosition] =
@@ -117,7 +148,7 @@ export default function CheckoutPage() {
   }, [provinceId]);
 
   const phoneDigits = phone.replace(/\D/g, "");
-  const isPhoneValid = phoneDigits.length === 10;
+  const isPhoneValid = /^9[6-8]\d{8}$/.test(phoneDigits);
 
   const isFormReady =
     email.trim() &&
@@ -143,15 +174,27 @@ export default function CheckoutPage() {
 
   React.useEffect(() => {
     try {
-      const raw = localStorage.getItem("ufo_order_summary");
-      if (!raw) return;
+      const cartRaw = localStorage.getItem("ufo_cart");
+      const summaryRaw = localStorage.getItem("ufo_order_summary");
 
-      const parsed = JSON.parse(raw);
+      const cart = cartRaw ? JSON.parse(cartRaw) : [];
+      const hasCart = Array.isArray(cart) && cart.length > 0;
+
+      if (!hasCart || !summaryRaw) {
+        showToast("error", "Your cart is empty.");
+        router.replace("/cartpage");
+        return;
+      }
+
+      const parsed = JSON.parse(summaryRaw);
       setOrderSummary(parsed);
     } catch {
-      setOrderSummary(null);
+      showToast("error", "Checkout data is missing.");
+      router.replace("/cartpage");
+    } finally {
+      setCartChecked(true);
     }
-  }, []);
+  }, [router, showToast]);
 
   React.useEffect(() => {
     const loadMe = async () => {
@@ -159,6 +202,7 @@ export default function CheckoutPage() {
         const res = await fetch(`${API_BASE}/api/auth/me`, {
           method: "GET",
           credentials: "include",
+          cache: "no-store",
         });
 
         if (!res.ok) return;
@@ -186,6 +230,7 @@ export default function CheckoutPage() {
       try {
         const res = await fetch(`${API_BASE}/api/addresses`, {
           credentials: "include",
+          cache: "no-store",
         });
 
         if (!res.ok) return;
@@ -237,7 +282,7 @@ export default function CheckoutPage() {
     if (!cityOrMunicipality.trim()) return "City/Municipality is required";
     if (!addressLine.trim()) return "Address is required";
     if (!phone.trim()) return "Phone number is required";
-    if (!isPhoneValid) return "Phone number must be 10 digits";
+    if (!isPhoneValid) return "Enter a valid Nepali phone number";
     return "";
   };
 
@@ -255,7 +300,7 @@ export default function CheckoutPage() {
       addressLine: addressLine.trim(),
       street: street.trim(),
       postalCode: postalCode.trim(),
-      phone: phone.trim(),
+      phone: phoneDigits,
       isDefault: true,
       lat: markerPosition.lat,
       lng: markerPosition.lng,
@@ -277,7 +322,7 @@ export default function CheckoutPage() {
     return json?.data;
   };
 
-  const handleMarkerDragEnd = (e: google.maps.MapMouseEvent) => {
+  const handleMarkerDragEnd = (e: any) => {
     const lat = e.latLng?.lat();
     const lng = e.latLng?.lng();
 
@@ -345,6 +390,7 @@ export default function CheckoutPage() {
         email: email.trim(),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
+        fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
         country: "Nepal",
         provinceId,
         provinceName: selectedProvince?.name || "",
@@ -353,14 +399,16 @@ export default function CheckoutPage() {
         addressLine: addressLine.trim(),
         street: street.trim(),
         postalCode: postalCode.trim(),
-        phone: phone.trim(),
+        phone: phoneDigits,
         marketingOptIn,
         savedAddressId: savedAddress?.id || savedAddress?._id || null,
         lat: markerPosition.lat,
         lng: markerPosition.lng,
       };
 
+      localStorage.setItem("ufo_checkout_address", JSON.stringify(checkoutAddress));
       localStorage.setItem("checkout_address", JSON.stringify(checkoutAddress));
+
       showToast("success", "Address saved. Continuing to payment...");
       router.push("/payment");
     } catch (e: any) {
@@ -372,9 +420,22 @@ export default function CheckoutPage() {
     }
   };
 
+  if (!cartChecked) {
+    return (
+      <>
+        <CartHeader backHref="/cartpage" />
+        <main className="flex min-h-screen items-center justify-center bg-[#0a0a0f] px-4 text-white">
+          <div className="rounded-[24px] border border-[#26293a] bg-[#11121a] px-6 py-4 text-sm font-semibold text-[#cbd5f5] shadow-[0_20px_70px_rgba(0,0,0,0.35)]">
+            Preparing checkout...
+          </div>
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref="/cartpage" />
 
       {toast ? (
         <div className="fixed right-4 top-24 z-[80] w-[calc(100%-32px)] max-w-[360px]">
@@ -383,8 +444,8 @@ export default function CheckoutPage() {
               toast.type === "success"
                 ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-100"
                 : toast.type === "error"
-                ? "border-red-400/30 bg-red-500/15 text-red-100"
-                : "border-blue-400/30 bg-blue-500/15 text-blue-100"
+                  ? "border-red-400/30 bg-red-500/15 text-red-100"
+                  : "border-blue-400/30 bg-blue-500/15 text-blue-100"
             }`}
           >
             {toast.message}
@@ -678,7 +739,7 @@ export default function CheckoutPage() {
                   />
                   {phone && !isPhoneValid ? (
                     <p className="mt-2 text-[12px] text-red-300">
-                      Phone number must be 10 digits.
+                      Enter a valid Nepali phone number.
                     </p>
                   ) : null}
                 </div>
@@ -712,9 +773,11 @@ export default function CheckoutPage() {
                   type="button"
                   onClick={handleUseCurrentLocation}
                   disabled={locationLoading}
-                  className={`${secondaryBtnClass} mt-5 w-full justify-center`}
+                  className={`${secondaryBtnClass} mt-5 w-full`}
                 >
-                  {locationLoading ? "Detecting Location..." : "Use Current Location"}
+                  {locationLoading
+                    ? "Detecting Location..."
+                    : "Use Current Location"}
                 </button>
 
                 <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
@@ -738,7 +801,12 @@ export default function CheckoutPage() {
                 </div>
 
                 <div className="mt-5 overflow-hidden rounded-[20px] border border-[#26293a] bg-[#161824]">
-                  {isLoaded ? (
+                  {!GOOGLE_MAPS_API_KEY ? (
+                    <div className="flex h-[340px] items-center justify-center px-5 text-center text-[14px] leading-6 text-yellow-100">
+                      Google Maps is not configured. Delivery pin will use
+                      default Kathmandu location.
+                    </div>
+                  ) : isLoaded ? (
                     <GoogleMap
                       mapContainerStyle={{
                         width: "100%",
@@ -769,7 +837,7 @@ export default function CheckoutPage() {
                 <div className="mt-3 text-[12px] leading-5 text-[#7f88b3]">
                   {mapLoaded
                     ? "Tip: drag the pin for exact delivery location."
-                    : "Map is loading..."}
+                    : "Map pin is using the selected/default location."}
                 </div>
 
                 <div className="mt-6 rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
@@ -810,7 +878,9 @@ export default function CheckoutPage() {
                     <div className="flex items-center justify-between gap-4">
                       <span>Items</span>
                       <span className="text-white">
-                        {orderSummary?.itemCount || "-"}
+                        {orderSummary?.itemCount ||
+                          getCartCountFromStorage() ||
+                          "-"}
                       </span>
                     </div>
 
@@ -825,8 +895,15 @@ export default function CheckoutPage() {
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
-                      <span>Discount</span>
-                      <span className="text-white">- {formatMoney(discount)}</span>
+                      <span>
+                        Discount{" "}
+                        {orderSummary?.couponCode
+                          ? `(${orderSummary.couponCode})`
+                          : ""}
+                      </span>
+                      <span className="text-white">
+                        - {formatMoney(discount)}
+                      </span>
                     </div>
 
                     <div className="border-t border-[#26293a] pt-3">
@@ -842,7 +919,7 @@ export default function CheckoutPage() {
                   type="button"
                   onClick={handleContinue}
                   disabled={saving || !isFormReady}
-                  className={`${primaryBtnClass} mt-6 w-full justify-center`}
+                  className={`${primaryBtnClass} mt-6 w-full`}
                 >
                   {saving ? "Saving..." : "Continue to Payment"}
                 </button>

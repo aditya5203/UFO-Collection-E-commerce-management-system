@@ -257,6 +257,7 @@ export const authService = {
     data: {
       name?: string;
       address?: string;
+      phone?: string
       height?: number | string;
       weight?: number | string;
     }
@@ -278,6 +279,7 @@ export const authService = {
 
     if (data.name !== undefined) user.name = String(data.name).trim();
     if (data.address !== undefined) user.address = String(data.address).trim();
+    if (data.phone !== undefined) (user as any).phone = String(data.phone).trim();
 
     if (data.height !== undefined && data.height !== null) {
       const h = Number(data.height);

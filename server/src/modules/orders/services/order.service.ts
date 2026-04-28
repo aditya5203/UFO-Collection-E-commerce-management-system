@@ -6,6 +6,7 @@ import { Address } from "../../../models/Address.model";
 import discountService from "../../discounts/services/discount.service";
 import { maybeSendInvoiceForOrder } from "../../../services/invoiceWorkflow.service";
 import { notificationService } from "../../notifications/services/notification.service";
+import { getIO } from "../../../socket";
 
 type ListInput = {
   search?: string;
@@ -33,6 +34,7 @@ type UpdateInput = {
 type CreateOrderBody = {
   paymentMethod: "COD" | "Khalti" | "eSewa" | "Fonepay";
   paymentRef?: string;
+  paymentStatus?: "Paid" | "Pending" | "Failed";
   shippingPaisa?: number;
   couponCode?: string;
   items: Array<{
@@ -45,11 +47,16 @@ type CreateOrderBody = {
   addressId?: string;
   address?: {
     label?: "Home" | "Work" | "Other";
+    email?: string;
     fullName: string;
     phone: string;
+    provinceId?: string;
+    district?: string;
     city: string;
-    area: string;
+    area?: string;
+    addressLine?: string;
     street: string;
+    postalCode?: string;
     lat?: number;
     lng?: number;
   };
@@ -71,6 +78,7 @@ async function generateUniqueOrderCode() {
     const exists = await Order.findOne({ orderCode: code }).lean();
     if (!exists) return code;
   }
+
   return `#${Date.now().toString().slice(-6)}`;
 }
 
@@ -84,7 +92,8 @@ function computeEstimatedDeliveryRange() {
   to.setDate(today.getDate() + 4);
 
   const sameMonth =
-    from.getMonth() === to.getMonth() && from.getFullYear() === to.getFullYear();
+    from.getMonth() === to.getMonth() &&
+    from.getFullYear() === to.getFullYear();
 
   if (sameMonth) {
     const month = from.toLocaleDateString("en-US", { month: "long" });
@@ -119,7 +128,9 @@ function buildShippingAddressText(address: any) {
       address.district ? ", " + address.district : ""
     }`,
     `${address.addressLine || ""}${address.street ? ", " + address.street : ""}`,
-    `${address.provinceId || ""}${address.postalCode ? " " + address.postalCode : ""}`,
+    `${address.provinceId || ""}${
+      address.postalCode ? " " + address.postalCode : ""
+    }`,
     address.country || "Nepal",
   ]
     .filter(Boolean)
@@ -130,14 +141,61 @@ function deliveryOrderLink(orderId: string) {
   return `/delivery/orders/${orderId}`;
 }
 
+async function emitOrderUpdated(updated: any, fallbackCustomerId?: string) {
+  try {
+    const io = getIO();
+
+    const customerId = String(
+      updated?.customer?._id || updated?.customer || fallbackCustomerId || ""
+    ).trim();
+
+    const payload = {
+      orderId: String(updated._id),
+      orderCode: String(updated.orderCode || ""),
+      orderStatus: String(updated.orderStatus || ""),
+      paymentStatus: String(updated.paymentStatus || ""),
+      deliveryAssignment: updated.deliveryAssignment
+        ? {
+            ...updated.deliveryAssignment,
+            deliveryManId: updated.deliveryAssignment.deliveryManId
+              ? String(updated.deliveryAssignment.deliveryManId)
+              : "",
+          }
+        : null,
+      updatedAt: new Date().toISOString(),
+      source: "admin",
+    };
+
+    io.to("admins").emit("order:updated", payload);
+    io.to(`admin:order:${String(updated._id)}`).emit("order:updated", payload);
+
+    if (customerId) {
+      io.to(`user:${customerId}`).emit("order:updated", payload);
+    }
+  } catch (e: any) {
+    console.log("Order socket emit failed (ignored):", e?.message);
+  }
+}
+
 export const orderService = {
   async createOrder(userId: string, body: CreateOrderBody) {
-    if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
-    if (!body?.items?.length) throw new Error("Cart is empty");
-    if (!body.paymentMethod) throw new Error("paymentMethod is required");
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid user");
+    }
+
+    if (!body?.items?.length) {
+      throw new Error("Cart is empty");
+    }
+
+    if (!body.paymentMethod) {
+      throw new Error("paymentMethod is required");
+    }
 
     if (body.paymentRef) {
-      const existing = await Order.findOne({ paymentRef: body.paymentRef }).lean();
+      const existing = await Order.findOne({
+        paymentRef: body.paymentRef,
+      }).lean();
+
       if (existing) {
         return {
           id: String((existing as any)._id),
@@ -148,6 +206,7 @@ export const orderService = {
     }
 
     const qtyByProductId = new Map<string, number>();
+
     for (const it of body.items) {
       const id = String(it.productId);
       const qty = Math.max(1, Number(it.qty || 1));
@@ -166,7 +225,10 @@ export const orderService = {
 
     for (const [pid, qty] of qtyByProductId.entries()) {
       const p: any = productMap.get(pid);
-      if (!p) throw new Error(`Product not found: ${pid}`);
+
+      if (!p) {
+        throw new Error(`Product not found: ${pid}`);
+      }
 
       if (String(p.status) !== "Active") {
         throw new Error(`Product is inactive: ${p.name}`);
@@ -183,7 +245,10 @@ export const orderService = {
 
     const orderItems = body.items.map((i) => {
       const p = productMap.get(String(i.productId));
-      if (!p) throw new Error(`Product not found: ${i.productId}`);
+
+      if (!p) {
+        throw new Error(`Product not found: ${i.productId}`);
+      }
 
       const qty = Math.max(1, Number(i.qty || 1));
       const pricePaisa = Math.round(Number(p.price || 0) * 100);
@@ -206,7 +271,7 @@ export const orderService = {
       };
     });
 
-    const shippingPaisa = Math.max(0, Number(body.shippingPaisa || 0));
+    const shippingPaisa = subtotalPaisa > 0 ? 10000 : 0;
 
     let discountPaisa = 0;
     let couponSnapshot: any = null;
@@ -218,7 +283,10 @@ export const orderService = {
       const out = await discountService.computeDiscountPaisa({
         userId,
         couponCode,
-        items: body.items.map((x) => ({ productId: x.productId, qty: x.qty })),
+        items: body.items.map((x) => ({
+          productId: x.productId,
+          qty: x.qty,
+        })),
         productMap,
         subtotalPaisa,
         shippingPaisa,
@@ -240,7 +308,10 @@ export const orderService = {
 
     const bulkOps = Array.from(qtyByProductId.entries()).map(([pid, qty]) => ({
       updateOne: {
-        filter: { _id: new mongoose.Types.ObjectId(pid), stock: { $gte: qty } },
+        filter: {
+          _id: new mongoose.Types.ObjectId(pid),
+          stock: { $gte: qty },
+        },
         update: { $inc: { stock: -qty } },
       },
     }));
@@ -291,7 +362,11 @@ export const orderService = {
       console.log("Low stock notification failed (ignored):", e?.message);
     }
 
-    const totalPaisa = Math.max(0, subtotalPaisa + shippingPaisa - discountPaisa);
+    const totalPaisa = Math.max(
+      0,
+      subtotalPaisa + shippingPaisa - discountPaisa
+    );
+
     const orderCode = await generateUniqueOrderCode();
 
     let orderAddress: any = null;
@@ -302,7 +377,9 @@ export const orderService = {
         userId: new mongoose.Types.ObjectId(userId),
       }).lean();
 
-      if (!saved) throw new Error("Address not found");
+      if (!saved) {
+        throw new Error("Address not found");
+      }
 
       orderAddress = {
         label: saved.label,
@@ -324,25 +401,73 @@ export const orderService = {
       };
     } else if (body.address) {
       orderAddress = {
-        label: body.address.label,
+        label: body.address.label || "Home",
+        email: body.address.email || "",
+        firstName: "",
+        lastName: "",
         fullName: body.address.fullName || "",
-        phone: body.address.phone,
-        cityOrMunicipality: body.address.city || "",
-        district: "",
-        provinceId: "",
-        addressLine: `${body.address.area || ""}`.trim(),
-        street: body.address.street || "",
-        postalCode: "",
+        phone: body.address.phone || "",
         country: "Nepal",
+        provinceId: body.address.provinceId || "",
+        district: body.address.district || body.address.area || "",
+        cityOrMunicipality: body.address.city || "",
+        addressLine:
+          body.address.addressLine ||
+          body.address.area ||
+          body.address.street ||
+          "",
+        street: body.address.street || "",
+        postalCode: body.address.postalCode || "",
+        isDefault: false,
         lat: normalizeNumber(body.address.lat),
         lng: normalizeNumber(body.address.lng),
       };
     }
 
+    if (!orderAddress) {
+      throw new Error("Delivery address is required");
+    }
+
+    if (!String(orderAddress.fullName || "").trim()) {
+      throw new Error("Customer name is required");
+    }
+
+    const phoneDigits = String(orderAddress.phone || "").replace(/\D/g, "");
+
+    if (!phoneDigits) {
+      throw new Error("Phone number is required");
+    }
+
+    if (!/^9[6-8]\d{8}$/.test(phoneDigits)) {
+      throw new Error("Enter a valid Nepali phone number");
+    }
+
+    if (!String(orderAddress.cityOrMunicipality || "").trim()) {
+      throw new Error("City/Municipality is required");
+    }
+
+    if (!String(orderAddress.district || "").trim()) {
+      throw new Error("District is required");
+    }
+
+    if (!String(orderAddress.addressLine || orderAddress.street || "").trim()) {
+      throw new Error("Address is required");
+    }
+
+    orderAddress.phone = phoneDigits;
+
     const estimatedDelivery = computeEstimatedDeliveryRange();
 
+    const requestedPaymentStatus = String(body.paymentStatus || "").trim();
+
     const initialPaymentStatus: "Paid" | "Pending" | "Failed" =
-      body.paymentMethod === "COD" ? "Pending" : "Pending";
+      body.paymentMethod === "COD"
+        ? "Pending"
+        : body.paymentRef && requestedPaymentStatus === "Paid"
+          ? "Paid"
+          : requestedPaymentStatus === "Failed"
+            ? "Failed"
+            : "Pending";
 
     const payload: any = {
       orderCode,
@@ -363,6 +488,7 @@ export const orderService = {
         estimatedDelivery,
       },
       deliveryAssignment: null,
+      confirmedAt: null,
       shippedAt: null,
       inTransitAt: null,
       deliveredAt: null,
@@ -421,9 +547,11 @@ export const orderService = {
       totalPaisa: Number(doc.totalPaisa || 0),
       discountPaisa: Number(doc.discountPaisa || 0),
       coupon: doc.coupon || null,
+      paymentStatus: doc.paymentStatus,
       shipping: {
         method: doc.shipping?.method || "Standard Shipping",
-        estimatedDelivery: doc.shipping?.estimatedDelivery || estimatedDelivery,
+        estimatedDelivery:
+          doc.shipping?.estimatedDelivery || estimatedDelivery,
       },
     };
   },
@@ -435,15 +563,18 @@ export const orderService = {
     if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
       filter.customer = new mongoose.Types.ObjectId(customerId);
     }
+
     if (paymentStatus) filter.paymentStatus = paymentStatus;
     if (orderStatus) filter.orderStatus = orderStatus;
 
     if (search.trim()) {
       const rx = safeRegex(search.trim());
+
       const users = await User.find(
         { $or: [{ name: rx }, { email: rx }] },
         { _id: 1 }
       ).lean();
+
       const userIds = users.map((u: any) => u._id);
 
       filter.$or = [
@@ -531,14 +662,18 @@ export const orderService = {
       const byId = await Order.findById(value)
         .populate("customer", "name email phone")
         .lean();
+
       if (byId) return this.mapOrder(byId);
     }
 
-    const byCode = await Order.findOne({ orderCode: value })
+    const normalizedCode = value.startsWith("#") ? value : `#${value}`;
+
+    const byCode = await Order.findOne({ orderCode: normalizedCode })
       .populate("customer", "name email phone")
       .lean();
 
     if (!byCode) return null;
+
     return this.mapOrder(byCode);
   },
 
@@ -547,39 +682,59 @@ export const orderService = {
     if (!raw) return null;
 
     const isObjId = mongoose.Types.ObjectId.isValid(raw);
+    const normalizedCode = raw.startsWith("#") ? raw : `#${raw}`;
 
     const found: any = isObjId
       ? await Order.findById(raw).lean()
-      : await Order.findOne({ orderCode: raw }).lean();
+      : await Order.findOne({ orderCode: normalizedCode }).lean();
 
     if (!found) return null;
 
     const prevDeliveryManId = found?.deliveryAssignment?.deliveryManId
       ? String(found.deliveryAssignment.deliveryManId)
       : "";
+
     const prevDeliveryStatus = String(
       found?.deliveryAssignment?.status || ""
     ).trim();
 
     const update: any = {};
+
     if (input.paymentStatus) update.paymentStatus = input.paymentStatus;
     if (input.orderStatus) update.orderStatus = input.orderStatus;
 
     const nextStatus = String(input.orderStatus || "").trim();
 
+    if (nextStatus === "Delivered") {
+      const otpVerified = Boolean(found?.deliveryAssignment?.isOtpVerified);
+
+      if (!otpVerified) {
+        throw new Error(
+          "Delivered status requires OTP verification. Use delivery OTP verification instead."
+        );
+      }
+    }
+
+    if (nextStatus === "Confirmed" && !found.confirmedAt) {
+      update.confirmedAt = new Date();
+    }
+
     if (nextStatus === "Shipped" && !found.shippedAt) {
       update.shippedAt = new Date();
+      if (!found.confirmedAt) update.confirmedAt = new Date();
     }
 
     if (nextStatus === "Transit" && !found.inTransitAt) {
       update.inTransitAt = new Date();
       if (!found.shippedAt) update.shippedAt = new Date();
+      if (!found.confirmedAt) update.confirmedAt = new Date();
     }
 
     if (nextStatus === "Delivered" && !found.deliveredAt) {
       update.deliveredAt = new Date();
       if (!found.shippedAt) update.shippedAt = new Date();
       if (!found.inTransitAt) update.inTransitAt = new Date();
+      if (!found.confirmedAt) update.confirmedAt = new Date();
     }
 
     if (input.deliveryAssignment) {
@@ -646,6 +801,16 @@ export const orderService = {
       }
 
       if (input.deliveryAssignment.status) {
+        if (input.deliveryAssignment.status === "Delivered") {
+          const otpVerified = Boolean(found?.deliveryAssignment?.isOtpVerified);
+
+          if (!otpVerified) {
+            throw new Error(
+              "Delivered status requires OTP verification. Use delivery OTP verification instead."
+            );
+          }
+        }
+
         nextDeliveryAssignment.status = input.deliveryAssignment.status;
 
         if (
@@ -660,15 +825,26 @@ export const orderService = {
           !nextDeliveryAssignment.outForDeliveryAt
         ) {
           nextDeliveryAssignment.outForDeliveryAt = now;
+
           if (!nextDeliveryAssignment.pickedUpAt) {
             nextDeliveryAssignment.pickedUpAt = now;
           }
+
+          nextDeliveryAssignment.isOtpVerified = false;
+          nextDeliveryAssignment.otpVerifiedAt = null;
+
           if (!found.inTransitAt) {
             update.inTransitAt = now;
           }
+
           if (!found.shippedAt) {
             update.shippedAt = now;
           }
+
+          if (!found.confirmedAt) {
+            update.confirmedAt = now;
+          }
+
           if (!update.orderStatus) {
             update.orderStatus = "Transit";
           }
@@ -679,21 +855,31 @@ export const orderService = {
           !nextDeliveryAssignment.deliveredAt
         ) {
           nextDeliveryAssignment.deliveredAt = now;
+
           if (!nextDeliveryAssignment.outForDeliveryAt) {
             nextDeliveryAssignment.outForDeliveryAt = now;
           }
+
           if (!nextDeliveryAssignment.pickedUpAt) {
             nextDeliveryAssignment.pickedUpAt = now;
           }
+
           if (!found.deliveredAt) {
             update.deliveredAt = now;
           }
+
           if (!found.inTransitAt) {
             update.inTransitAt = now;
           }
+
           if (!found.shippedAt) {
             update.shippedAt = now;
           }
+
+          if (!found.confirmedAt) {
+            update.confirmedAt = now;
+          }
+
           if (!update.orderStatus) {
             update.orderStatus = "Delivered";
           }
@@ -725,12 +911,18 @@ export const orderService = {
 
     if (!updated) return null;
 
+    await emitOrderUpdated(updated, String(found.customer || ""));
+
     const updatedOrderId = String(updated._id || found._id);
-    const customerId = String((updated as any)?.customer?._id || found.customer || "");
+    const customerId = String(
+      (updated as any)?.customer?._id || found.customer || ""
+    );
     const orderCode = String(updated.orderCode || "");
+
     const nextDeliveryManId = updated?.deliveryAssignment?.deliveryManId
       ? String(updated.deliveryAssignment.deliveryManId)
       : "";
+
     const nextDeliveryStatus = String(
       updated?.deliveryAssignment?.status || ""
     ).trim();
@@ -791,7 +983,9 @@ export const orderService = {
             orderId: updatedOrderId,
             orderCode,
             deliveryStatus: nextDeliveryStatus || "Assigned",
-            action: prevDeliveryManId ? "delivery_reassigned" : "delivery_assigned",
+            action: prevDeliveryManId
+              ? "delivery_reassigned"
+              : "delivery_assigned",
           },
         });
 
@@ -826,7 +1020,10 @@ export const orderService = {
         }
       }
     } catch (e: any) {
-      console.log("Delivery assignment notification failed (ignored):", e?.message);
+      console.log(
+        "Delivery assignment notification failed (ignored):",
+        e?.message
+      );
     }
 
     try {
@@ -908,7 +1105,10 @@ export const orderService = {
         }
       }
     } catch (e: any) {
-      console.log("Customer delivery status notification failed (ignored):", e?.message);
+      console.log(
+        "Customer delivery status notification failed (ignored):",
+        e?.message
+      );
     }
 
     try {
@@ -955,11 +1155,13 @@ export const orderService = {
         ? {
             ...o.address,
             lat:
-              typeof o.address.lat === "number" && Number.isFinite(o.address.lat)
+              typeof o.address.lat === "number" &&
+              Number.isFinite(o.address.lat)
                 ? o.address.lat
                 : undefined,
             lng:
-              typeof o.address.lng === "number" && Number.isFinite(o.address.lng)
+              typeof o.address.lng === "number" &&
+              Number.isFinite(o.address.lng)
                 ? o.address.lng
                 : undefined,
           }
@@ -973,6 +1175,7 @@ export const orderService = {
               : "",
           }
         : null,
+      confirmedAt: o.confirmedAt || null,
       shippedAt: o.shippedAt || null,
       inTransitAt: o.inTransitAt || null,
       deliveredAt: o.deliveredAt || null,
@@ -982,7 +1185,9 @@ export const orderService = {
   },
 
   async getMyOrderDetails(userId: string, idOrCode: string) {
-    if (!mongoose.Types.ObjectId.isValid(userId)) throw new Error("Invalid user");
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      throw new Error("Invalid user");
+    }
 
     const raw = String(idOrCode || "").trim();
     if (!raw) return null;
@@ -1001,6 +1206,7 @@ export const orderService = {
     const o: any = await Order.findOne(filter)
       .populate("customer", "name email phone")
       .lean();
+
     if (!o) return null;
 
     const customerName = o.customer?.name || "";
@@ -1054,11 +1260,13 @@ export const orderService = {
         ? {
             ...o.address,
             lat:
-              typeof o.address.lat === "number" && Number.isFinite(o.address.lat)
+              typeof o.address.lat === "number" &&
+              Number.isFinite(o.address.lat)
                 ? o.address.lat
                 : undefined,
             lng:
-              typeof o.address.lng === "number" && Number.isFinite(o.address.lng)
+              typeof o.address.lng === "number" &&
+              Number.isFinite(o.address.lng)
                 ? o.address.lng
                 : undefined,
           }
@@ -1088,6 +1296,7 @@ export const orderService = {
           "orderStatus",
           "createdAt",
           "updatedAt",
+          "confirmedAt",
           "shippedAt",
           "inTransitAt",
           "deliveredAt",
@@ -1123,6 +1332,7 @@ export const orderService = {
       orderStatus: o.orderStatus,
       createdAt: o.createdAt,
       updatedAt: o.updatedAt,
+      confirmedAt: o.confirmedAt || null,
       shippedAt: o.shippedAt || null,
       inTransitAt: o.inTransitAt || null,
       deliveredAt: o.deliveredAt || null,

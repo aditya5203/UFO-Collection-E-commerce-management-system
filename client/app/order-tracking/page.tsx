@@ -8,7 +8,7 @@ import { useSearchParams } from "next/navigation";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
-type StepKey = "PLACED" | "SHIPPED" | "IN_TRANSIT" | "DELIVERED";
+type StepKey = "PLACED" | "CONFIRMED" | "SHIPPED" | "IN_TRANSIT" | "DELIVERED";
 type ToastType = "success" | "error" | "info";
 
 type OrderItem = {
@@ -46,13 +46,20 @@ type TrackingData = {
   summary?: {
     subtotal?: number;
     shipping?: number;
+    discount?: number;
     taxes?: number;
     total?: number;
   };
   items: OrderItem[];
 };
 
-const STEP_ORDER: StepKey[] = ["PLACED", "SHIPPED", "IN_TRANSIT", "DELIVERED"];
+const STEP_ORDER: StepKey[] = [
+  "PLACED",
+  "CONFIRMED",
+  "SHIPPED",
+  "IN_TRANSIT",
+  "DELIVERED",
+];
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
@@ -78,10 +85,15 @@ function stepIndex(step: StepKey) {
 
 function progressWidthClass(active: StepKey) {
   const idx = stepIndex(active);
-  if (idx <= 0) return "w-[12%]";
-  if (idx === 1) return "w-[45%]";
-  if (idx === 2) return "w-[75%]";
+  if (idx <= 0) return "w-[10%]";
+  if (idx === 1) return "w-[32%]";
+  if (idx === 2) return "w-[55%]";
+  if (idx === 3) return "w-[78%]";
   return "w-full";
+}
+
+function formatNPR(value?: number) {
+  return `Rs. ${Number(value || 0).toLocaleString("en-NP")}`;
 }
 
 function colorDotClass(color?: string) {
@@ -136,6 +148,10 @@ function statusToStep(orderStatusRaw: string): StepKey {
     return "SHIPPED";
   }
 
+  if (s === "confirmed") {
+    return "CONFIRMED";
+  }
+
   return "PLACED";
 }
 
@@ -173,6 +189,10 @@ function getStatusBadgeClasses(status: string) {
     return "border-violet-400/30 bg-violet-500/10 text-violet-300";
   }
 
+  if (s.includes("confirm")) {
+    return "border-blue-400/30 bg-blue-500/10 text-blue-300";
+  }
+
   if (s.includes("cancel")) {
     return "border-red-400/30 bg-red-500/10 text-red-300";
   }
@@ -186,20 +206,24 @@ function TimelineIcon({ step, active }: { step: StepKey; active: StepKey }) {
   const iconSrc =
     step === "PLACED"
       ? "/images/check.png"
-      : step === "SHIPPED"
-        ? "/images/truck.png"
-        : step === "IN_TRANSIT"
-          ? "/images/box.png"
-          : "/images/home.png";
+      : step === "CONFIRMED"
+        ? "/images/check.png"
+        : step === "SHIPPED"
+          ? "/images/truck.png"
+          : step === "IN_TRANSIT"
+            ? "/images/box.png"
+            : "/images/home.png";
 
   const iconAlt =
     step === "PLACED"
       ? "Order placed"
-      : step === "SHIPPED"
-        ? "Shipped"
-        : step === "IN_TRANSIT"
-          ? "In transit"
-          : "Delivered";
+      : step === "CONFIRMED"
+        ? "Order confirmed"
+        : step === "SHIPPED"
+          ? "Shipped"
+          : step === "IN_TRANSIT"
+            ? "In transit"
+            : "Delivered";
 
   return (
     <div
@@ -230,6 +254,7 @@ function buildDefaultTrackingData(): TrackingData {
     activeStep: "PLACED",
     timeline: [
       { key: "PLACED", title: "Order Placed", date: "—" },
+      { key: "CONFIRMED", title: "Confirmed", date: "—" },
       { key: "SHIPPED", title: "Shipped", date: "—" },
       { key: "IN_TRANSIT", title: "In Transit", date: "—" },
       { key: "DELIVERED", title: "Delivered", date: "—" },
@@ -252,6 +277,7 @@ function buildDefaultTrackingData(): TrackingData {
     summary: {
       subtotal: 0,
       shipping: 0,
+      discount: 0,
       taxes: 0,
       total: 0,
     },
@@ -329,7 +355,7 @@ function TrackingSkeleton() {
       <div className={`${innerPanelClass} p-5 sm:p-6`}>
         <div className="h-6 w-44 animate-pulse rounded bg-white/5" />
         <div className="mt-8 space-y-7">
-          {Array.from({ length: 4 }).map((_, i) => (
+          {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex gap-4">
               <div className="h-11 w-11 animate-pulse rounded-full bg-white/5" />
               <div className="flex-1 pt-1">
@@ -353,9 +379,11 @@ function TrackingSkeleton() {
   );
 }
 
-export default function OrderTrackingPage() {
+function OrderTrackingPageContent() {
   const searchParams = useSearchParams();
+
   const socketRef = React.useRef<Socket | null>(null);
+  const trackingNumberRef = React.useRef("");
 
   const [loading, setLoading] = React.useState(false);
   const [hasTracked, setHasTracked] = React.useState(false);
@@ -369,17 +397,36 @@ export default function OrderTrackingPage() {
     message: string;
   } | null>(null);
 
-  const toastTimerRef = React.useRef<number | null>(null);
+  const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const codeFromQuery =
+    searchParams.get("code") ||
+    searchParams.get("tracking") ||
+    searchParams.get("orderCode") ||
+    "";
+
+  const from = searchParams.get("from") || "";
+
+  const backHref =
+  from === "profile"
+    ? "/profile"
+    : from === "orders"
+      ? "/order-history"
+      : from === "details" || from === "tracking-details"
+        ? `/customerorderdetails/${encodeURIComponent(
+            cleanTrackingCode(codeFromQuery || data.trackingNumber)
+          )}`
+        : "/collection";
 
   const showToast = React.useCallback(
     (message: string, type: ToastType = "success") => {
       setToast({ message, type });
 
       if (toastTimerRef.current) {
-        window.clearTimeout(toastTimerRef.current);
+        clearTimeout(toastTimerRef.current);
       }
 
-      toastTimerRef.current = window.setTimeout(() => {
+      toastTimerRef.current = setTimeout(() => {
         setToast(null);
       }, 2800);
     },
@@ -387,9 +434,13 @@ export default function OrderTrackingPage() {
   );
 
   React.useEffect(() => {
+    trackingNumberRef.current = data.trackingNumber;
+  }, [data.trackingNumber]);
+
+  React.useEffect(() => {
     return () => {
       if (toastTimerRef.current) {
-        window.clearTimeout(toastTimerRef.current);
+        clearTimeout(toastTimerRef.current);
       }
     };
   }, []);
@@ -431,6 +482,14 @@ export default function OrderTrackingPage() {
         const activeStep = statusToStep(currentStatus);
         const placedDate = fmtDate(o.createdAt);
 
+        const confirmedDate =
+          activeStep === "CONFIRMED" ||
+          activeStep === "SHIPPED" ||
+          activeStep === "IN_TRANSIT" ||
+          activeStep === "DELIVERED"
+            ? fmtDate(o.confirmedAt || o.updatedAt)
+            : "—";
+
         const shippedDate =
           activeStep === "SHIPPED" ||
           activeStep === "IN_TRANSIT" ||
@@ -465,7 +524,9 @@ export default function OrderTrackingPage() {
               ? "Your order is currently in transit and moving through the delivery network."
               : activeStep === "SHIPPED"
                 ? "Good news! Your order has been shipped and will arrive soon."
-                : "Your order has been placed and is currently being processed.";
+                : activeStep === "CONFIRMED"
+                  ? "Your order has been confirmed and is being prepared for shipment."
+                  : "Your order has been placed and is currently being processed.";
 
         const carrierInfo =
           String(o?.shipping?.method || "").trim() ||
@@ -480,35 +541,32 @@ export default function OrderTrackingPage() {
           activeStep,
           timeline: [
             { key: "PLACED", title: "Order Placed", date: placedDate },
+            { key: "CONFIRMED", title: "Confirmed", date: confirmedDate },
             { key: "SHIPPED", title: "Shipped", date: shippedDate },
             { key: "IN_TRANSIT", title: "In Transit", date: inTransitDate },
             { key: "DELIVERED", title: "Delivered", date: deliveredDate },
           ],
           locationUpdates,
           carrierInfo,
-
           customer: {
             name: o?.customer?.name || "",
             email: o?.customer?.email || "",
             shippingAddress: o?.customer?.shippingAddress || "",
           },
-
           payment: {
             method: o?.payment?.method || "",
           },
-
           shipping: {
             method: o?.shipping?.method || "",
             estimatedDelivery: o?.shipping?.estimatedDelivery || "",
           },
-
           summary: {
             subtotal: Number(o?.summary?.subtotal || 0),
             shipping: Number(o?.summary?.shipping || 0),
+            discount: Number(o?.summary?.discount || 0),
             taxes: Number(o?.summary?.taxes || 0),
             total: Number(o?.summary?.total || 0),
           },
-
           items: Array.isArray(o?.items) ? o.items : [],
         }));
 
@@ -529,6 +587,7 @@ export default function OrderTrackingPage() {
           activeStep: "PLACED",
           timeline: [
             { key: "PLACED", title: "Order Placed", date: "—" },
+            { key: "CONFIRMED", title: "Confirmed", date: "—" },
             { key: "SHIPPED", title: "Shipped", date: "—" },
             { key: "IN_TRANSIT", title: "In Transit", date: "—" },
             { key: "DELIVERED", title: "Delivered", date: "—" },
@@ -550,6 +609,7 @@ export default function OrderTrackingPage() {
           summary: {
             subtotal: 0,
             shipping: 0,
+            discount: 0,
             taxes: 0,
             total: 0,
           },
@@ -584,15 +644,9 @@ export default function OrderTrackingPage() {
   };
 
   React.useEffect(() => {
-    const code =
-      searchParams.get("code") ||
-      searchParams.get("tracking") ||
-      searchParams.get("orderCode") ||
-      "";
+    if (!codeFromQuery) return;
 
-    if (!code) return;
-
-    const clean = cleanTrackingCode(code);
+    const clean = cleanTrackingCode(codeFromQuery);
     if (!clean) return;
 
     setData((prev) => ({
@@ -605,7 +659,7 @@ export default function OrderTrackingPage() {
     }, 120);
 
     return () => clearTimeout(timer);
-  }, [searchParams, fetchTracking]);
+  }, [codeFromQuery, fetchTracking]);
 
   React.useEffect(() => {
     const socket = io(SOCKET_BASE, {
@@ -617,7 +671,7 @@ export default function OrderTrackingPage() {
 
     socket.on("order:updated", (payload: any) => {
       const payloadCode = cleanTrackingCode(payload?.orderCode || "");
-      const currentCode = cleanTrackingCode(data.trackingNumber || "");
+      const currentCode = cleanTrackingCode(trackingNumberRef.current || "");
 
       if (!payloadCode || !currentCode) return;
       if (payloadCode !== currentCode) return;
@@ -631,15 +685,16 @@ export default function OrderTrackingPage() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [data.trackingNumber, fetchTracking, showToast]);
+  }, [fetchTracking, showToast]);
 
   const percentClass = progressWidthClass(data.activeStep);
   const trackingCode = normalizeTrackingCode(data.trackingNumber);
-  const canViewOrder = Boolean(data.orderId || cleanTrackingCode(data.trackingNumber));
+  const cleanCode = cleanTrackingCode(data.trackingNumber);
+  const canViewOrder = Boolean(data.orderId || cleanCode);
 
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref={backHref} />
 
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
 
@@ -755,8 +810,8 @@ export default function OrderTrackingPage() {
                     {canViewOrder ? (
                       <Link
                         href={`/customerorderdetails/${encodeURIComponent(
-                          cleanTrackingCode(data.trackingNumber)
-                        )}`}
+                          cleanCode
+                        )}?from=tracking`}
                         className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-white/10"
                       >
                         View Order Details
@@ -898,14 +953,15 @@ export default function OrderTrackingPage() {
                                     </div>
 
                                     <div className="text-sm font-medium text-white">
-                                      Rs.{" "}
-                                      {Number(it.price || 0) *
-                                        Number(it.qty || 0)}
+                                      {formatNPR(
+                                        Number(it.price || 0) *
+                                          Number(it.qty || 0)
+                                      )}
                                     </div>
                                   </div>
 
                                   <div className="mt-2 text-xs text-[#7f879f]">
-                                    Unit Price: Rs. {Number(it.price || 0)}
+                                    Unit Price: {formatNPR(Number(it.price || 0))}
                                   </div>
                                 </div>
                               </div>
@@ -1011,21 +1067,30 @@ export default function OrderTrackingPage() {
                           <div className="flex justify-between text-[#a7aec4]">
                             <span>Subtotal</span>
                             <span className="text-white">
-                              Rs. {data.summary?.subtotal || 0}
+                              {formatNPR(data.summary?.subtotal)}
                             </span>
                           </div>
 
                           <div className="flex justify-between text-[#a7aec4]">
                             <span>Shipping</span>
                             <span className="text-white">
-                              Rs. {data.summary?.shipping || 0}
+                              {formatNPR(data.summary?.shipping)}
                             </span>
                           </div>
+
+                          {Number(data.summary?.discount || 0) > 0 ? (
+                            <div className="flex justify-between text-[#a7aec4]">
+                              <span>Discount</span>
+                              <span className="text-emerald-300">
+                                - {formatNPR(data.summary?.discount)}
+                              </span>
+                            </div>
+                          ) : null}
 
                           <div className="flex justify-between text-[#a7aec4]">
                             <span>Taxes</span>
                             <span className="text-white">
-                              Rs. {data.summary?.taxes || 0}
+                              {formatNPR(data.summary?.taxes)}
                             </span>
                           </div>
 
@@ -1033,7 +1098,7 @@ export default function OrderTrackingPage() {
 
                           <div className="flex justify-between text-base font-semibold">
                             <span>Total</span>
-                            <span>Rs. {data.summary?.total || 0}</span>
+                            <span>{formatNPR(data.summary?.total)}</span>
                           </div>
                         </div>
                       </div>
@@ -1069,5 +1134,13 @@ export default function OrderTrackingPage() {
 
       <MainFooter />
     </>
+  );
+}
+
+export default function OrderTrackingPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <OrderTrackingPageContent />
+    </React.Suspense>
   );
 }

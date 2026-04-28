@@ -25,8 +25,10 @@ type CheckoutAddressLS = {
   email?: string;
   firstName?: string;
   lastName?: string;
+  fullName?: string;
   country?: string;
   provinceId?: string;
+  provinceName?: string;
   district?: string;
   cityOrMunicipality?: string;
   addressLine?: string;
@@ -40,11 +42,16 @@ type CheckoutAddressLS = {
 
 type OrderAddressAPI = {
   label?: "Home" | "Work" | "Other";
+  email?: string;
   fullName: string;
   phone: string;
+  provinceId?: string;
+  district?: string;
   city: string;
-  area: string;
+  area?: string;
+  addressLine?: string;
   street: string;
+  postalCode?: string;
   lat?: number;
   lng?: number;
 };
@@ -54,6 +61,7 @@ type OrderSummaryLS = {
   shipping: number;
   discount: number;
   total: number;
+  itemCount?: number;
   currency?: string;
   updatedAt?: string;
   couponCode?: string | null;
@@ -68,14 +76,18 @@ const containerClass =
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 const primaryBtnClass =
-  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+  "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+  "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
 function joinUrl(base: string, path: string) {
   const b = base.replace(/\/+$/, "");
   const p = path.replace(/^\/+/, "");
   return `${b}/${p}`;
+}
+
+function formatNpr(value: number) {
+  return `Rs. ${Math.round(Number(value || 0)).toLocaleString("en-NP")}`;
 }
 
 function getOrderSummary(): OrderSummaryLS | null {
@@ -91,6 +103,7 @@ function getOrderSummary(): OrderSummaryLS | null {
       shipping: Number(parsed.shipping || 0),
       discount: Number(parsed.discount || 0),
       total: Number(parsed.total || 0),
+      itemCount: Number(parsed.itemCount || 0),
       currency: parsed.currency || "NPR",
       updatedAt: parsed.updatedAt,
       couponCode: parsed.couponCode ?? null,
@@ -109,8 +122,8 @@ function normalizeNumber(v: unknown): number | undefined {
 function getCheckoutAddressLS(): CheckoutAddressLS | undefined {
   try {
     const raw =
-      localStorage.getItem("checkout_address") ||
       localStorage.getItem("ufo_checkout_address") ||
+      localStorage.getItem("checkout_address") ||
       localStorage.getItem("ufo_address") ||
       "";
 
@@ -128,27 +141,62 @@ function getCheckoutAddressLS(): CheckoutAddressLS | undefined {
 function mapToOrderAddress(a?: CheckoutAddressLS): OrderAddressAPI | undefined {
   if (!a) return undefined;
 
-  const fullName = `${a.firstName || ""} ${a.lastName || ""}`.trim();
-  const phone = String(a.phone || "").trim();
+  const fullName =
+    String(a.fullName || "").trim() ||
+    `${a.firstName || ""} ${a.lastName || ""}`.trim();
+
+  const phone = String(a.phone || "").replace(/\D/g, "");
   const city = String(a.cityOrMunicipality || "").trim();
-  const area = String(a.district || "").trim();
+  const district = String(a.district || "").trim();
   const street = String(a.street || a.addressLine || "").trim();
+  const addressLine = String(a.addressLine || "").trim();
 
   const lat = normalizeNumber(a.lat);
   const lng = normalizeNumber(a.lng);
 
-  if (!fullName && !phone && !city && !area && !street) return undefined;
+  if (!fullName && !phone && !city && !district && !street && !addressLine) {
+    return undefined;
+  }
 
   return {
     label: "Home",
+    email: String(a.email || "").trim(),
     fullName: fullName || "Customer",
     phone,
+    provinceId: String(a.provinceId || "").trim(),
+    district,
     city,
-    area,
+    area: district,
+    addressLine,
     street,
+    postalCode: String(a.postalCode || "").trim(),
     lat,
     lng,
   };
+}
+
+function readCartItems(): CartItem[] {
+  try {
+    const raw = localStorage.getItem("ufo_cart");
+    const parsed = raw ? JSON.parse(raw) : [];
+
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((item: any) => ({
+        id: String(item?.id || "").trim(),
+        name: String(item?.name || "Product").trim(),
+        size: String(item?.size || "").trim(),
+        color: String(item?.color || "").trim(),
+        colorLabel: String(item?.colorLabel || "").trim(),
+        price: Math.max(0, Number(item?.price || 0)),
+        qty: Math.max(1, Number(item?.qty || 1)),
+        image: String(item?.image || "").trim(),
+      }))
+      .filter((item) => item.id);
+  } catch {
+    return [];
+  }
 }
 
 function ToastMessage({
@@ -298,21 +346,34 @@ export default function PaymentPage() {
 
   React.useEffect(() => {
     try {
-      const raw = localStorage.getItem("ufo_cart");
-      const parsed = raw ? (JSON.parse(raw) as CartItem[]) : [];
-      setItems(Array.isArray(parsed) ? parsed : []);
+      const parsed = readCartItems();
+      setItems(parsed);
+
+      if (!parsed.length) {
+        showToast("Your cart is empty. Redirecting to cart.", "error");
+        router.replace("/cartpage");
+      }
     } catch {
       setItems([]);
       showToast("Failed to load cart items.", "error");
+      router.replace("/cartpage");
     } finally {
       setCartReady(true);
     }
-  }, [showToast]);
+  }, [router, showToast]);
 
   React.useEffect(() => {
-    setSummary(getOrderSummary());
-    setAddress(getCheckoutAddressLS());
-  }, []);
+    const s = getOrderSummary();
+    const a = getCheckoutAddressLS();
+
+    setSummary(s);
+    setAddress(a);
+
+    if (!a) {
+      showToast("Please add delivery address first.", "error");
+      router.replace("/checkout");
+    }
+  }, [router, showToast]);
 
   const fallbackSubtotal = React.useMemo(() => {
     return items.reduce(
@@ -336,9 +397,9 @@ export default function PaymentPage() {
         ? "Khalti"
         : "Cash on Delivery";
 
-  const fullName = `${address?.firstName || ""} ${
-    address?.lastName || ""
-  }`.trim();
+  const fullName =
+    String(address?.fullName || "").trim() ||
+    `${address?.firstName || ""} ${address?.lastName || ""}`.trim();
 
   const savePaymentMeta = (label: string) => {
     try {
@@ -360,13 +421,7 @@ export default function PaymentPage() {
     let safeItems: CartItem[] = items;
 
     if (!safeItems.length) {
-      try {
-        const raw = localStorage.getItem("ufo_cart");
-        const parsed = raw ? (JSON.parse(raw) as CartItem[]) : [];
-        safeItems = Array.isArray(parsed) ? parsed : [];
-      } catch {
-        safeItems = [];
-      }
+      safeItems = readCartItems();
     }
 
     if (!safeItems.length) throw new Error("Cart is empty.");
@@ -374,14 +429,16 @@ export default function PaymentPage() {
     const addrLS = getCheckoutAddressLS();
     const mappedAddress = mapToOrderAddress(addrLS);
 
+    if (!mappedAddress) {
+      throw new Error("Delivery address is missing.");
+    }
+
     const payload: any = {
       paymentMethod,
       paymentRef: paymentRef || undefined,
       paymentStatus: paymentStatus || undefined,
-
       shippingPaisa: Math.round(shipping * 100),
       couponCode: summary?.couponCode || null,
-      discountPaisa: Math.round(discount * 100),
 
       items: safeItems.map((it) => ({
         productId: it.id,
@@ -411,6 +468,7 @@ export default function PaymentPage() {
       id: string;
       orderCode: string;
       totalPaisa: number;
+      paymentStatus?: string;
     };
   };
 
@@ -422,8 +480,12 @@ export default function PaymentPage() {
     localStorage.setItem("ufo_last_order_id", data.id);
     localStorage.setItem("ufo_last_order_number", data.orderCode);
     localStorage.setItem("ufo_last_total_paisa", String(data.totalPaisa));
+
     localStorage.removeItem("ufo_cart");
     localStorage.removeItem("ufo_order_summary");
+    localStorage.removeItem("checkout_address");
+    localStorage.removeItem("ufo_checkout_address");
+
     window.dispatchEvent(new Event("ufo_cart_updated"));
     router.replace("/ThankYou");
   };
@@ -442,13 +504,14 @@ export default function PaymentPage() {
     const pidx = searchParams.get("pidx");
     if (!pidx) return;
 
-    const already = sessionStorage.getItem("khalti_finalized");
+    const sessionKey = `khalti_finalized_${pidx}`;
+    const already = sessionStorage.getItem(sessionKey);
     if (already === "1") return;
 
     const run = async () => {
       try {
         setPlacing(true);
-        sessionStorage.setItem("khalti_finalized", "1");
+        sessionStorage.setItem(sessionKey, "1");
         showToast("Verifying Khalti payment...", "info");
 
         const vr = await fetch(joinUrl(apiBase, "/payments/khalti/lookup"), {
@@ -474,7 +537,7 @@ export default function PaymentPage() {
         finishToThankYou(order);
       } catch (e: any) {
         console.error(e);
-        sessionStorage.removeItem("khalti_finalized");
+        sessionStorage.removeItem(sessionKey);
         showToast(e?.message || "Failed to finalize Khalti payment.", "error");
       } finally {
         setPlacing(false);
@@ -493,13 +556,14 @@ export default function PaymentPage() {
 
     if (esewa !== "success" || !data) return;
 
-    const already = sessionStorage.getItem("esewa_finalized");
+    const sessionKey = `esewa_finalized_${data.slice(0, 32)}`;
+    const already = sessionStorage.getItem(sessionKey);
     if (already === "1") return;
 
     const run = async () => {
       try {
         setPlacing(true);
-        sessionStorage.setItem("esewa_finalized", "1");
+        sessionStorage.setItem(sessionKey, "1");
         showToast("Verifying eSewa payment...", "info");
 
         const vr = await fetch(joinUrl(apiBase, "/payments/esewa/verify"), {
@@ -525,7 +589,7 @@ export default function PaymentPage() {
         finishToThankYou(order);
       } catch (e: any) {
         console.error(e);
-        sessionStorage.removeItem("esewa_finalized");
+        sessionStorage.removeItem(sessionKey);
         showToast(e?.message || "Failed to finalize eSewa payment.", "error");
       } finally {
         setPlacing(false);
@@ -536,14 +600,31 @@ export default function PaymentPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartReady, searchParams, apiBase]);
 
-  const handleEsewaPay = () => {
-    if (!cartReady || placing) return;
+  const ensureReadyForPayment = () => {
+    if (!cartReady || placing) return false;
 
     if (!items.length) {
-      showToast("Your cart is empty. Redirecting to collection.", "info");
-      router.push("/collection");
-      return;
+      showToast("Your cart is empty. Redirecting to cart.", "error");
+      router.push("/cartpage");
+      return false;
     }
+
+    if (!address) {
+      showToast("Please add delivery address first.", "error");
+      router.push("/checkout");
+      return false;
+    }
+
+    if (total <= 0) {
+      showToast("Invalid order total.", "error");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleEsewaPay = () => {
+    if (!ensureReadyForPayment()) return;
 
     savePaymentMeta("eSewa");
     showToast("Redirecting to eSewa...", "info");
@@ -555,13 +636,7 @@ export default function PaymentPage() {
   };
 
   const handleKhaltiPay = async () => {
-    if (!cartReady || placing) return;
-
-    if (!items.length) {
-      showToast("Your cart is empty. Redirecting to collection.", "info");
-      router.push("/collection");
-      return;
-    }
+    if (!ensureReadyForPayment()) return;
 
     try {
       setPlacing(true);
@@ -600,13 +675,7 @@ export default function PaymentPage() {
   };
 
   const handleContinue = async () => {
-    if (!cartReady || placing) return;
-
-    if (!items.length) {
-      showToast("Your cart is empty. Redirecting to collection.", "info");
-      router.push("/collection");
-      return;
-    }
+    if (!ensureReadyForPayment()) return;
 
     if (method === "esewa") return handleEsewaPay();
     if (method === "khalti") return void handleKhaltiPay();
@@ -627,7 +696,7 @@ export default function PaymentPage() {
 
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref="/checkout" />
 
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
 
@@ -784,19 +853,24 @@ export default function PaymentPage() {
                   </div>
 
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-[#a7aec4]">
-                    {items.length} item{items.length === 1 ? "" : "s"}
+                    {summary?.itemCount || items.length} item
+                    {(summary?.itemCount || items.length) === 1 ? "" : "s"}
                   </span>
                 </div>
 
                 <div className="mt-6 space-y-4 text-sm text-[#a7aec4] sm:text-[15px]">
                   <div className="flex items-center justify-between gap-4">
                     <span>Subtotal</span>
-                    <span className="text-right text-white">Rs. {subtotal}</span>
+                    <span className="text-right text-white">
+                      {formatNpr(subtotal)}
+                    </span>
                   </div>
 
                   <div className="flex items-center justify-between gap-4">
                     <span>Shipping</span>
-                    <span className="text-right text-white">Rs. {shipping}</span>
+                    <span className="text-right text-white">
+                      {formatNpr(shipping)}
+                    </span>
                   </div>
 
                   <div className="flex items-center justify-between gap-4">
@@ -805,7 +879,7 @@ export default function PaymentPage() {
                       {summary?.couponCode ? `(${summary.couponCode})` : ""}
                     </span>
                     <span className="text-right text-green-400">
-                      - Rs. {discount}
+                      - {formatNpr(discount)}
                     </span>
                   </div>
 
@@ -813,7 +887,9 @@ export default function PaymentPage() {
 
                   <div className="flex items-center justify-between gap-4 text-[18px] font-semibold">
                     <span className="text-white">Total</span>
-                    <span className="text-right text-white">Rs. {total}</span>
+                    <span className="text-right text-white">
+                      {formatNpr(total)}
+                    </span>
                   </div>
                 </div>
 
@@ -834,7 +910,12 @@ export default function PaymentPage() {
                           .join(", ")}
                       </div>
                       <div>
-                        {[address.cityOrMunicipality, address.district, "Nepal"]
+                        {[
+                          address.cityOrMunicipality,
+                          address.district,
+                          address.provinceName,
+                          "Nepal",
+                        ]
                           .filter(Boolean)
                           .join(", ")}
                       </div>
@@ -857,7 +938,7 @@ export default function PaymentPage() {
                   type="button"
                   onClick={handleContinue}
                   disabled={placing || !cartReady}
-                  className={`${primaryBtnClass} mt-6 w-full justify-center`}
+                  className={`${primaryBtnClass} mt-6 w-full`}
                 >
                   {placing
                     ? "Processing..."
@@ -870,7 +951,7 @@ export default function PaymentPage() {
                   type="button"
                   onClick={() => router.push("/checkout")}
                   disabled={placing}
-                  className={`${secondaryBtnClass} mt-3 w-full justify-center`}
+                  className={`${secondaryBtnClass} mt-3 w-full`}
                 >
                   Back to Information
                 </button>

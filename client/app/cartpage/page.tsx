@@ -44,6 +44,19 @@ type Toast = {
   undo?: () => void;
 };
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
+  "http://localhost:8080/api";
+
+const CART_KEY = "ufo_cart";
+const SELECTED_COUPON_KEY = "ufo_coupon_selected";
+const ORDER_SUMMARY_KEY = "ufo_order_summary";
+const REDIRECT_AFTER_LOGIN_KEY = "ufo_redirect_after_login";
+const LAST_PRODUCT_ID_KEY = "last_product_id";
+
+const shipping = 100;
+const fallbackProductImage = "/images/product-placeholder.png";
+
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
 const containerClass =
   "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
@@ -53,6 +66,12 @@ const primaryBtnClass =
   "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+
+function formatNpr(value: number) {
+  return `Rs. ${new Intl.NumberFormat("en-NP", {
+    maximumFractionDigits: 0,
+  }).format(Math.max(0, Math.round(Number(value || 0))))}`;
+}
 
 async function safeJson(res: Response) {
   const text = await res.text();
@@ -70,14 +89,14 @@ function fmtCoupon(c: {
   maxDiscountCap?: number | null;
 }) {
   if (c.type === "PERCENT") {
-    const cap = c.maxDiscountCap ? ` (Max Rs ${c.maxDiscountCap})` : "";
-    return `${c.value}% OFF${cap}`;
+    const cap = c.maxDiscountCap ? ` Max ${formatNpr(c.maxDiscountCap)}` : "";
+    return `${c.value}% OFF${cap ? ` (${cap})` : ""}`;
   }
 
-  if (c.type === "FLAT") return `Rs ${c.value} OFF`;
+  if (c.type === "FLAT") return `${formatNpr(c.value)} OFF`;
   if (c.type === "FREESHIP") return "FREE SHIPPING";
 
-  return "";
+  return "Coupon applied";
 }
 
 function normalizeColorKey(color: string) {
@@ -124,6 +143,24 @@ function hasRealStockValue(stock: unknown) {
   return typeof stock === "number" && Number.isFinite(stock);
 }
 
+function sanitizeCartItems(input: unknown): CartItem[] {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((item: any) => ({
+      id: String(item?.id || "").trim(),
+      name: String(item?.name || "Product").trim(),
+      size: String(item?.size || "").trim(),
+      color: String(item?.color || "").trim(),
+      colorLabel: String(item?.colorLabel || "").trim(),
+      price: Math.max(0, Number(item?.price || 0)),
+      qty: Math.max(1, Math.min(99, Number(item?.qty || 1))),
+      image: String(item?.image || "").trim(),
+      stock: hasRealStockValue(item?.stock) ? Number(item.stock) : undefined,
+    }))
+    .filter((item) => item.id && item.price >= 0);
+}
+
 export default function CartPage() {
   const router = useRouter();
 
@@ -138,12 +175,7 @@ export default function CartPage() {
   const [authChecked, setAuthChecked] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
   const [toast, setToast] = React.useState<Toast | null>(null);
-
-  const shipping = 100;
-
-  const API_BASE =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-    "http://localhost:8080/api";
+  const [backHref, setBackHref] = React.useState("/collection");
 
   const showToast = React.useCallback(
     (type: "success" | "error", message: string, undo?: () => void) => {
@@ -156,6 +188,17 @@ export default function CartPage() {
     },
     []
   );
+
+  React.useEffect(() => {
+    try {
+      const lastProductId = localStorage.getItem(LAST_PRODUCT_ID_KEY);
+      if (lastProductId) {
+        setBackHref(`/product/${lastProductId}`);
+      }
+    } catch {
+      setBackHref("/collection");
+    }
+  }, []);
 
   React.useEffect(() => {
     let alive = true;
@@ -184,21 +227,22 @@ export default function CartPage() {
     return () => {
       alive = false;
     };
-  }, [API_BASE]);
+  }, []);
 
   React.useEffect(() => {
     try {
-      const raw = localStorage.getItem("ufo_cart");
-      const parsed = raw ? (JSON.parse(raw) as CartItem[]) : [];
-      setItems(Array.isArray(parsed) ? parsed : []);
+      const raw = localStorage.getItem(CART_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setItems(sanitizeCartItems(parsed));
     } catch {
       setItems([]);
     }
   }, []);
 
-  const saveCart = React.useCallback((next: CartItem[]) => {
-    setItems(next);
-    localStorage.setItem("ufo_cart", JSON.stringify(next));
+  const saveCart = React.useCallback((nextItems: CartItem[]) => {
+    const cleanItems = sanitizeCartItems(nextItems);
+    setItems(cleanItems);
+    localStorage.setItem(CART_KEY, JSON.stringify(cleanItems));
     window.dispatchEvent(new Event("ufo_cart_updated"));
   }, []);
 
@@ -227,55 +271,21 @@ export default function CartPage() {
     subtotal + (items.length ? shipping : 0) - discountAmount
   );
 
-  const updateQty = (
-    id: string,
-    size: string,
-    color: string,
-    qty: number
-  ) => {
-    const item = items.find(
-      (it) => it.id === id && it.size === size && it.color === color
-    );
+  const clearAppliedCoupon = React.useCallback(
+    (silent = false) => {
+      setDiscount("");
+      setDiscountAmount(0);
+      setAppliedCouponCode("");
+      setAppliedCouponLabel("");
+      setCouponMessage("");
+      localStorage.removeItem(SELECTED_COUPON_KEY);
 
-    const hasKnownStock = hasRealStockValue(item?.stock);
-    const stock = Number(item?.stock || 0);
-
-    const safe = hasKnownStock
-      ? Math.max(1, Math.min(stock > 0 ? stock : 1, qty || 1))
-      : Math.max(1, Math.min(99, qty || 1));
-
-    if (hasKnownStock && stock <= 0) {
-      showToast("error", "This item is out of stock. Please remove it.");
-    } else if (hasKnownStock && qty > stock) {
-      showToast("error", `Only ${stock} item(s) available in stock.`);
-    }
-
-    const next = items.map((it) =>
-      it.id === id && it.size === size && it.color === color
-        ? { ...it, qty: safe }
-        : it
-    );
-
-    saveCart(next);
-  };
-
-  const removeItem = (id: string, size: string, color: string) => {
-    const removedItem = items.find(
-      (it) => it.id === id && it.size === size && it.color === color
-    );
-
-    const next = items.filter(
-      (it) => !(it.id === id && it.size === size && it.color === color)
-    );
-
-    saveCart(next);
-
-    if (removedItem) {
-      showToast("success", "Item removed.", () => {
-        saveCart([...next, removedItem]);
-      });
-    }
-  };
+      if (!silent) {
+        showToast("success", "Coupon removed.");
+      }
+    },
+    [showToast]
+  );
 
   const buildValidatePayload = React.useCallback(
     (couponCode: string) => ({
@@ -291,48 +301,39 @@ export default function CartPage() {
 
   const validateCoupon = React.useCallback(
     async (couponCode: string) => {
+      const cleanCode = couponCode.trim().toUpperCase();
+
       const res = await fetch(`${API_BASE}/discounts/validate`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildValidatePayload(couponCode.trim())),
+        body: JSON.stringify(buildValidatePayload(cleanCode)),
       });
 
       const json = await safeJson(res);
+      const applied = json?.data?.applied || null;
 
       const discountPaisa = Number(json?.data?.discountPaisa || 0);
       const appliedCode = String(
-        json?.data?.couponCode ||
+        applied?.code ||
+          json?.data?.couponCode ||
           json?.data?.appliedCouponCode ||
-          couponCode ||
+          cleanCode ||
           ""
-      ).trim();
+      )
+        .trim()
+        .toUpperCase();
 
       return {
         ok: res.ok,
         json,
+        applied,
         discountPaisa,
         discountRs: Math.round(discountPaisa / 100),
         appliedCode,
       };
     },
-    [API_BASE, buildValidatePayload]
-  );
-
-  const clearAppliedCoupon = React.useCallback(
-    (silent = false) => {
-      setDiscount("");
-      setDiscountAmount(0);
-      setAppliedCouponCode("");
-      setAppliedCouponLabel("");
-      setCouponMessage("");
-      localStorage.removeItem("ufo_coupon_selected");
-
-      if (!silent) {
-        showToast("success", "Coupon removed.");
-      }
-    },
-    [showToast]
+    [buildValidatePayload]
   );
 
   const autoApplyBestCoupon = React.useCallback(async () => {
@@ -345,12 +346,17 @@ export default function CartPage() {
 
     try {
       const preferredCode =
-        localStorage.getItem("ufo_coupon_selected")?.trim().toUpperCase() || "";
+        localStorage.getItem(SELECTED_COUPON_KEY)?.trim().toUpperCase() || "";
 
       const collectedRes = await fetch(`${API_BASE}/discounts/my-collected`, {
         credentials: "include",
         cache: "no-store",
       });
+
+      if (!collectedRes.ok) {
+        clearAppliedCoupon(true);
+        return;
+      }
 
       const collectedJson = await safeJson(collectedRes);
       const collectedRows: CollectedCouponRow[] = Array.isArray(
@@ -420,7 +426,7 @@ export default function CartPage() {
             bestLabel = label;
           }
         } catch {
-          // ignore invalid coupon
+          // Ignore invalid coupon while finding best coupon.
         }
       }
 
@@ -430,7 +436,7 @@ export default function CartPage() {
         setAppliedCouponCode(bestCode);
         setAppliedCouponLabel(bestLabel);
         setCouponMessage("Best available coupon applied automatically.");
-        localStorage.setItem("ufo_coupon_selected", bestCode);
+        localStorage.setItem(SELECTED_COUPON_KEY, bestCode);
       } else {
         clearAppliedCoupon(true);
       }
@@ -439,11 +445,65 @@ export default function CartPage() {
     } finally {
       setIsApplyingCoupon(false);
     }
-  }, [API_BASE, items, validateCoupon, clearAppliedCoupon]);
+  }, [items, validateCoupon, clearAppliedCoupon]);
 
   React.useEffect(() => {
-    autoApplyBestCoupon();
+    const timer = window.setTimeout(() => {
+      autoApplyBestCoupon();
+    }, 350);
+
+    return () => window.clearTimeout(timer);
   }, [autoApplyBestCoupon]);
+
+  const updateQty = (
+    id: string,
+    size: string,
+    color: string,
+    qty: number
+  ) => {
+    const item = items.find(
+      (it) => it.id === id && it.size === size && it.color === color
+    );
+
+    const hasKnownStock = hasRealStockValue(item?.stock);
+    const stock = Number(item?.stock || 0);
+
+    const safe = hasKnownStock
+      ? Math.max(1, Math.min(stock > 0 ? stock : 1, qty || 1))
+      : Math.max(1, Math.min(99, qty || 1));
+
+    if (hasKnownStock && stock <= 0) {
+      showToast("error", "This item is out of stock. Please remove it.");
+    } else if (hasKnownStock && qty > stock) {
+      showToast("error", `Only ${stock} item(s) available in stock.`);
+    }
+
+    const next = items.map((it) =>
+      it.id === id && it.size === size && it.color === color
+        ? { ...it, qty: safe }
+        : it
+    );
+
+    saveCart(next);
+  };
+
+  const removeItem = (id: string, size: string, color: string) => {
+    const removedItem = items.find(
+      (it) => it.id === id && it.size === size && it.color === color
+    );
+
+    const next = items.filter(
+      (it) => !(it.id === id && it.size === size && it.color === color)
+    );
+
+    saveCart(next);
+
+    if (removedItem) {
+      showToast("success", "Item removed.", () => {
+        saveCart([...next, removedItem]);
+      });
+    }
+  };
 
   const applyManualCoupon = async () => {
     if (!items.length || !discount.trim()) {
@@ -461,26 +521,40 @@ export default function CartPage() {
         setDiscountAmount(0);
         setAppliedCouponCode("");
         setAppliedCouponLabel("");
-        setCouponMessage("Coupon is invalid or not applicable for this cart.");
+        setCouponMessage(
+          result.json?.message || "Coupon is invalid or not applicable for this cart."
+        );
         showToast("error", "Coupon failed.");
         return;
       }
 
       const code = result.appliedCode || discount.trim().toUpperCase();
+      const applied = result.applied;
 
       setDiscount(code);
       setDiscountAmount(result.discountRs);
       setAppliedCouponCode(code);
-      setAppliedCouponLabel("Coupon applied successfully.");
-      setCouponMessage("Coupon applied successfully.");
 
-      localStorage.setItem("ufo_coupon_selected", code);
+      if (applied) {
+        setAppliedCouponLabel(
+          fmtCoupon({
+            type: applied.type,
+            value: Number(applied.value || 0),
+            maxDiscountCap: applied.maxDiscountCap ?? null,
+          })
+        );
+      } else {
+        setAppliedCouponLabel("Coupon applied successfully.");
+      }
+
+      setCouponMessage("Coupon applied successfully.");
+      localStorage.setItem(SELECTED_COUPON_KEY, code);
       showToast("success", "Coupon applied.");
-    } catch {
+    } catch (err: any) {
       setDiscountAmount(0);
       setAppliedCouponCode("");
       setAppliedCouponLabel("");
-      setCouponMessage("Failed to apply coupon.");
+      setCouponMessage(err?.message || "Failed to apply coupon.");
       showToast("error", "Failed to apply coupon.");
     } finally {
       setIsApplyingCoupon(false);
@@ -488,6 +562,11 @@ export default function CartPage() {
   };
 
   const proceedToCheckout = () => {
+    if (!items.length) {
+      showToast("error", "Your cart is empty.");
+      return;
+    }
+
     if (hasStockIssue) {
       showToast(
         "error",
@@ -508,13 +587,13 @@ export default function CartPage() {
       total,
       currency: "NPR",
       updatedAt: new Date().toISOString(),
-      couponCode: appliedCouponCode || discount.trim() || null,
+      couponCode: appliedCouponCode || discount.trim().toUpperCase() || null,
     };
 
-    localStorage.setItem("ufo_order_summary", JSON.stringify(orderSummary));
+    localStorage.setItem(ORDER_SUMMARY_KEY, JSON.stringify(orderSummary));
 
     if (!isLoggedIn) {
-      localStorage.setItem("ufo_redirect_after_login", "/checkout");
+      localStorage.setItem(REDIRECT_AFTER_LOGIN_KEY, "/checkout");
       showToast("error", "Redirecting to login...");
       router.push("/login");
       return;
@@ -525,10 +604,10 @@ export default function CartPage() {
 
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref={backHref} />
 
       {toast ? (
-        <div className="fixed right-4 top-24 z-[9999]">
+        <div className="fixed right-4 top-24 z-[9999] max-w-[calc(100vw-2rem)]">
           <div
             className={`flex items-center gap-3 rounded-2xl border px-5 py-3 text-sm font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur ${
               toast.type === "error"
@@ -578,18 +657,8 @@ export default function CartPage() {
 
           {items.length === 0 ? (
             <div className={`${panelClass} p-8 text-center sm:p-12`}>
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[24px] border border-white/10 bg-white/5">
-                <Image
-                  src="/images/cart-empty.png"
-                  alt="Empty cart"
-                  width={44}
-                  height={44}
-                  className="opacity-90"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
-                <span className="text-[28px]">🛒</span>
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[24px] border border-white/10 bg-white/5 text-[28px]">
+                🛒
               </div>
 
               <h2 className="mt-5 text-[24px] font-semibold text-white">
@@ -626,6 +695,7 @@ export default function CartPage() {
                   const stock = Number(it.stock || 0);
                   const qty = Number(it.qty || 0);
                   const itemTotal = Number(it.price || 0) * qty;
+                  const imageSrc = it.image || fallbackProductImage;
 
                   const itemHasStockIssue =
                     hasKnownStock && (stock <= 0 || qty > stock);
@@ -646,24 +716,32 @@ export default function CartPage() {
                     >
                       <div className="hidden grid-cols-[1.5fr_0.65fr_0.85fr_0.9fr_0.9fr_0.35fr] items-center gap-4 md:grid">
                         <div className="flex min-w-0 items-center gap-4">
-                          <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[18px] border border-[#2b2f45] bg-[#0d0f17]">
+                          <Link
+                            href={`/product/${it.id}`}
+                            className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[18px] border border-[#2b2f45] bg-[#0d0f17]"
+                          >
                             <Image
-                              src={it.image}
+                              src={imageSrc}
                               alt={it.name}
                               fill
                               className={`object-cover ${
                                 itemHasStockIssue ? "opacity-50 grayscale" : ""
                               }`}
+                              sizes="72px"
                             />
-                          </div>
+                          </Link>
 
                           <div className="min-w-0">
-                            <div className="truncate font-medium text-white">
+                            <Link
+                              href={`/product/${it.id}`}
+                              className="block truncate font-medium text-white transition hover:text-[#d6c7ff]"
+                            >
                               {it.name}
-                            </div>
+                            </Link>
 
                             <div className="mt-1 text-[12px] text-[#a7aec4]">
-                              Rs. {it.price} × {it.qty} = Rs. {itemTotal}
+                              {formatNpr(it.price)} × {it.qty} ={" "}
+                              {formatNpr(itemTotal)}
                             </div>
 
                             {hasKnownStock ? (
@@ -684,7 +762,9 @@ export default function CartPage() {
                           </div>
                         </div>
 
-                        <span className="text-[#d6dbeb]">{it.size}</span>
+                        <span className="text-[#d6dbeb]">
+                          {it.size || "-"}
+                        </span>
 
                         <div className="flex items-center gap-2">
                           <span
@@ -742,11 +822,11 @@ export default function CartPage() {
 
                         <div>
                           <div className="font-semibold text-[#d6c7ff]">
-                            Rs. {itemTotal}
+                            {formatNpr(itemTotal)}
                           </div>
 
                           <div className="mt-1 text-[11px] text-[#a7aec4]">
-                            Rs. {it.price} × {it.qty}
+                            {formatNpr(it.price)} × {it.qty}
                           </div>
                         </div>
 
@@ -767,21 +847,28 @@ export default function CartPage() {
                       </div>
 
                       <div className="flex gap-4 md:hidden">
-                        <div className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[18px] border border-[#2b2f45] bg-[#0d0f17]">
+                        <Link
+                          href={`/product/${it.id}`}
+                          className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[18px] border border-[#2b2f45] bg-[#0d0f17]"
+                        >
                           <Image
-                            src={it.image}
+                            src={imageSrc}
                             alt={it.name}
                             fill
                             className={`object-cover ${
                               itemHasStockIssue ? "opacity-50 grayscale" : ""
                             }`}
+                            sizes="88px"
                           />
-                        </div>
+                        </Link>
 
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[15px] font-semibold text-white">
+                          <Link
+                            href={`/product/${it.id}`}
+                            className="block truncate text-[15px] font-semibold text-white transition hover:text-[#d6c7ff]"
+                          >
                             {it.name}
-                          </div>
+                          </Link>
 
                           {hasKnownStock ? (
                             <div
@@ -800,7 +887,7 @@ export default function CartPage() {
                           ) : null}
 
                           <div className="mt-2 grid gap-1 text-sm text-[#a7aec4]">
-                            <div>Size: {it.size}</div>
+                            <div>Size: {it.size || "-"}</div>
 
                             <div className="flex items-center gap-2">
                               <span>Color:</span>
@@ -817,7 +904,8 @@ export default function CartPage() {
                             </div>
 
                             <div className="font-semibold text-[#d6c7ff]">
-                              Rs. {it.price} × {it.qty} = Rs. {itemTotal}
+                              {formatNpr(it.price)} × {it.qty} ={" "}
+                              {formatNpr(itemTotal)}
                             </div>
                           </div>
 
@@ -975,21 +1063,21 @@ export default function CartPage() {
                     <div className="flex items-center justify-between gap-4">
                       <span>Subtotal</span>
                       <span className="text-right text-white">
-                        Rs. {subtotal}
+                        {formatNpr(subtotal)}
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
                       <span>Shipping</span>
                       <span className="text-right text-white">
-                        Rs. {items.length ? shipping : 0}
+                        {formatNpr(items.length ? shipping : 0)}
                       </span>
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
                       <span>Discount</span>
                       <span className="text-right text-green-400">
-                        - Rs. {discountAmount}
+                        - {formatNpr(discountAmount)}
                       </span>
                     </div>
 
@@ -997,7 +1085,9 @@ export default function CartPage() {
 
                     <div className="flex items-center justify-between gap-4 text-[18px] font-semibold">
                       <span className="text-white">Total</span>
-                      <span className="text-right text-white">Rs. {total}</span>
+                      <span className="text-right text-white">
+                        {formatNpr(total)}
+                      </span>
                     </div>
                   </div>
 

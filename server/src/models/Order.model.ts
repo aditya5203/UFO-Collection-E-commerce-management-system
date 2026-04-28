@@ -4,6 +4,7 @@ export type OrderStatus =
   | "Delivered"
   | "Transit"
   | "Shipped"
+  | "Confirmed"
   | "Pending"
   | "Cancelled";
 
@@ -149,7 +150,7 @@ const orderSchema = new Schema(
 
     orderStatus: {
       type: String,
-      enum: ["Delivered", "Transit", "Shipped", "Pending", "Cancelled"],
+      enum: ["Delivered", "Transit", "Shipped", "Confirmed", "Pending", "Cancelled"],
       default: "Pending",
       index: true,
     },
@@ -165,6 +166,7 @@ const orderSchema = new Schema(
       default: null,
     },
 
+    confirmedAt: { type: Date, default: null },
     shippedAt: { type: Date, default: null },
     inTransitAt: { type: Date, default: null },
     deliveredAt: { type: Date, default: null },

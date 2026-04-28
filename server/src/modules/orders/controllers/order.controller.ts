@@ -50,6 +50,7 @@ function isPaidLike(s: any) {
 
 function statusLabel(statusLower: string) {
   if (statusLower === "pending") return "Order Pending";
+  if (statusLower === "confirmed") return "Order Confirmed";
   if (statusLower === "shipped") return "Order Shipped";
   if (statusLower === "transit") return "Order In Transit";
   if (statusLower === "delivered") return "Order Delivered";
@@ -100,8 +101,8 @@ export const orderController = {
       return;
     } catch (err: any) {
       res.status(400).json({
-  message: err?.message || "Failed to create order",
-});
+        message: err?.message || "Failed to fetch orders",
+      });
       return;
     }
   },
@@ -189,7 +190,16 @@ export const orderController = {
       };
 
       if (orderStatus && nextOrderStatus && nextOrderStatus !== prevOrderStatus) {
-        if (nextOrderStatus === "shipped") {
+        if (nextOrderStatus === "confirmed") {
+          await safeNotifyCustomer({
+            userId: customerId,
+            title: "Order Confirmed",
+            message: `Your order ${orderCode} has been confirmed.`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: { orderId: existingOrder._id, orderCode },
+          });
+        } else if (nextOrderStatus === "shipped") {
           await safeNotifyCustomer({
             userId: customerId,
             title: "Order Shipped",

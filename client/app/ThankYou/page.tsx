@@ -2,11 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
-type VerifyState = "idle" | "checking" | "paid" | "failed";
 type ToastType = "success" | "error" | "info";
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
@@ -15,15 +14,9 @@ const containerClass =
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 const primaryBtnClass =
-  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
+  "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
-
-function joinUrl(base: string, path: string) {
-  const b = base.replace(/\/+$/, "");
-  const p = path.replace(/^\/+/, "");
-  return `${b}/${p}`;
-}
+  "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
 
 function ToastMessage({
   toast,
@@ -54,11 +47,9 @@ function ToastMessage({
         className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
       >
         <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
-
         <div className="flex-1 text-[13px] font-medium leading-6">
           {toast.message}
         </div>
-
         <button
           type="button"
           onClick={onClose}
@@ -72,27 +63,10 @@ function ToastMessage({
   );
 }
 
-function StatusIcon({
-  type,
-}: {
-  type: "success" | "failed" | "checking";
-}) {
-  const className =
-    type === "success"
-      ? "border-green-500/20 bg-green-500/10 text-green-300"
-      : type === "failed"
-        ? "border-red-500/20 bg-red-500/10 text-red-300"
-        : "border-blue-500/20 bg-blue-500/10 text-blue-300";
-
-  const symbol = type === "success" ? "✓" : type === "failed" ? "✕" : "⏳";
-
+function StatusIcon() {
   return (
-    <div
-      className={`mx-auto flex h-20 w-20 items-center justify-center rounded-full border text-[34px] ${className}`}
-    >
-      <span className={type === "checking" ? "animate-pulse" : ""}>
-        {symbol}
-      </span>
+    <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-green-500/20 bg-green-500/10 text-[34px] text-green-300">
+      ✓
     </div>
   );
 }
@@ -100,6 +74,7 @@ function StatusIcon({
 function StepIndicator() {
   const steps = [
     { label: "Cart", href: "/cartpage", active: false },
+    { label: "Information", href: "/checkout", active: false },
     { label: "Payment", href: "/payment", active: false },
     { label: "Confirmed", href: "/ThankYou", active: true },
   ];
@@ -132,18 +107,9 @@ function StepIndicator() {
 
 export default function ThankYouPage() {
   const router = useRouter();
-  const sp = useSearchParams();
-
-  const pidx = sp.get("pidx");
-
-  const BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
-  const apiBase = React.useMemo(() => joinUrl(BASE, "/api"), [BASE]);
-
-  const [verifyState, setVerifyState] = React.useState<VerifyState>("idle");
-  const [verifyMsg, setVerifyMsg] = React.useState("");
 
   const [paymentMethod, setPaymentMethod] = React.useState("");
-  const [orderNumber, setOrderNumber] = React.useState("#0000000");
+  const [orderNumber, setOrderNumber] = React.useState("#000000");
   const [orderId, setOrderId] = React.useState("");
   const [totalPaisa, setTotalPaisa] = React.useState(0);
 
@@ -236,176 +202,57 @@ export default function ThankYouPage() {
     }
   }, []);
 
-  React.useEffect(() => {
-    if (!pidx) {
-      setVerifyState("paid");
-      return;
-    }
+  const getOrderDetailsPath = () => {
+  const cleanOrderNumber = String(orderNumber || "")
+    .replace("#", "")
+    .trim();
 
-    const verifyKhalti = async () => {
-      setVerifyState("checking");
-      setVerifyMsg("Verifying Khalti payment...");
-      showToast("Verifying Khalti payment...", "info");
+  if (cleanOrderNumber && cleanOrderNumber !== "000000") {
+    return `/customerorderdetails/${encodeURIComponent(
+      cleanOrderNumber
+    )}?from=thankyou`;
+  }
 
-      try {
-        const res = await fetch(joinUrl(apiBase, "/payments/khalti/lookup"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pidx }),
-        });
+  if (orderId) {
+    return `/customerorderdetails/${encodeURIComponent(
+      orderId
+    )}?from=thankyou`;
+  }
 
-        const data = await res.json().catch(() => ({} as any));
-
-        if (res.ok && data?.paid) {
-          setVerifyState("paid");
-          setVerifyMsg("");
-          showToast("Payment verified successfully.", "success");
-
-          try {
-            localStorage.removeItem("ufo_cart");
-            window.dispatchEvent(new Event("ufo_cart_updated"));
-          } catch {
-            // ignore
-          }
-
-          return;
-        }
-
-        setVerifyState("failed");
-        setVerifyMsg("Payment not completed.");
-        showToast("Payment not completed. Please try again.", "error");
-
-        router.replace(`/payment?status=failed&pidx=${encodeURIComponent(pidx)}`);
-      } catch {
-        setVerifyState("failed");
-        setVerifyMsg("Payment verification failed.");
-        showToast("Payment verification failed.", "error");
-
-        router.replace(`/payment?status=failed&pidx=${encodeURIComponent(pidx)}`);
-      }
-    };
-
-    verifyKhalti();
-  }, [pidx, apiBase, router, showToast]);
+  return "";
+};
 
   const handleViewOrder = () => {
-    if (!orderId) {
-      showToast("Order ID not found. Please check Order History.", "error");
+    const path = getOrderDetailsPath();
+
+    if (!path) {
+      showToast("Order not found. Please check Order History.", "error");
       window.setTimeout(() => {
         router.push("/order-history");
       }, 700);
       return;
     }
 
-    router.push(`/customerorderdetails/${encodeURIComponent(orderId)}`);
+    router.push(path);
   };
 
   const handleTrackOrder = () => {
-    if (!orderId) {
-      showToast("Order ID not found. Redirecting to Order History.", "error");
+    const path = getOrderDetailsPath();
+
+    if (!path) {
+      showToast("Order not found. Redirecting to Order History.", "error");
       window.setTimeout(() => {
         router.push("/order-history");
       }, 700);
       return;
     }
 
-    router.push(`/customerorderdetails/${encodeURIComponent(orderId)}`);
+    router.push(path);
   };
-
-  if (verifyState === "checking") {
-    return (
-      <>
-        <CartHeader />
-
-        <ToastMessage toast={toast} onClose={() => setToast(null)} />
-
-        <main className={shellClass}>
-          <div
-            className={`${containerClass} flex min-h-[520px] items-center justify-center`}
-          >
-            <div
-              className={`${panelClass} w-full max-w-[560px] p-8 text-center sm:p-10`}
-            >
-              <StatusIcon type="checking" />
-
-              <h1 className="mt-5 text-[26px] font-semibold tracking-[-0.02em] text-white">
-                Please wait…
-              </h1>
-
-              <p className="mt-3 text-[14px] leading-7 text-[#a7aec4]">
-                {verifyMsg}
-              </p>
-
-              <div className="mx-auto mt-6 h-2 max-w-[280px] overflow-hidden rounded-full bg-white/5">
-                <div className="h-full w-2/3 animate-pulse rounded-full bg-blue-300/70" />
-              </div>
-            </div>
-          </div>
-        </main>
-
-        <MainFooter />
-      </>
-    );
-  }
-
-  if (verifyState === "failed") {
-    return (
-      <>
-        <CartHeader />
-
-        <ToastMessage toast={toast} onClose={() => setToast(null)} />
-
-        <main className={shellClass}>
-          <div
-            className={`${containerClass} flex min-h-[520px] items-center justify-center`}
-          >
-            <div
-              className={`${panelClass} w-full max-w-[560px] p-8 text-center sm:p-10`}
-            >
-              <StatusIcon type="failed" />
-
-              <div className="mt-5 text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                Payment Issue
-              </div>
-
-              <h1 className="mt-3 text-[30px] font-semibold tracking-[-0.03em] text-white">
-                Payment Failed
-              </h1>
-
-              <p className="mx-auto mt-3 max-w-[420px] text-[14px] leading-7 text-[#a7aec4]">
-                We couldn’t confirm your payment. Please try again or choose
-                another payment method.
-              </p>
-
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                <button
-                  type="button"
-                  onClick={() => router.push("/payment")}
-                  className={primaryBtnClass}
-                >
-                  Go to Payment
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => router.push("/cartpage")}
-                  className={secondaryBtnClass}
-                >
-                  Back to Cart
-                </button>
-              </div>
-            </div>
-          </div>
-        </main>
-
-        <MainFooter />
-      </>
-    );
-  }
 
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref="/collection" />
 
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
 
@@ -416,12 +263,11 @@ export default function ThankYouPage() {
           <section className={`${panelClass} overflow-hidden`}>
             <div className="relative px-5 py-10 text-center sm:px-8 sm:py-14 lg:px-12">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(34,197,94,0.16),transparent_42%)]" />
-
               <div className="pointer-events-none absolute left-6 top-6 h-20 w-20 rounded-full bg-green-400/10 blur-2xl" />
               <div className="pointer-events-none absolute bottom-6 right-6 h-24 w-24 rounded-full bg-[#d6c7ff]/10 blur-2xl" />
 
               <div className="relative">
-                <StatusIcon type="success" />
+                <StatusIcon />
               </div>
 
               <div className="relative mt-5 text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
@@ -489,7 +335,6 @@ export default function ThankYouPage() {
                   ["Estimated Delivery", estimatedDelivery],
                   ["Total", formatNPR(totalPaisa)],
                   ["Payment Method", paymentMethod || "Not available"],
-                  ...(pidx ? [["Khalti Reference", pidx]] : []),
                 ].map(([label, value]) => (
                   <div
                     key={label}
@@ -518,7 +363,7 @@ export default function ThankYouPage() {
                   <button
                     type="button"
                     onClick={() => router.push("/order-history")}
-                    className="rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
+                    className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
                   >
                     Order History
                   </button>
@@ -526,7 +371,7 @@ export default function ThankYouPage() {
                   <button
                     type="button"
                     onClick={() => router.push("/contact")}
-                    className="rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
+                    className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
                   >
                     Contact Support
                   </button>

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { io, Socket } from "socket.io-client";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
@@ -89,15 +89,35 @@ const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
 
+const FALLBACK_PRODUCT_IMAGE = "/images/product-placeholder.png";
+
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
 const containerClass =
   "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 const primaryBtnClass =
-  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+
+async function safeJson(res: Response) {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return {};
+  }
+}
+
+function formatNPR(value?: number) {
+  return `Rs. ${Number(value || 0).toLocaleString("en-NP")}`;
+}
+
+function getProductImage(src?: string) {
+  const value = String(src || "").trim();
+  return value || FALLBACK_PRODUCT_IMAGE;
+}
 
 function getColorDotClass(color?: string) {
   const c = String(color || "").trim().toLowerCase();
@@ -130,6 +150,27 @@ function getColorDotClass(color?: string) {
   };
 
   return map[c] || "bg-[#16191f]";
+}
+
+function getFilenameFromDisposition(disposition: string | null) {
+  if (!disposition) return "";
+  const m = disposition.match(/filename\*?=(?:UTF-8''|")?([^";\n]+)"?/i);
+  if (!m?.[1]) return "";
+  return decodeURIComponent(m[1]);
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function ToastMessage({
@@ -189,7 +230,9 @@ function StatusBadge({ status }: { status: OrderStatus }) {
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[12px] font-semibold ${map[status]}`}
+      className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
+        map[status] || map.Pending
+      }`}
     >
       {status}
     </span>
@@ -222,27 +265,6 @@ function DeliveryStatusBadge({
       {value}
     </span>
   );
-}
-
-function getFilenameFromDisposition(disposition: string | null) {
-  if (!disposition) return "";
-  const m = disposition.match(/filename\*?=(?:UTF-8''|")?([^";\n]+)"?/i);
-  if (!m?.[1]) return "";
-  return decodeURIComponent(m[1]);
-}
-
-function formatDateTime(value?: string | null) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-
-  return d.toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function mergeLiveOrder(prev: Order | null, payload: any): Order | null {
@@ -297,7 +319,6 @@ function SectionTitle({
           {eyebrow}
         </div>
       ) : null}
-
       <h2 className="mt-2 text-[22px] font-semibold tracking-[-0.02em] text-white">
         {title}
       </h2>
@@ -311,6 +332,37 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
       <div className="text-[14px] text-[#a7aec4]">{label}</div>
       <div className="break-words text-[14px] font-medium text-white">
         {value}
+      </div>
+    </div>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="space-y-8">
+        {[1, 2, 3].map((n) => (
+          <div key={n} className={`${panelClass} p-6 sm:p-7`}>
+            <div className="h-3 w-28 animate-pulse rounded-full bg-white/10" />
+            <div className="mt-4 h-7 w-64 animate-pulse rounded-full bg-white/10" />
+            <div className="mt-7 space-y-4">
+              <div className="h-14 animate-pulse rounded-[18px] bg-white/10" />
+              <div className="h-14 animate-pulse rounded-[18px] bg-white/10" />
+              <div className="h-14 animate-pulse rounded-[18px] bg-white/10" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className={`${panelClass} h-[360px] p-6`}>
+        <div className="h-3 w-24 animate-pulse rounded-full bg-white/10" />
+        <div className="mt-4 h-7 w-40 animate-pulse rounded-full bg-white/10" />
+        <div className="mt-8 space-y-4">
+          <div className="h-5 animate-pulse rounded-full bg-white/10" />
+          <div className="h-5 animate-pulse rounded-full bg-white/10" />
+          <div className="h-5 animate-pulse rounded-full bg-white/10" />
+          <div className="h-12 animate-pulse rounded-full bg-white/10" />
+        </div>
       </div>
     </div>
   );
@@ -337,42 +389,91 @@ function OrderTimeline({ status }: { status: OrderStatus }) {
           This order has been cancelled.
         </div>
       ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-5">
-          {steps.map((step, index) => {
-            const done = index <= currentIndex;
-            const active = index === currentIndex;
+        <>
+          <div className="mt-6 hidden gap-4 sm:grid sm:grid-cols-5">
+            {steps.map((step, index) => {
+              const done = index <= currentIndex;
+              const active = index === currentIndex;
 
-            return (
-              <div key={step} className="relative">
-                <div
-                  className={`flex h-11 w-11 items-center justify-center rounded-full border text-[13px] font-bold ${
-                    done
-                      ? "border-green-400/30 bg-green-500/15 text-green-200"
-                      : "border-white/10 bg-white/5 text-[#7f879f]"
-                  }`}
-                >
-                  {done ? "✓" : index + 1}
-                </div>
+              return (
+                <div key={step} className="relative">
+                  <div
+                    className={`flex h-11 w-11 items-center justify-center rounded-full border text-[13px] font-bold ${
+                      done
+                        ? "border-green-400/30 bg-green-500/15 text-green-200"
+                        : "border-white/10 bg-white/5 text-[#7f879f]"
+                    }`}
+                  >
+                    {done ? "✓" : index + 1}
+                  </div>
 
-                <div
-                  className={`mt-3 text-[13px] font-semibold ${
-                    active
-                      ? "text-white"
-                      : done
-                        ? "text-green-200"
-                        : "text-[#a7aec4]"
-                  }`}
-                >
-                  {step}
-                </div>
+                  <div
+                    className={`mt-3 text-[13px] font-semibold ${
+                      active
+                        ? "text-white"
+                        : done
+                          ? "text-green-200"
+                          : "text-[#a7aec4]"
+                    }`}
+                  >
+                    {step}
+                  </div>
 
-                <div className="mt-1 text-[11px] text-[#7f879f]">
-                  {active ? "Current status" : done ? "Completed" : "Pending"}
+                  <div className="mt-1 text-[11px] text-[#7f879f]">
+                    {active ? "Current status" : done ? "Completed" : "Pending"}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-6 space-y-4 sm:hidden">
+            {steps.map((step, index) => {
+              const done = index <= currentIndex;
+              const active = index === currentIndex;
+
+              return (
+                <div key={step} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-full border text-[12px] font-bold ${
+                        done
+                          ? "border-green-400/30 bg-green-500/15 text-green-200"
+                          : "border-white/10 bg-white/5 text-[#7f879f]"
+                      }`}
+                    >
+                      {done ? "✓" : index + 1}
+                    </div>
+                    {index !== steps.length - 1 ? (
+                      <div className="mt-2 h-8 w-px bg-[#26293a]" />
+                    ) : null}
+                  </div>
+
+                  <div className="pb-2">
+                    <div
+                      className={`text-[14px] font-semibold ${
+                        active
+                          ? "text-white"
+                          : done
+                            ? "text-green-200"
+                            : "text-[#a7aec4]"
+                      }`}
+                    >
+                      {step}
+                    </div>
+                    <div className="mt-1 text-[12px] text-[#7f879f]">
+                      {active
+                        ? "Current status"
+                        : done
+                          ? "Completed"
+                          : "Pending"}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
@@ -432,6 +533,18 @@ export default function CustomerOrderDetailsPage() {
   const router = useRouter();
   const params = useParams<{ orderId: string }>();
   const orderIdFromUrl = params?.orderId ? String(params.orderId) : "";
+
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from");
+
+   const backHref =
+   from === "tracking"
+    ? `/order-tracking?code=${encodeURIComponent(orderIdFromUrl)}`
+    : from === "history"
+      ? "/order-history"
+      : from === "thankyou"
+        ? "/ThankYou"
+        : "/order-history";
 
   const [order, setOrder] = React.useState<Order | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -510,7 +623,7 @@ export default function CustomerOrderDetailsPage() {
         }
       );
 
-      const data = await res.json().catch(() => ({} as any));
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data?.message || "Failed to load order");
 
       setOrder(data?.order || null);
@@ -528,6 +641,8 @@ export default function CustomerOrderDetailsPage() {
   }, [loadOrder]);
 
   React.useEffect(() => {
+    if (!orderIdFromUrl) return;
+
     const socket = io(API_BASE, {
       withCredentials: true,
       transports: ["websocket", "polling"],
@@ -537,15 +652,18 @@ export default function CustomerOrderDetailsPage() {
 
     socket.on("order:updated", (payload: any) => {
       const payloadCode = String(payload?.orderCode || "").replace(/^#/, "");
-      const currentCode = String(order?.orderId || orderIdFromUrl).replace(
-        /^#/,
-        ""
-      );
+      const urlCode = String(orderIdFromUrl || "").replace(/^#/, "");
 
-      if (payloadCode && currentCode && payloadCode === currentCode) {
-        setOrder((prev) => mergeLiveOrder(prev, payload));
-        showToast("Order status updated in real time.", "info");
-      }
+      setOrder((prev) => {
+        const currentCode = String(prev?.orderId || urlCode).replace(/^#/, "");
+
+        if (payloadCode && currentCode && payloadCode === currentCode) {
+          showToast("Order status updated in real time.", "info");
+          return mergeLiveOrder(prev, payload);
+        }
+
+        return prev;
+      });
     });
 
     return () => {
@@ -553,7 +671,7 @@ export default function CustomerOrderDetailsPage() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [order?.orderId, orderIdFromUrl, showToast]);
+  }, [orderIdFromUrl, showToast]);
 
   const trackingNumber = (order?.orderId || orderIdFromUrl).replace("#", "");
 
@@ -570,7 +688,7 @@ export default function CustomerOrderDetailsPage() {
   };
 
   const raiseTicket = (item: OrderItem) => {
-    const params = new URLSearchParams({
+    const q = new URLSearchParams({
       orderId: order?.orderId || orderIdFromUrl || "",
       productId: item.id,
       productName: item.name,
@@ -578,7 +696,7 @@ export default function CustomerOrderDetailsPage() {
       color: item.colorLabel || item.color || "",
     });
 
-    router.push(`/support-ticket?${params.toString()}`);
+    router.push(`/support-ticket?${q.toString()}`);
   };
 
   const openReviewModal = (item: OrderItem) => {
@@ -598,6 +716,7 @@ export default function CustomerOrderDetailsPage() {
   };
 
   const closeReviewModal = () => {
+    if (reviewSaving) return;
     setReviewOpen(false);
     setDraft(null);
     setReviewError(null);
@@ -606,6 +725,18 @@ export default function CustomerOrderDetailsPage() {
 
   const submitReview = async () => {
     if (!draft) return;
+
+    if (!draft.comment.trim()) {
+      setReviewError("Please write your review comment.");
+      showToast("Please write your review comment.", "error");
+      return;
+    }
+
+    if (draft.comment.trim().length < 5) {
+      setReviewError("Review comment must be at least 5 characters.");
+      showToast("Review comment must be at least 5 characters.", "error");
+      return;
+    }
 
     try {
       setReviewSaving(true);
@@ -619,19 +750,19 @@ export default function CustomerOrderDetailsPage() {
         body: JSON.stringify({
           orderId: draft.orderId,
           rating: draft.rating,
-          title: draft.title,
-          comment: draft.comment,
+          title: draft.title.trim(),
+          comment: draft.comment.trim(),
         }),
       });
 
-      const data = await res.json().catch(() => ({} as any));
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data?.message || "Failed to submit review");
 
       setReviewOk("Review submitted successfully!");
       showToast("Review submitted successfully.", "success");
       window.dispatchEvent(new Event("ufo_review_updated"));
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         closeReviewModal();
       }, 900);
     } catch (e: any) {
@@ -649,7 +780,7 @@ export default function CustomerOrderDetailsPage() {
       setInvoiceError(null);
 
       const idOrCode = order?.orderId || orderIdFromUrl;
-      if (!idOrCode) throw new Error("Order id not found");
+      if (!idOrCode) throw new Error("Order ID not found.");
 
       const res = await fetch(
         `${API}/orders/${encodeURIComponent(idOrCode)}/invoice`,
@@ -660,8 +791,8 @@ export default function CustomerOrderDetailsPage() {
       );
 
       if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || "Failed to download invoice");
+        const data = await safeJson(res);
+        throw new Error(data?.message || "Failed to download invoice");
       }
 
       const blob = await res.blob();
@@ -691,7 +822,7 @@ export default function CustomerOrderDetailsPage() {
 
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref={backHref} />
 
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
 
@@ -782,15 +913,19 @@ export default function CustomerOrderDetailsPage() {
             </div>
           </section>
 
-          {loading ? (
-            <div className={`${panelClass} mt-8 p-6 text-[#a7aec4]`}>
-              Loading order...
-            </div>
-          ) : null}
+          {loading ? <LoadingSkeleton /> : null}
 
           {error ? (
             <div className="mt-8 rounded-[24px] border border-red-500/30 bg-red-500/10 p-6 text-red-200">
-              {error}
+              <div className="font-semibold">Unable to load order</div>
+              <div className="mt-2 text-sm">{error}</div>
+              <button
+                type="button"
+                onClick={loadOrder}
+                className={`${secondaryBtnClass} mt-5`}
+              >
+                Try Again
+              </button>
             </div>
           ) : null}
 
@@ -846,15 +981,16 @@ export default function CustomerOrderDetailsPage() {
                     {order.items.map((it) => (
                       <div
                         key={`${it.id}-${it.size}-${it.color}`}
-                        className="border-b border-[#26293a] p-5 last:border-0"
+                        className="border-b border-[#26293a] p-5 transition hover:bg-white/[0.02] last:border-0"
                       >
                         <div className="hidden grid-cols-[1.4fr_0.6fr_0.8fr_0.7fr_0.7fr] items-center gap-4 md:grid">
                           <div className="flex items-center gap-4">
                             <div className="relative h-[72px] w-[72px] overflow-hidden rounded-[18px] border border-[#26293a] bg-[#0d0f17]">
                               <Image
-                                src={it.image}
-                                alt={it.name}
+                                src={getProductImage(it.image)}
+                                alt={it.name || "Product image"}
                                 fill
+                                sizes="72px"
                                 className="object-cover"
                               />
                             </div>
@@ -865,7 +1001,7 @@ export default function CustomerOrderDetailsPage() {
                               </div>
 
                               <div className="mt-1 text-[12px] text-[#a7aec4]">
-                                Rs. {it.price} per item
+                                {formatNPR(it.price)} per item
                               </div>
 
                               <div className="mt-3 flex flex-wrap gap-2">
@@ -900,7 +1036,7 @@ export default function CustomerOrderDetailsPage() {
                                 it.color || it.colorLabel
                               )}`}
                             />
-                            <span>{it.colorLabel || "-"}</span>
+                            <span>{it.colorLabel || it.color || "-"}</span>
                           </div>
 
                           <div className="text-center text-[#a7aec4]">
@@ -908,16 +1044,17 @@ export default function CustomerOrderDetailsPage() {
                           </div>
 
                           <span className="font-semibold text-[#d6c7ff]">
-                            Rs. {it.price * it.qty}
+                            {formatNPR(it.price * it.qty)}
                           </span>
                         </div>
 
                         <div className="flex gap-4 md:hidden">
                           <div className="relative h-[82px] w-[82px] shrink-0 overflow-hidden rounded-[18px] border border-[#26293a] bg-[#0d0f17]">
                             <Image
-                              src={it.image}
-                              alt={it.name}
+                              src={getProductImage(it.image)}
+                              alt={it.name || "Product image"}
                               fill
+                              sizes="82px"
                               className="object-cover"
                             />
                           </div>
@@ -937,13 +1074,13 @@ export default function CustomerOrderDetailsPage() {
                                     it.color || it.colorLabel
                                   )}`}
                                 />
-                                <span>{it.colorLabel || "-"}</span>
+                                <span>{it.colorLabel || it.color || "-"}</span>
                               </div>
 
                               <div>Qty: {it.qty}</div>
-                              <div>Price: Rs. {it.price}</div>
+                              <div>Price: {formatNPR(it.price)}</div>
                               <div className="font-semibold text-[#d6c7ff]">
-                                Total: Rs. {it.price * it.qty}
+                                Total: {formatNPR(it.price * it.qty)}
                               </div>
                             </div>
 
@@ -1016,6 +1153,24 @@ export default function CustomerOrderDetailsPage() {
                       />
                     ) : null}
 
+                    {order.deliveryAssignment?.assignedAt ? (
+                      <InfoRow
+                        label="Assigned At"
+                        value={formatDateTime(
+                          order.deliveryAssignment.assignedAt
+                        )}
+                      />
+                    ) : null}
+
+                    {order.deliveryAssignment?.pickedUpAt ? (
+                      <InfoRow
+                        label="Picked Up At"
+                        value={formatDateTime(
+                          order.deliveryAssignment.pickedUpAt
+                        )}
+                      />
+                    ) : null}
+
                     {order.deliveryAssignment?.outForDeliveryAt ? (
                       <InfoRow
                         label="Out for Delivery At"
@@ -1062,21 +1217,21 @@ export default function CustomerOrderDetailsPage() {
                     <div className="flex justify-between gap-4">
                       <span>Subtotal</span>
                       <span className="text-white">
-                        Rs. {order.summary.subtotal}
+                        {formatNPR(order.summary.subtotal)}
                       </span>
                     </div>
 
                     <div className="flex justify-between gap-4">
                       <span>Shipping</span>
                       <span className="text-white">
-                        Rs. {order.summary.shipping}
+                        {formatNPR(order.summary.shipping)}
                       </span>
                     </div>
 
                     <div className="flex justify-between gap-4">
                       <span>Taxes</span>
                       <span className="text-white">
-                        Rs. {order.summary.taxes}
+                        {formatNPR(order.summary.taxes)}
                       </span>
                     </div>
 
@@ -1085,7 +1240,7 @@ export default function CustomerOrderDetailsPage() {
                     <div className="flex justify-between gap-4 text-[18px] font-semibold">
                       <span className="text-white">Total</span>
                       <span className="text-white">
-                        Rs. {order.summary.total}
+                        {formatNPR(order.summary.total)}
                       </span>
                     </div>
                   </div>
@@ -1094,7 +1249,7 @@ export default function CustomerOrderDetailsPage() {
                     type="button"
                     onClick={downloadInvoice}
                     disabled={invoiceLoading}
-                    className={`${primaryBtnClass} mt-7 w-full justify-center`}
+                    className={`${primaryBtnClass} mt-7 w-full`}
                   >
                     {invoiceLoading ? "Downloading..." : "Download Invoice"}
                   </button>
@@ -1152,7 +1307,7 @@ export default function CustomerOrderDetailsPage() {
           />
 
           <div
-            className={`${panelClass} relative w-full max-w-[580px] p-6 sm:p-7`}
+            className={`${panelClass} relative max-h-[90vh] w-full max-w-[580px] overflow-y-auto p-6 sm:p-7`}
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1176,7 +1331,8 @@ export default function CustomerOrderDetailsPage() {
               <button
                 type="button"
                 onClick={closeReviewModal}
-                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10"
+                disabled={reviewSaving}
+                className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-xs font-semibold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Close
               </button>
@@ -1217,6 +1373,7 @@ export default function CustomerOrderDetailsPage() {
                     setDraft({ ...draft, title: e.target.value })
                   }
                   placeholder="Short title (optional)"
+                  maxLength={80}
                   className="mt-2 h-[48px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-4 text-sm text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
                 />
               </div>
@@ -1233,8 +1390,13 @@ export default function CustomerOrderDetailsPage() {
                   }
                   placeholder="Write your experience..."
                   rows={5}
+                  maxLength={500}
                   className="mt-2 w-full resize-none rounded-[20px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-sm text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
                 />
+
+                <div className="mt-2 text-right text-[11px] text-[#7f879f]">
+                  {draft.comment.length}/500
+                </div>
               </div>
 
               {reviewError ? (
@@ -1253,6 +1415,7 @@ export default function CustomerOrderDetailsPage() {
                 <button
                   type="button"
                   onClick={closeReviewModal}
+                  disabled={reviewSaving}
                   className={secondaryBtnClass}
                 >
                   Cancel

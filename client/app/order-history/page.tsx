@@ -10,7 +10,14 @@ import MainFooter from "@/components/layout/MainFooter";
 
 type ToastType = "success" | "error" | "info";
 type SortValue = "newest" | "oldest";
-type StatusFilter = "All" | "Pending" | "Confirmed" | "Shipped" | "Transit" | "Delivered" | "Cancelled";
+type StatusFilter =
+  | "All"
+  | "Pending"
+  | "Confirmed"
+  | "Shipped"
+  | "Transit"
+  | "Delivered"
+  | "Cancelled";
 
 type OrderRow = {
   id: string;
@@ -39,8 +46,10 @@ const secondaryBtnClass =
 
 function formatDate(iso: string) {
   if (!iso) return "-";
+
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
+
   return d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
@@ -86,8 +95,10 @@ function statusTone(status?: string) {
 
 function normalizeStatus(status?: string) {
   const s = String(status || "Pending").trim();
-  if (s.toLowerCase() === "canceled") return "Cancelled";
+
   if (!s) return "Pending";
+  if (s.toLowerCase() === "canceled") return "Cancelled";
+
   return s.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
@@ -107,7 +118,14 @@ function StatusBadge({ status }: { status?: string }) {
 
 function countItems(order: OrderRow) {
   if (typeof order.itemsCount === "number") return order.itemsCount;
-  if (Array.isArray(order.items)) return order.items.length;
+
+  if (Array.isArray(order.items)) {
+    return order.items.reduce((sum, item) => {
+      const qty = Number(item?.qty || item?.quantity || 1);
+      return sum + (Number.isFinite(qty) && qty > 0 ? qty : 1);
+    }, 0);
+  }
+
   return 0;
 }
 
@@ -119,7 +137,29 @@ function resolveTotal(order: OrderRow) {
 
 function firstImage(order: OrderRow) {
   if (!Array.isArray(order.items) || !order.items.length) return "";
-  return String(order.items[0]?.image || "");
+
+  return String(
+    order.items[0]?.image ||
+      order.items[0]?.productImage ||
+      order.items[0]?.product?.image ||
+      ""
+  );
+}
+
+function resolveImageUrl(src: string) {
+  const clean = String(src || "").trim();
+
+  if (!clean) return "";
+
+  if (
+    clean.startsWith("http://") ||
+    clean.startsWith("https://") ||
+    clean.startsWith("/")
+  ) {
+    return clean;
+  }
+
+  return `${API_BASE}/${clean}`;
 }
 
 function ToastMessage({
@@ -151,9 +191,11 @@ function ToastMessage({
         className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
       >
         <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
+
         <div className="flex-1 text-[13px] font-medium leading-6">
           {toast.message}
         </div>
+
         <button
           type="button"
           onClick={onClose}
@@ -189,7 +231,11 @@ function EmptyState({ onShop }: { onShop: () => void }) {
         start shopping.
       </p>
 
-      <button type="button" onClick={onShop} className={`${primaryBtnClass} mt-7`}>
+      <button
+        type="button"
+        onClick={onShop}
+        className={`${primaryBtnClass} mt-7`}
+      >
         Start Shopping
       </button>
     </div>
@@ -318,6 +364,7 @@ export default function OrderHistoryPage() {
     let list = [...orders];
 
     const q = search.trim().toLowerCase();
+
     if (q) {
       list = list.filter((order) => {
         const haystack = `${order.orderCode || ""} ${order.id || ""} ${
@@ -349,12 +396,15 @@ export default function OrderHistoryPage() {
 
   const summary = React.useMemo(() => {
     const totalOrders = orders.length;
+
     const delivered = orders.filter(
       (o) => normalizeStatus(o.orderStatus).toLowerCase() === "delivered"
     ).length;
+
     const pending = orders.filter(
       (o) => normalizeStatus(o.orderStatus).toLowerCase() === "pending"
     ).length;
+
     const cancelled = orders.filter(
       (o) => normalizeStatus(o.orderStatus).toLowerCase() === "cancelled"
     ).length;
@@ -371,7 +421,22 @@ export default function OrderHistoryPage() {
     }
 
     try {
-      await navigator.clipboard.writeText(clean);
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(clean);
+        showToast("Order code copied.", "success");
+        return;
+      }
+
+      const input = document.createElement("textarea");
+      input.value = clean;
+      input.style.position = "fixed";
+      input.style.left = "-9999px";
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      document.execCommand("copy");
+      document.body.removeChild(input);
+
       showToast("Order code copied.", "success");
     } catch {
       showToast("Unable to copy order code.", "error");
@@ -387,7 +452,7 @@ export default function OrderHistoryPage() {
 
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref="/profile" />
 
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
 
@@ -426,6 +491,7 @@ export default function OrderHistoryPage() {
                   <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
                     {label}
                   </div>
+
                   <div className="mt-2 text-[26px] font-semibold text-white">
                     {value}
                   </div>
@@ -441,12 +507,17 @@ export default function OrderHistoryPage() {
                   <div className="text-[18px] font-semibold text-white">
                     Filter Orders
                   </div>
+
                   <div className="mt-1 text-[12px] text-[#a7aec4]">
                     Search by order code, filter by status, and sort by date.
                   </div>
                 </div>
 
-                <button type="button" onClick={clearFilters} className={secondaryBtnClass}>
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className={secondaryBtnClass}
+                >
                   Clear Filters
                 </button>
               </div>
@@ -460,9 +531,12 @@ export default function OrderHistoryPage() {
                 />
 
                 <select
-  aria-label="Filter orders by status"
-  value={statusFilter}
-  onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                  aria-label="Filter orders by status"
+                  value={statusFilter}
+                  onChange={(e) =>
+                    setStatusFilter(e.target.value as StatusFilter)
+                  }
+                  className="h-[50px] w-full rounded-full border border-[#2b3042] bg-[#0d0f17] px-5 text-[13px] text-[#f5f7fb] outline-none transition focus:border-[#d6c7ff]"
                 >
                   {[
                     "All",
@@ -479,10 +553,10 @@ export default function OrderHistoryPage() {
                   ))}
                 </select>
 
-               <select
-  aria-label="Sort orders by date"
-  value={sortValue}
-  onChange={(e) => setSortValue(e.target.value as SortValue)}
+                <select
+                  aria-label="Sort orders by date"
+                  value={sortValue}
+                  onChange={(e) => setSortValue(e.target.value as SortValue)}
                   className="h-[50px] w-full rounded-full border border-[#2b3042] bg-[#0d0f17] px-5 text-[13px] text-[#f5f7fb] outline-none transition focus:border-[#d6c7ff]"
                 >
                   <option value="newest">Newest First</option>
@@ -496,7 +570,9 @@ export default function OrderHistoryPage() {
                   {filteredOrders.length}
                 </span>{" "}
                 of{" "}
-                <span className="font-semibold text-white">{orders.length}</span>{" "}
+                <span className="font-semibold text-white">
+                  {orders.length}
+                </span>{" "}
                 orders.
               </div>
             </section>
@@ -505,15 +581,13 @@ export default function OrderHistoryPage() {
           {loading ? (
             <div className="mt-10 grid gap-5">
               {[1, 2, 3].map((n) => (
-                <div
-                  key={n}
-                  className={`${panelClass} animate-pulse p-6`}
-                >
+                <div key={n} className={`${panelClass} animate-pulse p-6`}>
                   <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                     <div className="space-y-3">
                       <div className="h-5 w-44 rounded bg-white/5" />
                       <div className="h-4 w-32 rounded bg-white/5" />
                     </div>
+
                     <div className="flex gap-3">
                       <div className="h-9 w-24 rounded-full bg-white/5" />
                       <div className="h-11 w-32 rounded-xl bg-white/5" />
@@ -534,14 +608,19 @@ export default function OrderHistoryPage() {
             <EmptyState onShop={() => router.push("/collection")} />
           ) : null}
 
-          {!loading && !error && orders.length > 0 && filteredOrders.length === 0 ? (
+          {!loading &&
+          !error &&
+          orders.length > 0 &&
+          filteredOrders.length === 0 ? (
             <div className={`${panelClass} mt-10 p-8 text-center`}>
               <h2 className="text-[22px] font-semibold text-white">
                 No matching orders found
               </h2>
+
               <p className="mx-auto mt-2 max-w-[420px] text-[14px] leading-7 text-[#a7aec4]">
                 Try changing the search text or removing filters.
               </p>
+
               <button
                 type="button"
                 onClick={clearFilters}
@@ -557,10 +636,10 @@ export default function OrderHistoryPage() {
               <div className="grid gap-6">
                 {filteredOrders.map((order) => {
                   const displayId = order.orderCode || order.id;
-                  const urlId = (displayId || "").replace("#", "");
+                  const urlId = order.id || displayId;
                   const total = resolveTotal(order);
                   const itemsCount = countItems(order);
-                  const preview = firstImage(order);
+                  const preview = resolveImageUrl(firstImage(order));
 
                   return (
                     <div
@@ -636,7 +715,9 @@ export default function OrderHistoryPage() {
                             type="button"
                             onClick={() =>
                               router.push(
-                                `/customerorderdetails/${encodeURIComponent(urlId)}`
+                                `/customerorderdetails/${encodeURIComponent(
+                                  urlId
+                                )}?from=history`
                               )
                             }
                             className="inline-flex items-center justify-center rounded-full bg-white px-5 py-3 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#090a12] transition hover:bg-white/90"
@@ -650,7 +731,9 @@ export default function OrderHistoryPage() {
                             type="button"
                             onClick={() =>
                               router.push(
-                                `/order-tracking?code=${encodeURIComponent(urlId)}`
+                                `/order-tracking?code=${encodeURIComponent(
+                                  urlId
+                                )}`
                               )
                             }
                             className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-5 py-3 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"

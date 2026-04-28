@@ -4,7 +4,11 @@ import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
-export default function CartHeader() {
+type CartHeaderProps = {
+  backHref?: string;
+};
+
+export default function CartHeader({ backHref = "/collection" }: CartHeaderProps) {
   const router = useRouter();
 
   return (
@@ -13,10 +17,10 @@ export default function CartHeader() {
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           <button
             type="button"
-            onClick={() => router.push("/collection")}
+            onClick={() => router.push(backHref)}
             className="group flex shrink-0 items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-white transition hover:bg-white hover:text-[#090a12]"
-            aria-label="Back to collection"
-            title="Back to collection"
+            aria-label="Back"
+            title="Back"
           >
             <Image
               src="/images/backarrow.png"
@@ -28,10 +32,7 @@ export default function CartHeader() {
             <span className="hidden sm:inline">Back</span>
           </button>
 
-          <Link
-            href="/homepage"
-            className="flex min-w-0 items-center gap-2 sm:gap-3"
-          >
+          <Link href="/homepage" className="flex min-w-0 items-center gap-2 sm:gap-3">
             <div className="h-[42px] w-[42px] overflow-hidden rounded-full border border-white/15 bg-white/5 sm:h-[48px] sm:w-[48px]">
               <Image
                 src="/images/logo.png"
@@ -49,28 +50,16 @@ export default function CartHeader() {
         </div>
 
         <nav className="mx-auto hidden items-center gap-6 lg:flex xl:gap-10">
-          <Link
-            href="/homepage"
-            className="text-[14px] uppercase tracking-[0.16em] text-[#d6c7ff]"
-          >
+          <Link href="/homepage" className="text-[14px] uppercase tracking-[0.16em] text-[#d6c7ff]">
             Home
           </Link>
-          <Link
-            href="/collection"
-            className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
-          >
+          <Link href="/collection" className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]">
             Collection
           </Link>
-          <Link
-            href="/about"
-            className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
-          >
+          <Link href="/about" className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]">
             About
           </Link>
-          <Link
-            href="/contact"
-            className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]"
-          >
+          <Link href="/contact" className="text-[14px] uppercase tracking-[0.16em] text-[#a7aec4] transition hover:text-[#d6c7ff]">
             Contact
           </Link>
         </nav>
@@ -80,28 +69,16 @@ export default function CartHeader() {
 
       <div className="border-t border-[#1b1e2b] bg-[rgba(10,10,15,0.98)] lg:hidden">
         <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-center gap-x-8 gap-y-3 px-4 py-3">
-          <Link
-            href="/homepage"
-            className="text-[13px] uppercase tracking-[0.16em] text-[#d6c7ff]"
-          >
+          <Link href="/homepage" className="text-[13px] uppercase tracking-[0.16em] text-[#d6c7ff]">
             Home
           </Link>
-          <Link
-            href="/collection"
-            className="text-[13px] uppercase tracking-[0.16em] text-[#a7aec4] hover:text-[#d6c7ff]"
-          >
+          <Link href="/collection" className="text-[13px] uppercase tracking-[0.16em] text-[#a7aec4] hover:text-[#d6c7ff]">
             Collection
           </Link>
-          <Link
-            href="/about"
-            className="text-[13px] uppercase tracking-[0.16em] text-[#a7aec4] hover:text-[#d6c7ff]"
-          >
+          <Link href="/about" className="text-[13px] uppercase tracking-[0.16em] text-[#a7aec4] hover:text-[#d6c7ff]">
             About
           </Link>
-          <Link
-            href="/contact"
-            className="text-[13px] uppercase tracking-[0.16em] text-[#a7aec4] hover:text-[#d6c7ff]"
-          >
+          <Link href="/contact" className="text-[13px] uppercase tracking-[0.16em] text-[#a7aec4] hover:text-[#d6c7ff]">
             Contact
           </Link>
         </div>

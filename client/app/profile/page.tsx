@@ -16,6 +16,10 @@ type SidebarItem = {
   icon: string;
 };
 
+const API =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
+  "http://localhost:8080/api";
+
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
 const containerClass =
   "mx-auto w-full max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
@@ -36,6 +40,14 @@ function getInitials(name: string) {
     parts.length > 1 ? parts[parts.length - 1]?.[0] ?? "" : parts[0]?.[1] ?? "";
 
   return (first + last).toUpperCase();
+}
+
+function toOptionalNumber(value: string) {
+  const clean = value.trim();
+  if (!clean) return undefined;
+
+  const num = Number(clean);
+  return Number.isFinite(num) ? num : undefined;
 }
 
 function ToastMessage({
@@ -67,6 +79,7 @@ function ToastMessage({
         className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
       >
         <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
+
         <div className="flex-1 text-[13px] font-medium leading-6">
           {toast.message}
         </div>
@@ -154,26 +167,26 @@ export default function ProfilePage() {
   } | null>(null);
 
   const toastTimerRef = React.useRef<number | null>(null);
+  const redirectTimerRef = React.useRef<number | null>(null);
+  const deleteInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const [form, setForm] = React.useState({
     name: "",
     email: "",
+    phone: "",
     height: "",
     weight: "",
     menSize: "",
     womenSize: "",
   });
 
-  const API =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-    "http://localhost:8080/api";
-
   const sidebarItems: SidebarItem[] = [
     {
-      label: t("nav.orderTracking"),
-      href: "/order-tracking",
-      icon: "/images/order-tracking.png",
-    },
+  label: t("nav.orderTracking"),
+  href: "/order-tracking?from=profile",
+  icon: "/images/order-tracking.png",
+    } ,
+
     {
       label: t("nav.orderHistory"),
       href: "/order-history",
@@ -228,15 +241,28 @@ export default function ProfilePage() {
 
   React.useEffect(() => {
     return () => {
-      if (toastTimerRef.current) {
-        window.clearTimeout(toastTimerRef.current);
-      }
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      if (redirectTimerRef.current) window.clearTimeout(redirectTimerRef.current);
     };
   }, []);
 
+  React.useEffect(() => {
+    if (!deleteOpen) return;
+
+    const timer = window.setTimeout(() => {
+      deleteInputRef.current?.focus();
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [deleteOpen]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setForm((p) => ({ ...p, [name]: value }));
+
+    setForm((p) => ({
+      ...p,
+      [name]: value,
+    }));
   };
 
   React.useEffect(() => {
@@ -267,6 +293,7 @@ export default function ProfilePage() {
         setForm({
           name: u.name || "",
           email: u.email || "",
+          phone: u.phone || "",
           height: u.height ? String(u.height) : "",
           weight: u.weight ? String(u.weight) : "",
           menSize: u.recommendedSizeMen || "",
@@ -285,10 +312,36 @@ export default function ProfilePage() {
     return () => {
       alive = false;
     };
-  }, [API, router]);
+  }, [router]);
 
   const handleSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    const cleanName = form.name.trim();
+    const cleanPhone = form.phone.trim();
+    const heightNumber = toOptionalNumber(form.height);
+    const weightNumber = toOptionalNumber(form.weight);
+
+    if (!cleanName) {
+      showToast("Name is required.", "error");
+      return;
+    }
+
+    if (cleanPhone && !/^[0-9+\-\s()]{7,20}$/.test(cleanPhone)) {
+      showToast("Please enter a valid mobile number.", "error");
+      return;
+    }
+
+    if (form.height.trim() && (!heightNumber || heightNumber <= 0)) {
+      showToast("Please enter a valid height.", "error");
+      return;
+    }
+
+    if (form.weight.trim() && (!weightNumber || weightNumber <= 0)) {
+      showToast("Please enter a valid weight.", "error");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -297,9 +350,10 @@ export default function ProfilePage() {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          name: form.name,
-          height: form.height ? Number(form.height) : undefined,
-          weight: form.weight ? Number(form.weight) : undefined,
+          name: cleanName,
+          phone: cleanPhone,
+          height: heightNumber,
+          weight: weightNumber,
         }),
       });
 
@@ -312,6 +366,8 @@ export default function ProfilePage() {
 
       setForm((p) => ({
         ...p,
+        name: data.user?.name || cleanName,
+        phone: data.user?.phone || cleanPhone,
         menSize: data.user?.recommendedSizeMen || "",
         womenSize: data.user?.recommendedSizeWomen || "",
       }));
@@ -326,7 +382,8 @@ export default function ProfilePage() {
   };
 
   const handleLogout = async () => {
-    if (loggingOut) return;
+    if (loggingOut || deleting) return;
+
     setLoggingOut(true);
 
     try {
@@ -364,28 +421,32 @@ export default function ProfilePage() {
         return;
       }
 
-      showToast(t("profile.deletedOk"), "success");
       setDeleteOpen(false);
-      router.push("/signup");
+      setDeleteText("");
+      showToast(t("profile.deletedOk"), "success");
+
+      redirectTimerRef.current = window.setTimeout(() => {
+        router.push("/signup");
+      }, 900);
     } catch (err) {
       console.error(err);
       showToast(t("profile.tryAgain"), "error");
     } finally {
       setDeleting(false);
-      setDeleteText("");
     }
   };
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === "Escape" && !deleting) {
         setDeleteOpen(false);
+        setDeleteText("");
       }
     };
 
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  }, [deleting]);
 
   if (loading) {
     return (
@@ -408,7 +469,7 @@ export default function ProfilePage() {
               </div>
 
               <div className={`${panelClass} p-6`}>
-                {Array.from({ length: 6 }).map((_, i) => (
+                {Array.from({ length: 7 }).map((_, i) => (
                   <div key={i} className="mb-5">
                     <div className="h-3 w-28 animate-pulse rounded bg-white/5" />
                     <div className="mt-2 h-12 w-full animate-pulse rounded bg-white/5" />
@@ -443,8 +504,8 @@ export default function ProfilePage() {
               </h1>
 
               <p className="mt-2 max-w-[620px] text-[13px] leading-6 text-[#a7aec4]">
-                Manage your personal information, fit preferences, support
-                tickets, and account security.
+                Manage your personal information, mobile number, fit
+                preferences, support tickets, and account security.
               </p>
             </div>
 
@@ -479,6 +540,12 @@ export default function ProfilePage() {
                     <div className="mt-1 truncate text-[13px] text-[#a7aec4]">
                       {form.email}
                     </div>
+
+                    {form.phone ? (
+                      <div className="mt-1 truncate text-[12px] text-[#d6c7ff]">
+                        {form.phone}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
@@ -515,7 +582,9 @@ export default function ProfilePage() {
                     </span>
 
                     <span>
-                      {loggingOut ? t("profile.loggingOut") : t("profile.logout")}
+                      {loggingOut
+                        ? t("profile.loggingOut")
+                        : t("profile.logout")}
                     </span>
                   </span>
 
@@ -539,7 +608,7 @@ export default function ProfilePage() {
 
                   <button
                     type="submit"
-                    disabled={saving}
+                    disabled={saving || deleting || loggingOut}
                     className={primaryBtnClass}
                   >
                     {saving ? t("profile.saving") : t("profile.save")}
@@ -555,6 +624,7 @@ export default function ProfilePage() {
                       onChange={handleChange}
                       placeholder={t("profile.name")}
                       aria-label="Name"
+                      autoComplete="name"
                       className="h-[50px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-5 text-[13px] text-[#f5f7fb] outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]"
                     />
                   </Field>
@@ -562,12 +632,28 @@ export default function ProfilePage() {
                   <Field label={t("profile.email")} htmlFor="email">
                     <input
                       id="email"
+                      name="email"
                       value={form.email}
                       readOnly
                       placeholder={t("profile.email")}
                       aria-label="Email"
-                      title="Email"
+                      title="Email cannot be changed"
+                      autoComplete="email"
                       className="h-[50px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-5 text-[13px] text-[#a7aec4] outline-none opacity-80"
+                    />
+                  </Field>
+
+                  <Field label="Mobile Number" htmlFor="phone">
+                    <input
+                      id="phone"
+                      name="phone"
+                      value={form.phone}
+                      onChange={handleChange}
+                      placeholder="e.g. 9842690683"
+                      aria-label="Mobile Number"
+                      autoComplete="tel"
+                      inputMode="tel"
+                      className="h-[50px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-5 text-[13px] text-[#f5f7fb] outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]"
                     />
                   </Field>
                 </div>
@@ -582,6 +668,10 @@ export default function ProfilePage() {
                       <input
                         id="height"
                         name="height"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        inputMode="decimal"
                         value={form.height}
                         onChange={handleChange}
                         placeholder="e.g. 5.6"
@@ -594,6 +684,10 @@ export default function ProfilePage() {
                       <input
                         id="weight"
                         name="weight"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        inputMode="decimal"
                         value={form.weight}
                         onChange={handleChange}
                         placeholder="e.g. 60"
@@ -717,9 +811,9 @@ export default function ProfilePage() {
                     setDeleteText("");
                   }}
                   disabled={deleting || loggingOut}
-                  className="mt-5 rounded-full border border-red-300/30 bg-red-500/20 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-red-100 transition hover:-translate-y-0.5 hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="mt-5 rounded-full border border-red-300/30 bg-red-500/20 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-red-100 transition hover:-translate-y-0.5 hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
-                  {deleting ? t("profile.confirmDelete") : t("profile.deleteBtn")}
+                  {deleting ? "Deleting..." : t("profile.deleteBtn")}
                 </button>
               </div>
             </section>
@@ -727,15 +821,31 @@ export default function ProfilePage() {
         </div>
 
         {deleteOpen ? (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
-            <div className="w-full max-w-[520px] rounded-[24px] border border-[#26293a] bg-[#11121a] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.75)] sm:p-6">
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+            onMouseDown={(e) => {
+              if (e.target === e.currentTarget && !deleting) {
+                setDeleteOpen(false);
+                setDeleteText("");
+              }
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-account-title"
+              className="w-full max-w-[520px] rounded-[24px] border border-[#26293a] bg-[#11121a] p-5 shadow-[0_30px_90px_rgba(0,0,0,0.75)] sm:p-6"
+            >
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.24em] text-red-200">
                     Confirm Action
                   </div>
 
-                  <h3 className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
+                  <h3
+                    id="delete-account-title"
+                    className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white"
+                  >
                     {t("profile.deleteModalTitle")}
                   </h3>
 
@@ -747,21 +857,25 @@ export default function ProfilePage() {
                 <button
                   type="button"
                   onClick={() => {
+                    if (deleting) return;
                     setDeleteOpen(false);
                     setDeleteText("");
                   }}
-                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[12px] text-white transition hover:bg-white/10"
+                  disabled={deleting}
+                  className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[12px] text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {t("profile.close")}
                 </button>
               </div>
 
               <input
+                ref={deleteInputRef}
                 value={deleteText}
                 onChange={(e) => setDeleteText(e.target.value)}
                 placeholder={t("profile.typeDelete")}
                 aria-label="Type DELETE to confirm account deletion"
-                className="mt-5 h-[50px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-5 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-red-300"
+                disabled={deleting}
+                className="mt-5 h-[50px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-5 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-red-300 disabled:cursor-not-allowed disabled:opacity-60"
               />
 
               <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -783,7 +897,7 @@ export default function ProfilePage() {
                   disabled={deleting}
                   className="rounded-full bg-red-500 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                 >
-                  {deleting ? t("profile.confirmDelete") : t("profile.confirmDelete")}
+                  {deleting ? "Deleting..." : t("profile.confirmDelete")}
                 </button>
               </div>
             </div>
