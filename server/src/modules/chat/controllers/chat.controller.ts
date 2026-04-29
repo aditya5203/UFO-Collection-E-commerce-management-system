@@ -1,4 +1,3 @@
-//server/src/modules/chat/controllers/chat.controller.ts
 import { Request, Response, NextFunction } from "express";
 import { chatService } from "../services/chat.service";
 
@@ -8,7 +7,6 @@ function getUserId(req: Request) {
 }
 
 export const chatController = {
-  // CUSTOMER: open conversation
   open: async (
     req: Request,
     res: Response,
@@ -16,6 +14,7 @@ export const chatController = {
   ): Promise<void> => {
     try {
       const userId = getUserId(req);
+
       if (!userId) {
         res.status(401).json({
           success: false,
@@ -25,7 +24,13 @@ export const chatController = {
       }
 
       const orderId = String(req.body?.orderId || "").trim() || undefined;
-      const conv = await chatService.openForCustomer(String(userId), orderId);
+      const forceNew = Boolean(req.body?.forceNew);
+
+      const conv = await chatService.openForCustomer(
+        String(userId),
+        orderId,
+        forceNew
+      );
 
       res.json({ success: true, conversation: conv });
       return;
@@ -35,7 +40,6 @@ export const chatController = {
     }
   },
 
-  // CUSTOMER: my conversations
   mine: async (
     req: Request,
     res: Response,
@@ -43,6 +47,7 @@ export const chatController = {
   ): Promise<void> => {
     try {
       const userId = getUserId(req);
+
       if (!userId) {
         res.status(401).json({
           success: false,
@@ -61,7 +66,6 @@ export const chatController = {
     }
   },
 
-  // CUSTOMER/ADMIN: get messages
   messages: async (
     req: Request,
     res: Response,
@@ -81,7 +85,6 @@ export const chatController = {
     }
   },
 
-  // CUSTOMER: send message
   customerSend: async (
     req: Request,
     res: Response,
@@ -89,6 +92,7 @@ export const chatController = {
   ): Promise<void> => {
     try {
       const userId = getUserId(req);
+
       if (!userId) {
         res.status(401).json({
           success: false,
@@ -98,6 +102,7 @@ export const chatController = {
       }
 
       const { conversationId } = req.params;
+
       const msg = await chatService.customerSend(
         String(userId),
         conversationId,
@@ -112,7 +117,6 @@ export const chatController = {
     }
   },
 
-  // CUSTOMER: end chat
   customerEnd: async (
     req: Request,
     res: Response,
@@ -120,6 +124,7 @@ export const chatController = {
   ): Promise<void> => {
     try {
       const userId = getUserId(req);
+
       if (!userId) {
         res.status(401).json({
           success: false,
@@ -129,6 +134,7 @@ export const chatController = {
       }
 
       const { conversationId } = req.params;
+
       const ended = await chatService.customerEnd(
         String(userId),
         conversationId
@@ -142,7 +148,6 @@ export const chatController = {
     }
   },
 
-  // ADMIN: list all conversations
   adminList: async (
     _req: Request,
     res: Response,
@@ -159,7 +164,6 @@ export const chatController = {
     }
   },
 
-  // ADMIN: reply
   adminSend: async (
     req: Request,
     res: Response,
@@ -167,6 +171,7 @@ export const chatController = {
   ): Promise<void> => {
     try {
       const adminId = getUserId(req);
+
       if (!adminId) {
         res.status(401).json({
           success: false,
@@ -176,6 +181,7 @@ export const chatController = {
       }
 
       const { conversationId } = req.params;
+
       const msg = await chatService.adminSend(
         String(adminId),
         conversationId,
@@ -190,7 +196,6 @@ export const chatController = {
     }
   },
 
-  // ADMIN: end chat
   adminEnd: async (
     req: Request,
     res: Response,
@@ -198,6 +203,7 @@ export const chatController = {
   ): Promise<void> => {
     try {
       const adminId = getUserId(req);
+
       if (!adminId) {
         res.status(401).json({
           success: false,
@@ -207,6 +213,7 @@ export const chatController = {
       }
 
       const { conversationId } = req.params;
+
       const ended = await chatService.adminEnd(
         String(adminId),
         conversationId

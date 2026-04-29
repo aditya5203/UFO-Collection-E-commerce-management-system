@@ -4,15 +4,16 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
+import { useJsApiLoader } from "@react-google-maps/api";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
+import AddressModal, {
+  type FormErrors,
+  type FormState,
+} from "./_components/AddressModal";
 
 import {
   NEPAL_PROVINCES,
-  NEPAL_DISTRICTS,
-  type Province,
-  type District,
 } from "../data/nepalLocations";
 
 type AddressType = "Shipping" | "Billing";
@@ -47,29 +48,6 @@ type Address = {
   updatedAt?: string;
 };
 
-type FormState = {
-  type: AddressType;
-  label: AddressLabel;
-  email: string;
-  firstName: string;
-  lastName: string;
-  country: string;
-  provinceId: string;
-  district: string;
-  cityOrMunicipality: string;
-  addressLine: string;
-  street: string;
-  postalCode: string;
-  phone: string;
-  isDefault: boolean;
-  lat: number;
-  lng: number;
-};
-
-type FormErrors = Partial<Record<keyof FormState, string>> & {
-  general?: string;
-};
-
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
@@ -99,6 +77,10 @@ const noStoreHeaders = {
   Pragma: "no-cache",
 };
 
+function provinceName(id?: string) {
+  return NEPAL_PROVINCES.find((p) => p.id === id)?.name || id || "";
+}
+
 function fullName(a: Address) {
   return `${a.firstName || ""} ${a.lastName || ""}`.trim() || "-";
 }
@@ -109,7 +91,7 @@ function line2(a: Address) {
     a.street,
     a.cityOrMunicipality,
     a.district,
-    a.provinceId,
+    provinceName(a.provinceId),
   ].filter(Boolean);
 
   return parts.join(", ");
@@ -181,6 +163,7 @@ function ToastMessage({
         <div className="flex-1 text-[13px] font-medium leading-6">
           {toast.message}
         </div>
+
         <button
           type="button"
           onClick={onClose}
@@ -208,11 +191,9 @@ export default function AddressPage() {
   const [defaultingId, setDefaultingId] = React.useState<string | null>(null);
 
   const [deleteTarget, setDeleteTarget] = React.useState<Address | null>(null);
-
   const [editing, setEditing] = React.useState<Address | null>(null);
   const [form, setForm] = React.useState<FormState>(initialForm("Shipping"));
   const [formErrors, setFormErrors] = React.useState<FormErrors>({});
-
   const [search, setSearch] = React.useState("");
 
   const [toast, setToast] = React.useState<{
@@ -246,6 +227,17 @@ export default function AddressPage() {
     []
   );
 
+  const resetModalState = React.useCallback(() => {
+    setModalOpen(false);
+    setEditing(null);
+    setSaving(false);
+    setFormErrors({});
+    setMapLoaded(false);
+    setForm(initialForm("Shipping"));
+    setMapCenter(defaultCenter);
+    setMarkerPosition(defaultCenter);
+  }, []);
+
   React.useEffect(() => {
     return () => {
       if (toastTimerRef.current) {
@@ -264,7 +256,7 @@ export default function AddressPage() {
 
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [modalOpen, deleteTarget]);
+  }, [modalOpen, deleteTarget, resetModalState]);
 
   React.useEffect(() => {
     if (!modalOpen && !deleteTarget) return;
@@ -276,10 +268,6 @@ export default function AddressPage() {
       document.body.style.overflow = previous;
     };
   }, [modalOpen, deleteTarget]);
-
-  const districtsForProvince: District[] = React.useMemo(() => {
-    return NEPAL_DISTRICTS.filter((d) => d.provinceId === form.provinceId);
-  }, [form.provinceId]);
 
   const totalAddresses = shipping.length + billing.length;
 
@@ -386,23 +374,13 @@ export default function AddressPage() {
     loadAddresses();
   }, [loadAddresses]);
 
-  const resetModalState = React.useCallback(() => {
-    setModalOpen(false);
-    setEditing(null);
-    setSaving(false);
-    setFormErrors({});
-    setMapLoaded(false);
-    setForm(initialForm("Shipping"));
-    setMapCenter(defaultCenter);
-    setMarkerPosition(defaultCenter);
-  }, []);
-
   const openAdd = (type: AddressType) => {
     setEditing(null);
     setForm(initialForm(type));
     setFormErrors({});
     setMapCenter(defaultCenter);
     setMarkerPosition(defaultCenter);
+    setMapLoaded(false);
     setModalOpen(true);
   };
 
@@ -440,6 +418,7 @@ export default function AddressPage() {
     setFormErrors({});
     setMapCenter({ lat, lng });
     setMarkerPosition({ lat, lng });
+    setMapLoaded(false);
     setModalOpen(true);
   };
 
@@ -643,6 +622,12 @@ export default function AddressPage() {
         editing ? "Address updated successfully." : "Address added successfully.",
         "success"
       );
+    } catch {
+      setFormErrors((prev) => ({
+        ...prev,
+        general: "Network error while saving address",
+      }));
+      showToast("Network error while saving address.", "error");
     } finally {
       setSaving(false);
     }
@@ -676,6 +661,8 @@ export default function AddressPage() {
       setDeleteTarget(null);
       await loadAddresses();
       showToast("Address deleted successfully.", "success");
+    } catch {
+      showToast("Network error while deleting address.", "error");
     } finally {
       setDeletingId(null);
     }
@@ -706,6 +693,8 @@ export default function AddressPage() {
 
       await loadAddresses();
       showToast("Default address updated.", "success");
+    } catch {
+      showToast("Network error while setting default address.", "error");
     } finally {
       setDefaultingId(null);
     }
@@ -865,40 +854,9 @@ export default function AddressPage() {
     );
   };
 
-  const Field = ({
-    label,
-    errorText,
-    required,
-    htmlFor,
-    children,
-  }: {
-    label: string;
-    errorText?: string;
-    required?: boolean;
-    htmlFor?: string;
-    children: React.ReactNode;
-  }) => {
-    return (
-      <div>
-        <label
-          htmlFor={htmlFor}
-          className="mb-2 block text-[13px] font-medium text-[#d6dbeb]"
-        >
-          {label} {required ? <span className="text-red-300">*</span> : null}
-        </label>
-
-        {children}
-
-        {errorText ? (
-          <p className="mt-2 text-[12px] text-red-300">{errorText}</p>
-        ) : null}
-      </div>
-    );
-  };
-
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref="/profile" />
 
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
 
@@ -1126,456 +1084,23 @@ export default function AddressPage() {
       </main>
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-[4px]">
-          <div className="flex h-full items-start justify-center overflow-y-auto p-4 sm:p-6">
-            <div className="my-6 w-full max-w-[1120px] overflow-hidden rounded-[28px] border border-[#26293a] bg-[#11121a] shadow-[0_30px_100px_rgba(0,0,0,0.6)]">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#26293a] px-5 py-4 sm:px-6">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
-                    {editing ? "Update saved address" : "Create new address"}
-                  </div>
-
-                  <div className="mt-1 text-[22px] font-semibold text-white">
-                    {editing ? "Edit Address" : "Add Address"}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={resetModalState}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
-                  aria-label="Close modal"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <form onSubmit={handleSaveAddress}>
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_420px]">
-                  <div className="border-b border-[#26293a] p-5 sm:p-6 lg:border-b-0 lg:border-r">
-                    {formErrors.general ? (
-                      <div className="mb-5 rounded-[18px] border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                        {formErrors.general}
-                      </div>
-                    ) : null}
-
-                    {loadError ? (
-                      <div className="mb-5 rounded-[18px] border border-yellow-500/25 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
-                        Google Maps failed to load. Check your API key and
-                        allowed referrers.
-                      </div>
-                    ) : null}
-
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                      <Field label="Type" required htmlFor="type">
-                        <select
-                          id="type"
-                          name="type"
-                          value={form.type}
-                          onChange={handleFormChange}
-                          className={inputClass}
-                          aria-label="Type"
-                        >
-                          <option value="Shipping">Shipping</option>
-                          <option value="Billing">Billing</option>
-                        </select>
-                      </Field>
-
-                      <Field label="Label" required htmlFor="label">
-                        <select
-                          id="label"
-                          name="label"
-                          value={form.label}
-                          onChange={handleFormChange}
-                          className={inputClass}
-                          aria-label="Label"
-                        >
-                          <option value="Home">Home</option>
-                          <option value="Work">Work</option>
-                          <option value="Other">Other</option>
-                        </select>
-                      </Field>
-
-                      <div className="md:col-span-2">
-                        <Field
-                          label="Email"
-                          errorText={formErrors.email}
-                          htmlFor="email"
-                        >
-                          <input
-                            id="email"
-                            type="email"
-                            name="email"
-                            value={form.email}
-                            onChange={handleFormChange}
-                            placeholder="email@example.com"
-                            className={inputClass}
-                            autoComplete="email"
-                            aria-label="Email"
-                          />
-                        </Field>
-                      </div>
-
-                      <Field
-                        label="First Name"
-                        required
-                        errorText={formErrors.firstName}
-                        htmlFor="firstName"
-                      >
-                        <input
-                          id="firstName"
-                          type="text"
-                          name="firstName"
-                          value={form.firstName}
-                          onChange={handleFormChange}
-                          placeholder="First name"
-                          className={inputClass}
-                          autoComplete="given-name"
-                          aria-label="First Name"
-                        />
-                      </Field>
-
-                      <Field
-                        label="Last Name"
-                        required
-                        errorText={formErrors.lastName}
-                        htmlFor="lastName"
-                      >
-                        <input
-                          id="lastName"
-                          type="text"
-                          name="lastName"
-                          value={form.lastName}
-                          onChange={handleFormChange}
-                          placeholder="Last name"
-                          className={inputClass}
-                          autoComplete="family-name"
-                          aria-label="Last Name"
-                        />
-                      </Field>
-
-                      <Field
-                        label="Phone"
-                        required
-                        errorText={formErrors.phone}
-                        htmlFor="phone"
-                      >
-                        <input
-                          id="phone"
-                          type="tel"
-                          name="phone"
-                          value={form.phone}
-                          onChange={handleFormChange}
-                          placeholder="98xxxxxxxx"
-                          className={inputClass}
-                          inputMode="numeric"
-                          autoComplete="tel"
-                          aria-label="Phone"
-                        />
-                      </Field>
-
-                      <Field label="Country" htmlFor="country">
-                        <input
-                          id="country"
-                          type="text"
-                          name="country"
-                          value={form.country}
-                          onChange={handleFormChange}
-                          className={`${inputClass} opacity-80`}
-                          autoComplete="country-name"
-                          aria-label="Country"
-                        />
-                      </Field>
-
-                      <Field
-                        label="Province"
-                        required
-                        errorText={formErrors.provinceId}
-                        htmlFor="provinceId"
-                      >
-                        <select
-                          id="provinceId"
-                          name="provinceId"
-                          value={form.provinceId}
-                          onChange={handleFormChange}
-                          className={inputClass}
-                          aria-label="Province"
-                        >
-                          <option value="">Select Province</option>
-                          {NEPAL_PROVINCES.map((p: Province) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-
-                      <Field
-                        label="District"
-                        required
-                        errorText={formErrors.district}
-                        htmlFor="district"
-                      >
-                        <select
-                          id="district"
-                          name="district"
-                          value={form.district}
-                          onChange={handleFormChange}
-                          disabled={!form.provinceId}
-                          className={inputClass}
-                          aria-label="District"
-                        >
-                          <option value="">
-                            {form.provinceId
-                              ? "Select District"
-                              : "Select Province first"}
-                          </option>
-
-                          {districtsForProvince.map((d: District) => (
-                            <option key={d.name} value={d.name}>
-                              {d.name}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-
-                      <Field
-                        label="City / Municipality"
-                        required
-                        errorText={formErrors.cityOrMunicipality}
-                        htmlFor="cityOrMunicipality"
-                      >
-                        <input
-                          id="cityOrMunicipality"
-                          type="text"
-                          name="cityOrMunicipality"
-                          value={form.cityOrMunicipality}
-                          onChange={handleFormChange}
-                          placeholder="City / Municipality"
-                          disabled={!form.district}
-                          className={inputClass}
-                          autoComplete="address-level2"
-                          aria-label="City / Municipality"
-                        />
-                      </Field>
-
-                      <div className="md:col-span-2">
-                        <Field
-                          label="Address Line"
-                          required
-                          errorText={formErrors.addressLine}
-                          htmlFor="addressLine"
-                        >
-                          <input
-                            id="addressLine"
-                            type="text"
-                            name="addressLine"
-                            value={form.addressLine}
-                            onChange={handleFormChange}
-                            placeholder="House no, ward, landmark, area"
-                            className={inputClass}
-                            autoComplete="address-line1"
-                            aria-label="Address Line"
-                          />
-                        </Field>
-                      </div>
-
-                      <Field label="Street" htmlFor="street">
-                        <input
-                          id="street"
-                          type="text"
-                          name="street"
-                          value={form.street}
-                          onChange={handleFormChange}
-                          placeholder="Street"
-                          className={inputClass}
-                          autoComplete="address-line2"
-                          aria-label="Street"
-                        />
-                      </Field>
-
-                      <Field label="Postal Code" htmlFor="postalCode">
-                        <input
-                          id="postalCode"
-                          type="text"
-                          name="postalCode"
-                          value={form.postalCode}
-                          onChange={handleFormChange}
-                          placeholder="44600"
-                          className={inputClass}
-                          autoComplete="postal-code"
-                          aria-label="Postal Code"
-                        />
-                      </Field>
-
-                      <div className="md:col-span-2">
-                        <label
-                          htmlFor="isDefault"
-                          className="mt-1 flex items-start gap-3 rounded-[20px] border border-[#26293a] bg-[#161824] px-4 py-4 text-sm text-[#d6dbeb]"
-                        >
-                          <input
-                            id="isDefault"
-                            type="checkbox"
-                            name="isDefault"
-                            checked={form.isDefault}
-                            onChange={handleFormChange}
-                            className="mt-1 h-4 w-4 rounded border border-white/20 bg-transparent accent-white"
-                            aria-label="Set as default address"
-                          />
-
-                          <span>
-                            <span className="block font-medium text-white">
-                              Set as default address
-                            </span>
-
-                            <span className="mt-1 block text-[13px] leading-6 text-[#a7aec4]">
-                              This address will be preferred during checkout.
-                            </span>
-                          </span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="p-5 sm:p-6">
-                    <div className="rounded-[24px] border border-[#26293a] bg-[#161824] p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-[18px] font-semibold text-white">
-                            Delivery location picker
-                          </h3>
-
-                          <p className="mt-1 text-[13px] leading-6 text-[#a7aec4]">
-                            Use current location or drag the marker to the exact
-                            delivery point.
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={handleUseCurrentLocation}
-                          className="inline-flex h-[40px] items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 text-[12px] font-semibold uppercase tracking-[0.12em] text-white transition hover:bg-white/10"
-                          aria-label="Use current location"
-                        >
-                          Use Location
-                        </button>
-                      </div>
-
-                      {isLoaded ? (
-                        <>
-                          <div className="mt-4 grid grid-cols-2 gap-3">
-                            <div className="rounded-[18px] border border-[#26293a] bg-[#0d0f17] p-4">
-                              <div className="text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                                Latitude
-                              </div>
-
-                              <div className="mt-2 text-[15px] font-semibold text-white">
-                                {form.lat.toFixed(6)}
-                              </div>
-                            </div>
-
-                            <div className="rounded-[18px] border border-[#26293a] bg-[#0d0f17] p-4">
-                              <div className="text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                                Longitude
-                              </div>
-
-                              <div className="mt-2 text-[15px] font-semibold text-white">
-                                {form.lng.toFixed(6)}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 overflow-hidden rounded-[20px] border border-[#26293a]">
-                            <GoogleMap
-                              mapContainerStyle={{
-                                width: "100%",
-                                height: "340px",
-                              }}
-                              center={mapCenter}
-                              zoom={15}
-                              onLoad={() => setMapLoaded(true)}
-                              options={{
-                                fullscreenControl: false,
-                                streetViewControl: false,
-                                mapTypeControl: false,
-                                zoomControl: true,
-                              }}
-                            >
-                              <Marker
-                                position={markerPosition}
-                                draggable
-                                onDragEnd={handleMarkerDragEnd}
-                              />
-                            </GoogleMap>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="mt-4 rounded-[18px] border border-[#26293a] bg-[#0d0f17] px-4 py-8 text-center text-[14px] text-[#a7aec4]">
-                          Loading Google Maps...
-                        </div>
-                      )}
-
-                      <div className="mt-4 rounded-[18px] border border-[#d6c7ff]/20 bg-[#d6c7ff]/10 px-4 py-3 text-[12px] leading-6 text-[#d6c7ff]">
-                        {mapLoaded
-                          ? "Tip: drag the pin to set the exact delivery location. Latitude and longitude update automatically."
-                          : "Map is loading..."}
-                      </div>
-                    </div>
-
-                    <div className="mt-5 rounded-[24px] border border-[#26293a] bg-[#161824] p-4">
-                      <div className="text-[12px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                        Preview
-                      </div>
-
-                      <div className="mt-3 space-y-2 text-[14px] text-[#d6dbeb]">
-                        <p className="font-semibold text-white">
-                          {`${form.firstName} ${form.lastName}`.trim() ||
-                            "Full name"}
-                        </p>
-
-                        <p>{form.addressLine || "Address line"}</p>
-
-                        <p>
-                          {[form.cityOrMunicipality, form.district, form.provinceId]
-                            .filter(Boolean)
-                            .join(", ") || "City, District, Province"}
-                        </p>
-
-                        <p>{form.phone || "Phone number"}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3 border-t border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-end sm:px-6">
-                  <button
-                    type="button"
-                    onClick={resetModalState}
-                    className={secondaryBtnClass}
-                    aria-label="Cancel"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className={primaryBtnClass}
-                    aria-label={editing ? "Update address" : "Save address"}
-                  >
-                    {saving
-                      ? editing
-                        ? "Updating..."
-                        : "Saving..."
-                      : editing
-                        ? "Update Address"
-                        : "Save Address"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
+        <AddressModal
+          editing={editing}
+          form={form}
+          formErrors={formErrors}
+          saving={saving}
+          mapCenter={mapCenter}
+          markerPosition={markerPosition}
+          mapLoaded={mapLoaded}
+          isLoaded={isLoaded}
+          loadError={loadError}
+          onClose={resetModalState}
+          onSubmit={handleSaveAddress}
+          onChange={handleFormChange}
+          onUseCurrentLocation={handleUseCurrentLocation}
+          onMarkerDragEnd={handleMarkerDragEnd}
+          onMapLoad={() => setMapLoaded(true)}
+        />
       ) : null}
 
       {deleteTarget ? (

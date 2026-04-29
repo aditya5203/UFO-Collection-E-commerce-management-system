@@ -10,19 +10,19 @@ const ReplySchema = new Schema(
 
 const TicketSchema = new Schema(
   {
-    ticketCode: { type: String, required: true, unique: true }, // "#12345"
+    ticketCode: { type: String, required: true, unique: true },
 
     status: {
       type: String,
-      enum: ["Open", "Pending", "Closed"],
+      enum: ["Open", "Pending", "In Progress", "Resolved", "Closed"],
       default: "Open",
+      index: true,
     },
 
     issueType: { type: String, required: true, trim: true },
     subject: { type: String, required: true, trim: true },
     message: { type: String, required: true, trim: true },
 
-    // link ticket to logged in user
     customer: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -30,7 +30,6 @@ const TicketSchema = new Schema(
       index: true,
     },
 
-    // optional references / order linkage
     orderId: { type: String, default: null, trim: true, index: true },
     productId: { type: Schema.Types.ObjectId, ref: "Product", default: null },
     productName: { type: String, default: null, trim: true },

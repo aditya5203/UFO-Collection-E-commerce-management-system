@@ -1,9 +1,9 @@
-// client/app/profile/tickets/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { io, Socket } from "socket.io-client";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
@@ -46,9 +46,25 @@ type TicketDetail = {
   }>;
 };
 
+type TicketSocketPayload = {
+  ticketId?: string;
+  ticketCode?: string;
+  status?: TicketStatus;
+  message?: string;
+  reply?: {
+    id?: string;
+    sender?: "customer" | "admin";
+    text?: string;
+    createdAt?: string;
+  };
+};
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
+const SOCKET_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
+  "http://localhost:8080";
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
 const containerClass =
@@ -70,21 +86,13 @@ function displayStatus(s: TicketStatus) {
 function pillClass(s: TicketStatus) {
   const ds = displayStatus(s);
 
-  if (ds === "Open") {
-    return "border-sky-500/30 bg-sky-500/10 text-sky-200";
-  }
-
-  if (ds === "In Progress") {
+  if (ds === "Open") return "border-sky-500/30 bg-sky-500/10 text-sky-200";
+  if (ds === "In Progress")
     return "border-amber-500/30 bg-amber-500/10 text-amber-200";
-  }
-
-  if (ds === "Resolved") {
+  if (ds === "Resolved")
     return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
-  }
-
-  if (ds === "Closed") {
+  if (ds === "Closed")
     return "border-slate-500/30 bg-slate-500/10 text-slate-200";
-  }
 
   return "border-[#d6c7ff]/30 bg-[#d6c7ff]/10 text-[#d6c7ff]";
 }
@@ -143,11 +151,9 @@ function ToastMessage({
         className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
       >
         <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
-
         <div className="flex-1 text-[13px] font-medium leading-6">
           {toast.message}
         </div>
-
         <button
           type="button"
           onClick={onClose}
@@ -194,9 +200,9 @@ export default function ProfileTicketsPage() {
   const [sending, setSending] = React.useState(false);
   const [modalErr, setModalErr] = React.useState("");
 
-  const [attachmentPreview, setAttachmentPreview] = React.useState<string | null>(
-    null
-  );
+  const [attachmentPreview, setAttachmentPreview] = React.useState<
+    string | null
+  >(null);
 
   const [toast, setToast] = React.useState<{
     type: ToastType;
@@ -205,6 +211,7 @@ export default function ProfileTicketsPage() {
 
   const toastTimerRef = React.useRef<number | null>(null);
   const modalRef = React.useRef<HTMLDivElement | null>(null);
+  const socketRef = React.useRef<Socket | null>(null);
 
   const showToast = React.useCallback(
     (message: string, type: ToastType = "success") => {
@@ -261,7 +268,11 @@ export default function ProfileTicketsPage() {
   }, [q, router, showToast]);
 
   React.useEffect(() => {
-    load();
+    const timer = window.setTimeout(() => {
+      load();
+    }, 450);
+
+    return () => window.clearTimeout(timer);
   }, [load]);
 
   const loadTicket = React.useCallback(
@@ -296,6 +307,7 @@ export default function ProfileTicketsPage() {
                   id: item.productId || null,
                   name: item.productName || "-",
                 },
+                replies: Array.isArray(item.replies) ? item.replies : [],
               }
             : null
         );
@@ -310,6 +322,97 @@ export default function ProfileTicketsPage() {
     },
     [router, showToast]
   );
+
+  React.useEffect(() => {
+    const socket = io(SOCKET_BASE, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      load();
+    });
+
+    socket.on("ticket:updated", (payload: TicketSocketPayload) => {
+      const id = String(payload?.ticketId || "");
+      const status = payload?.status;
+
+      if (!id || !status) return;
+
+      setRows((prev) =>
+        prev.map((row) => (row.id === id ? { ...row, status } : row))
+      );
+
+      setTicket((prev) =>
+        prev && prev.id === id ? { ...prev, status } : prev
+      );
+
+      if (activeId === id) {
+        loadTicket(id);
+      }
+
+      showToast(payload?.message || "Ticket status updated.", "info");
+    });
+
+    socket.on("ticket:reply:new", (payload: TicketSocketPayload) => {
+      const id = String(payload?.ticketId || "");
+      const incoming = payload?.reply;
+
+      if (!id || !incoming?.text) return;
+
+      setRows((prev) =>
+        prev.map((row) =>
+          row.id === id && payload.status
+            ? { ...row, status: payload.status }
+            : row
+        )
+      );
+
+      setTicket((prev) => {
+        if (!prev || prev.id !== id) return prev;
+
+        const replyId = String(incoming.id || "");
+        const exists =
+          replyId && prev.replies.some((r) => String(r.id) === replyId);
+
+        if (exists) {
+          return payload.status ? { ...prev, status: payload.status } : prev;
+        }
+
+        return {
+          ...prev,
+          status: payload.status || prev.status,
+          replies: [
+            ...prev.replies,
+            {
+              id: replyId || `socket-${Date.now()}`,
+              sender: incoming.sender || "admin",
+              text: incoming.text || "",
+              createdAt: incoming.createdAt || new Date().toISOString(),
+            },
+          ],
+        };
+      });
+
+      if (activeId === id) {
+        loadTicket(id);
+      }
+
+      if (incoming.sender === "admin") {
+        showToast("Admin replied to your ticket.", "info");
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [SOCKET_BASE, activeId, load, loadTicket, showToast]);
 
   const openTicket = async (id: string) => {
     setActiveId(id);
@@ -430,11 +533,26 @@ export default function ProfileTicketsPage() {
   };
 
   const filteredRows = React.useMemo(() => {
-    let list = [...rows];
+  const keyword = q.trim().toLowerCase();
+  let list = [...rows];
 
-    if (statusFilter !== "All") {
+  if (keyword) {
+    list = list.filter((row) => {
+      return (
+        String(row.ticketId || "").toLowerCase().includes(keyword) ||
+        String(row.subject || "").toLowerCase().includes(keyword) ||
+        String(row.productName || "").toLowerCase().includes(keyword) ||
+        String(row.orderId || "").toLowerCase().includes(keyword) ||
+        String(row.issueType || "").toLowerCase().includes(keyword)
+      );
+    });
+  }
+
+  if (statusFilter !== "All") {
       list = list.filter(
-        (row) => displayStatus(row.status).toLowerCase() === statusFilter.toLowerCase()
+        (row) =>
+          displayStatus(row.status).toLowerCase() ===
+          statusFilter.toLowerCase()
       );
     }
 
@@ -464,7 +582,7 @@ export default function ProfileTicketsPage() {
 
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref="/profile" />
 
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
 
@@ -497,25 +615,17 @@ export default function ProfileTicketsPage() {
 
                 <p className="mt-3 max-w-[720px] text-[14px] leading-7 text-[#a7aec4] sm:text-[15px]">
                   Track your submitted issues, view admin replies, and continue
-                  conversations with the support team.
+                  conversations with the support team in real time.
                 </p>
 
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <input
-                    value={q}
-                    onChange={(e) => setQ(e.target.value)}
-                    placeholder="Search ticket, subject, product, order..."
-                    className={inputClass}
-                    aria-label="Search support tickets"
-                  />
-
                   <button
                     type="button"
                     onClick={load}
                     disabled={loading}
                     className={secondaryBtnClass}
                   >
-                    {loading ? "Refreshing..." : "Refresh"}
+                    {loading ? "Refreshing..." : "Refresh Tickets"}
                   </button>
                 </div>
               </div>
@@ -552,7 +662,8 @@ export default function ProfileTicketsPage() {
                 </div>
 
                 <div className="mt-1 text-[13px] text-[#a7aec4]">
-                  Filter by ticket status and sort by submitted date.
+                  Search auto-updates while typing. You can also filter by
+                  status and sort by submitted date.
                 </div>
               </div>
 
@@ -576,7 +687,9 @@ export default function ProfileTicketsPage() {
 
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as StatusFilter)
+                }
                 className={inputClass}
                 aria-label="Filter tickets by status"
               >
@@ -598,13 +711,23 @@ export default function ProfileTicketsPage() {
               </select>
             </div>
 
-            <div className="mt-4 text-[13px] text-[#a7aec4]">
-              Showing{" "}
-              <span className="font-semibold text-white">
-                {filteredRows.length}
-              </span>{" "}
-              of <span className="font-semibold text-white">{rows.length}</span>{" "}
-              tickets.
+            <div className="mt-4 flex flex-col gap-2 text-[13px] text-[#a7aec4] sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                Showing{" "}
+                <span className="font-semibold text-white">
+                  {filteredRows.length}
+                </span>{" "}
+                of{" "}
+                <span className="font-semibold text-white">{rows.length}</span>{" "}
+                tickets.
+              </div>
+
+              {q.trim() ? (
+                <div className="text-[#d6c7ff]">
+                  Searching for:{" "}
+                  <span className="font-semibold text-white">{q.trim()}</span>
+                </div>
+              ) : null}
             </div>
           </section>
 
@@ -697,7 +820,8 @@ export default function ProfileTicketsPage() {
                               </div>
 
                               <div className="mt-1 text-[12px] text-[#a7aec4]">
-                                {t.issueType || "-"} • {formatDate(t.submittedAt)}
+                                {t.issueType || "-"} •{" "}
+                                {formatDate(t.submittedAt)}
                               </div>
                             </div>
 
@@ -926,7 +1050,9 @@ export default function ProfileTicketsPage() {
                         {getOrderUrl(ticket.orderId) ? (
                           <button
                             type="button"
-                            onClick={() => router.push(getOrderUrl(ticket.orderId))}
+                            onClick={() =>
+                              router.push(getOrderUrl(ticket.orderId))
+                            }
                             className={`${secondaryBtnClass} mt-4`}
                           >
                             View Order
@@ -964,7 +1090,9 @@ export default function ProfileTicketsPage() {
                         {ticket.imageUrl ? (
                           <button
                             type="button"
-                            onClick={() => setAttachmentPreview(ticket.imageUrl || null)}
+                            onClick={() =>
+                              setAttachmentPreview(ticket.imageUrl || null)
+                            }
                             className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
                           >
                             Fullscreen
@@ -976,7 +1104,9 @@ export default function ProfileTicketsPage() {
                         {ticket.imageUrl ? (
                           <button
                             type="button"
-                            onClick={() => setAttachmentPreview(ticket.imageUrl || null)}
+                            onClick={() =>
+                              setAttachmentPreview(ticket.imageUrl || null)
+                            }
                             className="relative aspect-[16/9] w-full overflow-hidden rounded-[14px] border border-[#26293a]"
                           >
                             <img

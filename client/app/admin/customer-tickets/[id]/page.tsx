@@ -1,9 +1,8 @@
-// client/app/admin/customer-tickets/[id]/page.tsx
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import Link from "next/link";
+import { io, Socket } from "socket.io-client";
 import { useParams, useRouter } from "next/navigation";
 import AdminPageGuard from "../../_components/AdminPageGuard";
 import {
@@ -13,7 +12,7 @@ import {
   normalizeAdminPermissions,
 } from "../../_components/adminPermissions";
 
-type TicketStatus = "Open" | "Pending" | "Closed";
+type TicketStatus = "Open" | "Pending" | "In Progress" | "Resolved" | "Closed";
 
 type TicketDetail = {
   id: string;
@@ -37,9 +36,24 @@ type TicketDetail = {
   }>;
 };
 
+type AdminTicketSocketPayload = {
+  ticketId?: string;
+  ticketCode?: string;
+  status?: TicketStatus;
+  reply?: {
+    id?: string;
+    sender?: "customer" | "admin";
+    text?: string;
+    createdAt?: string;
+  };
+};
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
+const SOCKET_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
+  "http://localhost:8080";
 
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 const panelClass =
@@ -49,15 +63,49 @@ const primaryBtnClass =
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
 
+function displayStatus(status: TicketStatus) {
+  if (status === "Pending") return "In Progress";
+  return status;
+}
+
 function statusTone(s: TicketStatus) {
-  if (s === "Open") return "border-sky-400/20 bg-sky-500/15 text-sky-300";
-  if (s === "Pending") return "border-amber-400/20 bg-amber-500/15 text-amber-300";
-  return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+  const status = displayStatus(s);
+
+  if (status === "Open") return "border-sky-400/20 bg-sky-500/15 text-sky-300";
+  if (status === "In Progress")
+    return "border-amber-400/20 bg-amber-500/15 text-amber-300";
+  if (status === "Resolved")
+    return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+
+  return "border-slate-400/20 bg-slate-500/15 text-slate-300";
 }
 
 function formatDateShort(iso?: string) {
   if (!iso) return "-";
-  return String(iso).slice(0, 10);
+
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "-";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 19);
+
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 async function safeJson(res: Response) {
@@ -82,10 +130,15 @@ export default function AdminTicketDetailsPage() {
   const [ticket, setTicket] = React.useState<TicketDetail | null>(null);
   const [status, setStatus] = React.useState<TicketStatus>("Open");
   const [reply, setReply] = React.useState("");
+  const [attachmentPreview, setAttachmentPreview] = React.useState<
+    string | null
+  >(null);
 
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
   const [permissions, setPermissions] =
     React.useState<AdminPermissions | null>(null);
+
+  const socketRef = React.useRef<Socket | null>(null);
 
   const canReply = hasPermission(role, permissions, "ticketReply");
   const canClose = hasPermission(role, permissions, "ticketClose");
@@ -102,8 +155,8 @@ export default function AdminTicketDetailsPage() {
         });
 
         if (!res.ok) return;
-        const body = (await safeJson(res)) as AdminSettingsResponse;
 
+        const body = (await safeJson(res)) as AdminSettingsResponse;
         const nextRole = (body?.profile?.role || "admin") as
           | "admin"
           | "superadmin";
@@ -125,7 +178,27 @@ export default function AdminTicketDetailsPage() {
     };
   }, []);
 
+  React.useEffect(() => {
+    if (!attachmentPreview) return;
+
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAttachmentPreview(null);
+    };
+
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [attachmentPreview]);
+
   const load = React.useCallback(async () => {
+    if (!id) return;
+
     setLoading(true);
     setErr("");
     setOk("");
@@ -142,8 +215,18 @@ export default function AdminTicketDetailsPage() {
         throw new Error((data as any)?.message || "Failed to load ticket");
       }
 
-      setTicket((data as any).item);
-      setStatus((data as any).item.status);
+      const item = (data as any).item || null;
+
+      setTicket(
+        item
+          ? {
+              ...item,
+              replies: Array.isArray(item.replies) ? item.replies : [],
+            }
+          : null
+      );
+
+      setStatus(item?.status || "Open");
     } catch (e: any) {
       setErr(e?.message || "Something went wrong.");
       setTicket(null);
@@ -153,13 +236,84 @@ export default function AdminTicketDetailsPage() {
   }, [id]);
 
   React.useEffect(() => {
-    if (!id) return;
     load();
-  }, [id, load]);
+  }, [load]);
+
+  React.useEffect(() => {
+    if (!id) return;
+
+    const socket = io(SOCKET_BASE, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      load();
+    });
+
+    socket.on("admin:ticket:updated", (payload: AdminTicketSocketPayload) => {
+      const payloadId = String(payload?.ticketId || "");
+      const nextStatus = payload?.status;
+
+      if (payloadId !== id || !nextStatus) return;
+
+      setStatus(nextStatus);
+      setTicket((prev) =>
+        prev ? { ...prev, status: nextStatus } : prev
+      );
+    });
+
+    socket.on("admin:ticket:reply:new", (payload: AdminTicketSocketPayload) => {
+      const payloadId = String(payload?.ticketId || "");
+      const incoming = payload?.reply;
+
+      if (payloadId !== id || !incoming?.text) return;
+
+      setTicket((prev) => {
+        if (!prev) return prev;
+
+        const replyId = String(incoming.id || "");
+        const exists =
+          replyId && prev.replies.some((r) => String(r.id) === replyId);
+
+        if (exists) {
+          return payload.status ? { ...prev, status: payload.status } : prev;
+        }
+
+        return {
+          ...prev,
+          status: payload.status || prev.status,
+          replies: [
+            ...prev.replies,
+            {
+              id: replyId || `socket-${Date.now()}`,
+              sender: incoming.sender || "customer",
+              text: incoming.text || "",
+              createdAt: incoming.createdAt || new Date().toISOString(),
+            },
+          ],
+        };
+      });
+
+      if (payload.status) {
+        setStatus(payload.status);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [SOCKET_BASE, id, load]);
 
   const saveStatus = async (nextStatus: TicketStatus) => {
     if (!canClose) {
-      setErr("You do not have permission to close or update ticket status.");
+      setErr("You do not have permission to update ticket status.");
       return;
     }
 
@@ -182,7 +336,10 @@ export default function AdminTicketDetailsPage() {
       }
 
       setStatus(nextStatus);
-      setOk("Status updated.");
+      setTicket((prev) =>
+        prev ? { ...prev, status: nextStatus } : prev
+      );
+      setOk("Status updated successfully.");
       await load();
     } catch (e: any) {
       setErr(e?.message || "Failed to update status.");
@@ -198,7 +355,11 @@ export default function AdminTicketDetailsPage() {
     }
 
     const text = reply.trim();
-    if (!text) return;
+
+    if (!text) {
+      setErr("Please write a reply first.");
+      return;
+    }
 
     setSaving(true);
     setErr("");
@@ -219,7 +380,7 @@ export default function AdminTicketDetailsPage() {
       }
 
       setReply("");
-      setOk("Reply sent.");
+      setOk("Reply sent successfully.");
       await load();
     } catch (e: any) {
       setErr(e?.message || "Failed to send reply.");
@@ -252,7 +413,11 @@ export default function AdminTicketDetailsPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <button type="button" onClick={() => router.back()} className={secondaryBtnClass}>
+                <button
+                  type="button"
+                  onClick={() => router.push("/admin/customer-tickets")}
+                  className={secondaryBtnClass}
+                >
                   Back
                 </button>
 
@@ -278,7 +443,9 @@ export default function AdminTicketDetailsPage() {
           {loading ? (
             <TicketSkeleton />
           ) : !ticket ? (
-            <div className={`${panelClass} p-10 text-center text-[13px] text-[#a7aec4]`}>
+            <div
+              className={`${panelClass} p-10 text-center text-[13px] text-[#a7aec4]`}
+            >
               Ticket not found.
             </div>
           ) : (
@@ -312,18 +479,24 @@ export default function AdminTicketDetailsPage() {
                       >
                         Update Status
                       </label>
+
                       <select
                         id="ticket-status"
                         value={status}
-                        onChange={(e) => saveStatus(e.target.value as TicketStatus)}
+                        onChange={(e) =>
+                          saveStatus(e.target.value as TicketStatus)
+                        }
                         disabled={saving}
                         className="h-[48px] rounded-full border border-white/10 bg-white/5 px-4 text-[13px] text-white outline-none transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <option value="Open" className="bg-[#11121a]">
                           Open
                         </option>
-                        <option value="Pending" className="bg-[#11121a]">
-                          Pending
+                        <option value="In Progress" className="bg-[#11121a]">
+                          In Progress
+                        </option>
+                        <option value="Resolved" className="bg-[#11121a]">
+                          Resolved
                         </option>
                         <option value="Closed" className="bg-[#11121a]">
                           Closed
@@ -344,7 +517,10 @@ export default function AdminTicketDetailsPage() {
                   <Divider />
 
                   <InfoSection title="Product">
-                    <InfoBlock label="Product Name" value={ticket.product.name || "-"} />
+                    <InfoBlock
+                      label="Product Name"
+                      value={ticket.product.name || "-"}
+                    />
 
                     {ticket.product.id ? (
                       <Link
@@ -385,19 +561,39 @@ export default function AdminTicketDetailsPage() {
                   </div>
 
                   <div className="mt-6">
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                      Attachment
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                        Attachment
+                      </div>
+
+                      {ticket.imageUrl ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAttachmentPreview(ticket.imageUrl || null)
+                          }
+                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
+                        >
+                          Fullscreen
+                        </button>
+                      ) : null}
                     </div>
 
                     <div className="mt-3 rounded-[18px] border border-white/10 bg-[#0d0f17] p-4">
                       {ticket.imageUrl ? (
-                        <div className="relative aspect-[16/9] w-full overflow-hidden rounded-[16px] border border-white/10">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAttachmentPreview(ticket.imageUrl || null)
+                          }
+                          className="relative aspect-[16/9] w-full overflow-hidden rounded-[16px] border border-white/10"
+                        >
                           <img
                             src={ticket.imageUrl}
                             alt="Ticket attachment"
-                            className="h-full w-full object-cover"
+                            className="h-full w-full object-cover transition hover:scale-[1.02]"
                           />
-                        </div>
+                        </button>
                       ) : (
                         <div className="py-10 text-center text-[13px] text-[#a7aec4]">
                           No image uploaded.
@@ -419,7 +615,7 @@ export default function AdminTicketDetailsPage() {
                             className={[
                               "rounded-[18px] border px-4 py-3",
                               r.sender === "admin"
-                                ? "border-blue-400/20 bg-blue-500/10"
+                                ? "border-[#d6c7ff]/25 bg-[#d6c7ff]/10"
                                 : "border-white/10 bg-white/[0.03]",
                             ].join(" ")}
                           >
@@ -427,8 +623,9 @@ export default function AdminTicketDetailsPage() {
                               <div className="text-[13px] font-semibold text-white">
                                 {r.sender === "admin" ? "Admin" : "Customer"}
                               </div>
+
                               <div className="text-[11px] text-[#7f879f]">
-                                {String(r.createdAt)}
+                                {formatDateTime(r.createdAt)}
                               </div>
                             </div>
 
@@ -460,10 +657,19 @@ export default function AdminTicketDetailsPage() {
                         onChange={(e) => setReply(e.target.value)}
                         rows={4}
                         placeholder="Write a reply..."
-                        className="mt-3 w-full resize-none rounded-[18px] border border-white/10 bg-[#0d0f17] px-4 py-3 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]"
+                        className="mt-3 w-full resize-none rounded-[18px] border border-white/10 bg-[#0d0f17] px-4 py-3 text-[13px] leading-7 text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]"
                       />
 
-                      <div className="mt-4 flex justify-end">
+                      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setReply("")}
+                          disabled={saving || !reply}
+                          className={secondaryBtnClass}
+                        >
+                          Clear
+                        </button>
+
                         <button
                           type="button"
                           onClick={sendReply}
@@ -481,6 +687,40 @@ export default function AdminTicketDetailsPage() {
           )}
         </div>
       </div>
+
+      {attachmentPreview ? (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/85 p-4 backdrop-blur-[4px]">
+          <div className="relative w-full max-w-[1100px] overflow-hidden rounded-[26px] border border-[#26293a] bg-[#11121a] shadow-[0_30px_100px_rgba(0,0,0,0.75)]">
+            <div className="flex items-center justify-between border-b border-[#26293a] px-5 py-4">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+                  Attachment Preview
+                </div>
+                <div className="mt-1 text-[18px] font-semibold text-white">
+                  Support Ticket Image
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAttachmentPreview(null)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
+                aria-label="Close attachment preview"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="max-h-[78vh] overflow-auto bg-[#0d0f17] p-4">
+              <img
+                src={attachmentPreview}
+                alt="Fullscreen ticket attachment"
+                className="mx-auto max-h-[72vh] w-auto max-w-full rounded-[18px] object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AdminPageGuard>
   );
 }
@@ -493,7 +733,7 @@ function StatusPill({ status }: { status: TicketStatus }) {
         statusTone(status),
       ].join(" ")}
     >
-      {status}
+      {displayStatus(status)}
     </span>
   );
 }

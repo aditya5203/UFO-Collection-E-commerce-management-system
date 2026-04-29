@@ -7,6 +7,7 @@ import { noAiReply } from "../bot/no-ai";
 import { botReply } from "../bot/rivescript";
 import { aiReply } from "./ai.service";
 import { notificationService } from "../../notifications/services/notification.service";
+import { getIO } from "../../../socket";
 
 function cleanText(t: string) {
   return String(t || "").trim().slice(0, 2000);
@@ -32,30 +33,55 @@ function wantsHumanAgent(text: string) {
     "agent sanga kura",
     "human",
   ];
+
   return keywords.some((k) => t === k || t.includes(k));
 }
 
+function emitChatMessage(conversationId: string, message: any) {
+  try {
+    getIO().to(`chat:${conversationId}`).emit("chat:message", {
+      conversationId,
+      message,
+    });
+  } catch (e: any) {
+    console.log("Socket chat:message emit failed:", e?.message);
+  }
+}
+
+function emitChatUpdated(conversationId: string, conversation: any) {
+  try {
+    getIO().to(`chat:${conversationId}`).emit("chat:updated", {
+      conversationId,
+      conversation,
+    });
+  } catch (e: any) {
+    console.log("Socket chat:updated emit failed:", e?.message);
+  }
+}
+
 export const chatService = {
-  async openForCustomer(userId: string, orderId?: string) {
+  async openForCustomer(userId: string, orderId?: string, forceNew = false) {
     const uid = new Types.ObjectId(userId);
 
-    if (orderId) {
-      const existing = await ConversationModel.findOne({
+    if (!forceNew) {
+      if (orderId) {
+        const existing = await ConversationModel.findOne({
+          userId: uid,
+          orderId,
+          status: "OPEN",
+        }).lean();
+
+        if (existing) return existing;
+      }
+
+      const open = await ConversationModel.findOne({
         userId: uid,
-        orderId,
         status: "OPEN",
+        ...(orderId ? { orderId } : {}),
       }).lean();
 
-      if (existing) return existing;
+      if (open) return open;
     }
-
-    const open = await ConversationModel.findOne({
-      userId: uid,
-      status: "OPEN",
-      ...(orderId ? { orderId } : {}),
-    }).lean();
-
-    if (open) return open;
 
     const created = await ConversationModel.create({
       userId: uid,
@@ -64,7 +90,7 @@ export const chatService = {
       aiDisabled: false,
     });
 
-    await MessageModel.create({
+    const systemMsg = await MessageModel.create({
       conversationId: created._id,
       senderRole: "system",
       senderId: null,
@@ -73,12 +99,18 @@ export const chatService = {
       isReadByAdmin: false,
     });
 
+    emitChatMessage(String(created._id), systemMsg.toObject());
+
     try {
-      const customer: any = await User.findById(userId).select("name email").lean();
+      const customer: any = await User.findById(userId)
+        .select("name email")
+        .lean();
 
       await notificationService.createAdminForAll({
         title: "New live chat opened",
-        message: `${customer?.name || customer?.email || "Customer"} opened a new chat.`,
+        message: `${
+          customer?.name || customer?.email || "Customer"
+        } opened a new chat.`,
         type: "chat",
         link: `/admin/chat`,
         meta: {
@@ -105,9 +137,7 @@ export const chatService = {
   },
 
   async listAdminConversations() {
-    return ConversationModel.find()
-      .sort({ updatedAt: -1 })
-      .lean();
+    return ConversationModel.find().sort({ updatedAt: -1 }).lean();
   },
 
   async getMessages(conversationId: string, limit = 50) {
@@ -119,7 +149,11 @@ export const chatService = {
       .lean();
   },
 
-  async customerSend(userId: string, conversationId: string, dto: SendMessageDTO) {
+  async customerSend(
+    userId: string,
+    conversationId: string,
+    dto: SendMessageDTO
+  ) {
     const text = cleanText(dto.text);
     if (!text) throw new Error("Message is empty");
 
@@ -141,12 +175,19 @@ export const chatService = {
     conv.lastMessageAt = new Date();
     await conv.save();
 
+    emitChatMessage(String(conv._id), userMsg.toObject());
+
     try {
-      const customer: any = await User.findById(userId).select("name email").lean();
+      const customer: any = await User.findById(userId)
+        .select("name email")
+        .lean();
 
       await notificationService.createAdminForAll({
         title: "New chat message",
-        message: `${customer?.name || customer?.email || "Customer"} sent: "${text.slice(0, 60)}${text.length > 60 ? "..." : ""}"`,
+        message: `${customer?.name || customer?.email || "Customer"} sent: "${text.slice(
+          0,
+          60
+        )}${text.length > 60 ? "..." : ""}"`,
         type: "chat",
         link: `/admin/chat`,
         meta: {
@@ -166,7 +207,7 @@ export const chatService = {
       conv.aiDisabled = true;
       await conv.save();
 
-      await MessageModel.create({
+      const systemMsg = await MessageModel.create({
         conversationId: conv._id,
         senderRole: "system",
         senderId: null,
@@ -176,12 +217,19 @@ export const chatService = {
         isReadByAdmin: false,
       });
 
+      emitChatMessage(String(conv._id), systemMsg.toObject());
+      emitChatUpdated(String(conv._id), conv.toObject());
+
       try {
-        const customer: any = await User.findById(userId).select("name email").lean();
+        const customer: any = await User.findById(userId)
+          .select("name email")
+          .lean();
 
         await notificationService.createAdminForAll({
           title: "Human agent requested",
-          message: `${customer?.name || customer?.email || "Customer"} requested a human agent.`,
+          message: `${
+            customer?.name || customer?.email || "Customer"
+          } requested a human agent.`,
           type: "chat",
           link: `/admin/chat`,
           meta: {
@@ -212,7 +260,10 @@ export const chatService = {
         .reverse()
         .filter((m) => m.senderRole !== "system")
         .map((m) => ({
-          role: m.senderRole === "user" ? ("user" as const) : ("assistant" as const),
+          role:
+            m.senderRole === "user"
+              ? ("user" as const)
+              : ("assistant" as const),
           content: m.text,
         }));
 
@@ -234,7 +285,7 @@ export const chatService = {
         replyText = noAiReply(text);
       }
 
-      await MessageModel.create({
+      const botMsg = await MessageModel.create({
         conversationId: conv._id,
         senderRole: "bot",
         senderId: null,
@@ -246,12 +297,19 @@ export const chatService = {
       conv.lastMessage = replyText;
       conv.lastMessageAt = new Date();
       await conv.save();
+
+      emitChatMessage(String(conv._id), botMsg.toObject());
+      emitChatUpdated(String(conv._id), conv.toObject());
     }
 
     return userMsg.toObject();
   },
 
-  async adminSend(adminId: string, conversationId: string, dto: SendMessageDTO) {
+  async adminSend(
+    adminId: string,
+    conversationId: string,
+    dto: SendMessageDTO
+  ) {
     const text = cleanText(dto.text);
     if (!text) throw new Error("Message is empty");
 
@@ -265,7 +323,7 @@ export const chatService = {
       conv.adminId = new Types.ObjectId(adminId);
       conv.aiDisabled = true;
 
-      await MessageModel.create({
+      const systemMsg = await MessageModel.create({
         conversationId: conv._id,
         senderRole: "system",
         senderId: null,
@@ -273,6 +331,8 @@ export const chatService = {
         isReadByUser: true,
         isReadByAdmin: true,
       });
+
+      emitChatMessage(String(conv._id), systemMsg.toObject());
     }
 
     const msg = await MessageModel.create({
@@ -288,8 +348,12 @@ export const chatService = {
     conv.lastMessageAt = new Date();
     await conv.save();
 
+    emitChatMessage(String(conv._id), msg.toObject());
+    emitChatUpdated(String(conv._id), conv.toObject());
+
     try {
       const customerId = String(conv.userId || "");
+
       if (customerId) {
         await notificationService.createCustomer({
           userId: customerId,
@@ -320,7 +384,7 @@ export const chatService = {
     conv.aiDisabled = true;
     await conv.save();
 
-    await MessageModel.create({
+    const systemMsg = await MessageModel.create({
       conversationId: conv._id,
       senderRole: "system",
       senderId: null,
@@ -328,6 +392,9 @@ export const chatService = {
       isReadByUser: true,
       isReadByAdmin: true,
     });
+
+    emitChatMessage(String(conv._id), systemMsg.toObject());
+    emitChatUpdated(String(conv._id), conv.toObject());
 
     return conv.toObject();
   },
@@ -344,7 +411,7 @@ export const chatService = {
     conv.aiDisabled = true;
     await conv.save();
 
-    await MessageModel.create({
+    const systemMsg = await MessageModel.create({
       conversationId: conv._id,
       senderRole: "system",
       senderId: null,
@@ -352,6 +419,9 @@ export const chatService = {
       isReadByUser: true,
       isReadByAdmin: true,
     });
+
+    emitChatMessage(String(conv._id), systemMsg.toObject());
+    emitChatUpdated(String(conv._id), conv.toObject());
 
     return conv.toObject();
   },

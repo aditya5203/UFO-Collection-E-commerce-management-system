@@ -4,6 +4,7 @@ import { notificationService } from "../../notifications/services/notification.s
 import { Ticket } from "../../../models/Ticket.model";
 import { User } from "../../../models/User.model";
 import { Product } from "../../../models/Product.model";
+import { getIO } from "../../../socket";
 
 function toDateOnly(d: any) {
   try {
@@ -23,6 +24,14 @@ async function resolveCustomerIdFromTicket(ticket: any) {
 
   const u: any = await User.findOne({ email }).select("_id").lean();
   return String(u?._id || "");
+}
+
+function emitSafe(fn: () => void) {
+  try {
+    fn();
+  } catch (e: any) {
+    console.log("Ticket socket emit failed (ignored):", e?.message);
+  }
 }
 
 export const adminTicketController = {
@@ -152,7 +161,11 @@ export const adminTicketController = {
       const id = String(req.params.id || "");
       const status = String(req.body.status || "") as TicketStatus;
 
-      if (!["Open", "Pending", "Closed"].includes(status)) {
+      if (
+        !["Open", "Pending", "In Progress", "Resolved", "Closed"].includes(
+          status
+        )
+      ) {
         res.status(400).json({
           success: false,
           message: "Invalid status",
@@ -172,7 +185,8 @@ export const adminTicketController = {
         return;
       }
 
-      const updated = await ticketService.updateStatus(id, status);
+      const updated: any = await ticketService.updateStatus(id, status);
+
       if (!updated) {
         res.status(404).json({
           success: false,
@@ -181,9 +195,9 @@ export const adminTicketController = {
         return;
       }
 
-      if (String(before.status) !== String(status)) {
-        const customerId = await resolveCustomerIdFromTicket(before);
+      const customerId = await resolveCustomerIdFromTicket(before);
 
+      if (String(before.status) !== String(status)) {
         if (customerId) {
           try {
             await notificationService.createCustomer({
@@ -196,6 +210,27 @@ export const adminTicketController = {
             });
           } catch {}
         }
+
+        emitSafe(() => {
+          const io = getIO();
+
+          if (customerId) {
+            io.to(`user:${customerId}`).emit("ticket:updated", {
+              ticketId: id,
+              ticketCode: before.ticketCode,
+              status,
+              message: `Your ticket ${before.ticketCode} is now ${status}.`,
+              updatedAt: new Date().toISOString(),
+            });
+          }
+
+          io.to("admins").emit("admin:ticket:updated", {
+            ticketId: id,
+            ticketCode: before.ticketCode,
+            status,
+            updatedAt: new Date().toISOString(),
+          });
+        });
       }
 
       res.json({ success: true, item: updated });
@@ -224,6 +259,7 @@ export const adminTicketController = {
       }
 
       const updated: any = await ticketService.addAdminReply(id, text);
+
       if (!updated) {
         res.status(404).json({
           success: false,
@@ -233,9 +269,13 @@ export const adminTicketController = {
       }
 
       const fresh: any = await Ticket.findById(id)
-        .select("customer customerEmail ticketCode")
+        .select("customer customerEmail ticketCode status replies")
         .lean();
+
       const customerId = await resolveCustomerIdFromTicket(fresh);
+      const lastReply = Array.isArray(fresh?.replies)
+        ? fresh.replies[fresh.replies.length - 1]
+        : null;
 
       if (customerId) {
         try {
@@ -249,6 +289,29 @@ export const adminTicketController = {
           });
         } catch {}
       }
+
+      emitSafe(() => {
+        const io = getIO();
+
+        const payload = {
+          ticketId: id,
+          ticketCode: fresh?.ticketCode,
+          status: fresh?.status || updated?.status,
+          reply: {
+            id: lastReply?._id || "",
+            sender: "admin",
+            text,
+            createdAt: lastReply?.createdAt || new Date().toISOString(),
+          },
+          updatedAt: new Date().toISOString(),
+        };
+
+        if (customerId) {
+          io.to(`user:${customerId}`).emit("ticket:reply:new", payload);
+        }
+
+        io.to("admins").emit("admin:ticket:reply:new", payload);
+      });
 
       res.json({ success: true, item: updated });
       return;

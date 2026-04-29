@@ -1,9 +1,9 @@
-// client/app/admin/customer-tickets/page.tsx
 "use client";
 
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { io, Socket } from "socket.io-client";
 import AdminPageGuard from "../_components/AdminPageGuard";
 import {
   AdminPermissions,
@@ -12,7 +12,9 @@ import {
   normalizeAdminPermissions,
 } from "../_components/adminPermissions";
 
-type TicketStatus = "Open" | "Pending" | "Closed";
+type TicketStatus = "Open" | "Pending" | "In Progress" | "Resolved" | "Closed";
+type StatusFilter = "All" | TicketStatus;
+type SortValue = "newest" | "oldest";
 
 type TicketRow = {
   id: string;
@@ -28,9 +30,27 @@ type TicketRow = {
   status: TicketStatus;
 };
 
+type AdminTicketSocketPayload = {
+  ticketId?: string;
+  ticketCode?: string;
+  status?: TicketStatus;
+  customerName?: string;
+  customerEmail?: string;
+  subject?: string;
+  issueType?: string;
+  productName?: string | null;
+  orderId?: string | null;
+  size?: string | null;
+  color?: string | null;
+  submittedAt?: string;
+};
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 const API = `${API_BASE}/api`;
+const SOCKET_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
+  "http://localhost:8080";
 
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 const panelClass =
@@ -39,6 +59,8 @@ const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+const inputClass =
+  "h-[48px] w-full rounded-full border border-white/10 bg-white/5 px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]";
 
 function showTicketId(v: string) {
   const s = String(v || "").trim();
@@ -46,21 +68,39 @@ function showTicketId(v: string) {
   return s.startsWith("#") ? s : `#${s}`;
 }
 
-function formatDateShort(iso?: string) {
-  if (!iso) return "-";
-  return String(iso).slice(0, 10);
+function displayStatus(status: TicketStatus) {
+  if (status === "Pending") return "In Progress";
+  return status;
 }
 
 function statusTone(status: TicketStatus) {
-  if (status === "Open") {
-    return "border-sky-400/20 bg-sky-500/15 text-sky-300";
-  }
+  const s = displayStatus(status);
 
-  if (status === "Pending") {
+  if (s === "Open") return "border-sky-400/20 bg-sky-500/15 text-sky-300";
+  if (s === "In Progress")
     return "border-amber-400/20 bg-amber-500/15 text-amber-300";
-  }
+  if (s === "Resolved")
+    return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+  return "border-slate-400/20 bg-slate-500/15 text-slate-300";
+}
 
-  return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+function formatDateShort(iso?: string) {
+  if (!iso) return "-";
+
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+}
+
+function parseDateSafe(value?: string) {
+  if (!value) return 0;
+  const t = Date.parse(value);
+  return Number.isFinite(t) ? t : 0;
 }
 
 async function safeJson(res: Response) {
@@ -78,9 +118,15 @@ export default function AdminCustomerTicketsPage() {
   const [rows, setRows] = React.useState<TicketRow[]>([]);
   const [err, setErr] = React.useState("");
 
+  const [statusFilter, setStatusFilter] =
+    React.useState<StatusFilter>("All");
+  const [sortValue, setSortValue] = React.useState<SortValue>("newest");
+
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
   const [permissions, setPermissions] =
     React.useState<AdminPermissions | null>(null);
+
+  const socketRef = React.useRef<Socket | null>(null);
 
   const canReply = hasPermission(role, permissions, "ticketReply");
   const canClose = hasPermission(role, permissions, "ticketClose");
@@ -97,8 +143,8 @@ export default function AdminCustomerTicketsPage() {
         });
 
         if (!res.ok) return;
-        const body = (await safeJson(res)) as AdminSettingsResponse;
 
+        const body = (await safeJson(res)) as AdminSettingsResponse;
         const nextRole = (body?.profile?.role || "admin") as
           | "admin"
           | "superadmin";
@@ -131,6 +177,7 @@ export default function AdminCustomerTicketsPage() {
       );
 
       const data = await safeJson(res);
+
       if (!res.ok) {
         throw new Error((data as any)?.message || "Failed to load tickets");
       }
@@ -147,18 +194,116 @@ export default function AdminCustomerTicketsPage() {
     loadTickets();
   }, [loadTickets]);
 
-  const stats = React.useMemo(() => {
-    const open = rows.filter((t) => t.status === "Open").length;
-    const pending = rows.filter((t) => t.status === "Pending").length;
-    const closed = rows.filter((t) => t.status === "Closed").length;
+  React.useEffect(() => {
+    const socket = io(SOCKET_BASE, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+    });
 
-    return {
-      total: rows.length,
-      open,
-      pending,
-      closed,
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      loadTickets();
+    });
+
+    socket.on("admin:ticket:new", (payload: AdminTicketSocketPayload) => {
+      const id = String(payload?.ticketId || "");
+      if (!id) return;
+
+      setRows((prev) => {
+        const exists = prev.some((row) => row.id === id);
+        if (exists) return prev;
+
+        return [
+          {
+            id,
+            ticketId: payload.ticketCode || "-",
+            customerName: payload.customerName || "Customer",
+            customerEmail: payload.customerEmail || "-",
+            productName: payload.productName || "-",
+            orderId: payload.orderId || null,
+            size: payload.size || null,
+            color: payload.color || null,
+            issueType: payload.issueType || "-",
+            submittedAt: payload.submittedAt || new Date().toISOString(),
+            status: payload.status || "Open",
+          },
+          ...prev,
+        ];
+      });
+    });
+
+    socket.on("admin:ticket:updated", (payload: AdminTicketSocketPayload) => {
+      const id = String(payload?.ticketId || "");
+      const status = payload?.status;
+
+      if (!id || !status) return;
+
+      setRows((prev) =>
+        prev.map((row) => (row.id === id ? { ...row, status } : row))
+      );
+    });
+
+    socket.on("admin:ticket:reply:new", (payload: AdminTicketSocketPayload) => {
+      const id = String(payload?.ticketId || "");
+      const status = payload?.status;
+
+      if (!id) return;
+
+      setRows((prev) =>
+        prev.map((row) => (row.id === id && status ? { ...row, status } : row))
+      );
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
     };
+  }, [SOCKET_BASE, loadTickets]);
+
+  const filteredRows = React.useMemo(() => {
+    let list = [...rows];
+
+    if (statusFilter !== "All") {
+      list = list.filter(
+        (t) =>
+          displayStatus(t.status).toLowerCase() ===
+          displayStatus(statusFilter).toLowerCase()
+      );
+    }
+
+    list.sort((a, b) => {
+      const da = parseDateSafe(a.submittedAt);
+      const db = parseDateSafe(b.submittedAt);
+      return sortValue === "oldest" ? da - db : db - da;
+    });
+
+    return list;
+  }, [rows, statusFilter, sortValue]);
+
+  const stats = React.useMemo(() => {
+    const open = rows.filter((t) => displayStatus(t.status) === "Open").length;
+    const progress = rows.filter(
+      (t) => displayStatus(t.status) === "In Progress"
+    ).length;
+    const resolved = rows.filter(
+      (t) => displayStatus(t.status) === "Resolved"
+    ).length;
+    const closed = rows.filter(
+      (t) => displayStatus(t.status) === "Closed"
+    ).length;
+
+    return { total: rows.length, open, progress, resolved, closed };
   }, [rows]);
+
+  const clearFilters = () => {
+    setQ("");
+    setStatusFilter("All");
+    setSortValue("newest");
+  };
 
   return (
     <AdminPageGuard permission="ticketView">
@@ -177,7 +322,7 @@ export default function AdminCustomerTicketsPage() {
                   Product Support Tickets
                 </h1>
 
-                <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                <p className="mt-2 max-w-[760px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
                   Manage customer product issues, order support requests, admin
                   replies, and ticket status from one premium admin workspace.
                 </p>
@@ -188,54 +333,75 @@ export default function AdminCustomerTicketsPage() {
                 onClick={loadTickets}
                 disabled={loading}
                 className={primaryBtnClass}
-                title="Refresh tickets"
               >
                 {loading ? "Refreshing..." : "Refresh"}
               </button>
             </div>
 
-            <div className="mt-6 flex h-[48px] max-w-[520px] items-center rounded-full border border-white/10 bg-white/5 px-4">
-              <label htmlFor="ticket-search" className="sr-only">
-                Search ticket, customer, product
-              </label>
+            <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_190px_auto]">
               <input
-                id="ticket-search"
-                name="ticketSearch"
-                title="Search ticket, customer, product"
-                aria-label="Search ticket, customer, product"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search ticket, customer, product..."
-                className="w-full border-none bg-transparent text-[13px] text-white outline-none placeholder:text-[#7f879f]"
+                placeholder="Search ticket, customer, product, order..."
+                className={inputClass}
+                aria-label="Search tickets"
               />
+
+              <select
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as StatusFilter)
+                }
+                className={inputClass}
+                aria-label="Filter by status"
+              >
+                <option value="All" className="bg-[#11121a]">
+                  All Status
+                </option>
+                <option value="Open" className="bg-[#11121a]">
+                  Open
+                </option>
+                <option value="In Progress" className="bg-[#11121a]">
+                  In Progress
+                </option>
+                <option value="Resolved" className="bg-[#11121a]">
+                  Resolved
+                </option>
+                <option value="Closed" className="bg-[#11121a]">
+                  Closed
+                </option>
+              </select>
+
+              <select
+                value={sortValue}
+                onChange={(e) => setSortValue(e.target.value as SortValue)}
+                className={inputClass}
+                aria-label="Sort tickets"
+              >
+                <option value="newest" className="bg-[#11121a]">
+                  Newest First
+                </option>
+                <option value="oldest" className="bg-[#11121a]">
+                  Oldest First
+                </option>
+              </select>
+
+              <button
+                type="button"
+                onClick={clearFilters}
+                className={secondaryBtnClass}
+              >
+                Clear
+              </button>
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              label="Total Tickets"
-              value={String(stats.total)}
-              hint="Current result count"
-              iconSrc="/images/admin/tickets.png"
-            />
-            <StatCard
-              label="Open"
-              value={String(stats.open)}
-              hint="New support issues"
-              iconSrc="/images/admin/open.png"
-            />
-            <StatCard
-              label="Pending"
-              value={String(stats.pending)}
-              hint="Waiting for action"
-              iconSrc="/images/admin/pending.png"
-            />
-            <StatCard
-              label="Closed"
-              value={String(stats.closed)}
-              hint="Resolved tickets"
-              iconSrc="/images/admin/active.png"
-            />
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <StatCard label="Total" value={String(stats.total)} hint="All tickets" iconSrc="/images/admin/tickets.png" />
+            <StatCard label="Open" value={String(stats.open)} hint="New issues" iconSrc="/images/admin/open.png" />
+            <StatCard label="Progress" value={String(stats.progress)} hint="Admin handling" iconSrc="/images/admin/pending.png" />
+            <StatCard label="Resolved" value={String(stats.resolved)} hint="Issue solved" iconSrc="/images/admin/active.png" />
+            <StatCard label="Closed" value={String(stats.closed)} hint="Finished" iconSrc="/images/admin/active.png" />
           </section>
 
           {err ? (
@@ -254,108 +420,173 @@ export default function AdminCustomerTicketsPage() {
                   Customer Support Requests
                 </h2>
                 <p className="mt-1 text-[13px] text-[#a7aec4]">
-                  Ticket ID, customer, product, issue type, submission date and
-                  status.
+                  Showing {filteredRows.length} of {rows.length} tickets.
                 </p>
               </div>
 
               <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[12px] font-semibold text-[#d6c7ff]">
-                {loading ? "Loading..." : `${rows.length} tickets`}
+                {loading ? "Loading..." : `${filteredRows.length} tickets`}
               </div>
             </div>
 
             {loading ? (
               <TicketSkeleton />
-            ) : rows.length ? (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1180px] border-collapse text-[13px]">
-                  <thead>
-                    <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                      <th className="px-5 py-4 font-medium">Ticket ID</th>
-                      <th className="px-5 py-4 font-medium">Customer</th>
-                      <th className="px-5 py-4 font-medium">Product / Order</th>
-                      <th className="px-5 py-4 font-medium">Issue Type</th>
-                      <th className="px-5 py-4 font-medium">Submitted</th>
-                      <th className="px-5 py-4 font-medium">Status</th>
-                      <th className="px-5 py-4 text-right font-medium">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
+            ) : filteredRows.length ? (
+              <>
+                <div className="hidden overflow-x-auto xl:block">
+                  <table className="w-full min-w-[1180px] border-collapse text-[13px]">
+                    <thead>
+                      <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                        <th className="px-5 py-4 font-medium">Ticket ID</th>
+                        <th className="px-5 py-4 font-medium">Customer</th>
+                        <th className="px-5 py-4 font-medium">Product / Order</th>
+                        <th className="px-5 py-4 font-medium">Issue</th>
+                        <th className="px-5 py-4 font-medium">Submitted</th>
+                        <th className="px-5 py-4 font-medium">Status</th>
+                        <th className="px-5 py-4 text-right font-medium">Action</th>
+                      </tr>
+                    </thead>
 
-                  <tbody>
-                    {rows.map((t) => (
-                      <tr
-                        key={t.id}
-                        className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
-                      >
-                        <td className="px-5 py-4">
-                          <div className="font-semibold text-white">
+                    <tbody>
+                      {filteredRows.map((t) => (
+                        <tr
+                          key={t.id}
+                          className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                        >
+                          <td className="px-5 py-4">
+                            <div className="font-semibold text-white">
+                              {showTicketId(t.ticketId)}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="font-semibold text-white">
+                              {t.customerName || "-"}
+                            </div>
+                            <div className="mt-1 max-w-[240px] truncate text-[12px] text-[#7f879f]">
+                              {t.customerEmail || "-"}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="max-w-[260px] truncate font-medium text-white">
+                              {t.productName || "-"}
+                            </div>
+                            <div className="mt-1 text-[12px] text-[#7f879f]">
+                              Order: {t.orderId || "-"}
+                            </div>
+                            <div className="mt-1 text-[12px] text-[#7f879f]">
+                              Size: {t.size || "-"} • Color: {t.color || "-"}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
+                            {t.issueType || "-"}
+                          </td>
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
+                            {formatDateShort(t.submittedAt)}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <Link href={`/admin/customer-tickets/${t.id}`}>
+                              <span
+                                className={[
+                                  "inline-flex cursor-pointer rounded-full border px-3 py-1 text-[11px] font-semibold transition hover:opacity-90",
+                                  statusTone(t.status),
+                                ].join(" ")}
+                              >
+                                {displayStatus(t.status)}
+                              </span>
+                            </Link>
+                          </td>
+
+                          <td className="px-5 py-4 text-right">
+                            {canReply || canClose ? (
+                              <Link
+                                href={`/admin/customer-tickets/${t.id}`}
+                                className={secondaryBtnClass}
+                              >
+                                View Details
+                              </Link>
+                            ) : (
+                              <span className="text-[12px] text-[#7f879f]">
+                                No actions
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="grid gap-4 p-5 xl:hidden">
+                  {filteredRows.map((t) => (
+                    <div
+                      key={t.id}
+                      className="rounded-[22px] border border-[#26293a] bg-[#161824] p-5"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="text-[13px] font-semibold text-[#d6c7ff]">
                             {showTicketId(t.ticketId)}
                           </div>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="font-semibold text-white">
+                          <h3 className="mt-2 text-[18px] font-semibold text-white">
                             {t.customerName || "-"}
-                          </div>
-                          <div className="mt-1 max-w-[240px] truncate text-[12px] text-[#7f879f]">
+                          </h3>
+                          <p className="mt-1 text-[12px] text-[#7f879f]">
                             {t.customerEmail || "-"}
-                          </div>
-                        </td>
+                          </p>
+                        </div>
 
-                        <td className="px-5 py-4">
-                          <div className="max-w-[260px] truncate font-medium text-white">
+                        <span
+                          className={[
+                            "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold",
+                            statusTone(t.status),
+                          ].join(" ")}
+                        >
+                          {displayStatus(t.status)}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-2 text-[13px] text-[#a7aec4]">
+                        <div>
+                          Product:{" "}
+                          <span className="text-[#d6dbeb]">
                             {t.productName || "-"}
-                          </div>
-                          <div className="mt-1 text-[12px] text-[#7f879f]">
-                            Order: {t.orderId || "-"}
-                          </div>
-                          <div className="mt-1 text-[12px] text-[#7f879f]">
-                            Size: {t.size || "-"} • Color: {t.color || "-"}
-                          </div>
-                        </td>
+                          </span>
+                        </div>
+                        <div>
+                          Order:{" "}
+                          <span className="text-[#d6dbeb]">
+                            {t.orderId || "-"}
+                          </span>
+                        </div>
+                        <div>
+                          Issue:{" "}
+                          <span className="text-[#d6dbeb]">
+                            {t.issueType || "-"}
+                          </span>
+                        </div>
+                        <div>
+                          Submitted:{" "}
+                          <span className="text-[#d6dbeb]">
+                            {formatDateShort(t.submittedAt)}
+                          </span>
+                        </div>
+                      </div>
 
-                        <td className="px-5 py-4 text-[#a7aec4]">
-                          {t.issueType || "-"}
-                        </td>
-
-                        <td className="px-5 py-4 text-[#a7aec4]">
-                          {formatDateShort(t.submittedAt)}
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <Link href={`/admin/customer-tickets/${t.id}`}>
-                            <span
-                              className={[
-                                "inline-flex cursor-pointer rounded-full border px-3 py-1 text-[11px] font-semibold transition hover:opacity-90",
-                                statusTone(t.status),
-                              ].join(" ")}
-                            >
-                              {t.status}
-                            </span>
-                          </Link>
-                        </td>
-
-                        <td className="px-5 py-4 text-right">
-                          {canReply || canClose ? (
-                            <Link
-                              href={`/admin/customer-tickets/${t.id}`}
-                              className={secondaryBtnClass}
-                            >
-                              View Details
-                            </Link>
-                          ) : (
-                            <span className="text-[12px] text-[#7f879f]">
-                              No actions
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                      <Link
+                        href={`/admin/customer-tickets/${t.id}`}
+                        className={`${primaryBtnClass} mt-5 inline-flex w-full justify-center`}
+                      >
+                        View Details
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              </>
             ) : (
               <EmptyState />
             )}

@@ -107,6 +107,30 @@ export function initSocket(server: HTTPServer) {
       console.log(`🔔 Customer socket connected: ${userId || "unknown"}`);
     }
 
+    socket.on("chat:join", ({ conversationId }) => {
+      const cid = String(conversationId || "").trim();
+      if (!cid) return;
+
+      socket.join(`chat:${cid}`);
+    });
+
+    socket.on("chat:leave", ({ conversationId }) => {
+      const cid = String(conversationId || "").trim();
+      if (!cid) return;
+
+      socket.leave(`chat:${cid}`);
+    });
+
+    socket.on("chat:typing", ({ conversationId, senderRole }) => {
+      const cid = String(conversationId || "").trim();
+      if (!cid) return;
+
+      socket.to(`chat:${cid}`).emit("chat:typing", {
+        conversationId: cid,
+        senderRole,
+      });
+    });
+
     socket.on("disconnect", () => {
       if (role === "admin" || role === "superadmin") {
         console.log(`🔕 Admin socket disconnected: ${userId || "unknown"}`);
@@ -125,5 +149,6 @@ export function getIO() {
   if (!io) {
     throw new Error("Socket.IO has not been initialized");
   }
+
   return io;
 }

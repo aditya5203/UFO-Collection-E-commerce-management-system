@@ -41,7 +41,16 @@ function fmtTime(s?: string) {
   if (!s) return "";
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString([], { hour: "2-digit", minute: "2-digit" });
+
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+
+  return d.toLocaleString([], {
+    month: isToday ? undefined : "short",
+    day: isToday ? undefined : "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function getOrderUrl(orderId?: string | null) {
@@ -160,7 +169,7 @@ export default function LiveAgentChatPage() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const orderId = sp.get("orderId") || undefined;
+  const orderId = sp.get("orderId")?.trim() || undefined;
   const orderUrl = getOrderUrl(orderId);
 
   const socketRef = React.useRef<Socket | null>(null);
@@ -252,43 +261,50 @@ export default function LiveAgentChatPage() {
     [router, showToast]
   );
 
-  const openConversation = React.useCallback(async () => {
-    setErr("");
-    setOpening(true);
+  const openConversation = React.useCallback(
+    async (forceNew = false) => {
+      setErr("");
+      setOpening(true);
 
-    try {
-      const res = await fetch(`${API}/chat/open`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orderId ? { orderId } : {}),
-      });
+      try {
+        const body: Record<string, any> = {};
+        if (orderId) body.orderId = orderId;
+        if (forceNew) body.forceNew = true;
 
-      const auth = await handleAuthStatus(res);
-      if (auth.handled) return;
+        const res = await fetch(`${API}/chat/open`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
 
-      const data = await res.json().catch(() => ({} as any));
+        const auth = await handleAuthStatus(res);
+        if (auth.handled) return;
 
-      if (!res.ok) {
-        const msg = data?.message || "Failed to open chat.";
-        setErr(msg);
-        showToast(msg, "error");
-        return;
+        const data = await res.json().catch(() => ({} as any));
+
+        if (!res.ok) {
+          const msg = data?.message || "Failed to open chat.";
+          setErr(msg);
+          showToast(msg, "error");
+          return;
+        }
+
+        setConv(data?.conversation || null);
+      } catch {
+        setErr("Failed to open chat.");
+        showToast("Failed to open chat.", "error");
+      } finally {
+        setOpening(false);
       }
-
-      setConv(data?.conversation || null);
-    } catch {
-      setErr("Failed to open chat.");
-      showToast("Failed to open chat.", "error");
-    } finally {
-      setOpening(false);
-    }
-  }, [orderId, handleAuthStatus, showToast]);
+    },
+    [orderId, handleAuthStatus, showToast]
+  );
 
   const loadMessages = React.useCallback(
     async (conversationId: string, silent = false) => {
       setErr("");
-      setLoading(true);
+      if (!silent) setLoading(true);
 
       try {
         const res = await fetch(
@@ -316,7 +332,7 @@ export default function LiveAgentChatPage() {
         setErr("Failed to load messages.");
         showToast("Failed to load messages.", "error");
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     },
     [handleAuthStatus, showToast]
@@ -344,10 +360,7 @@ export default function LiveAgentChatPage() {
 
     socket.on("connect", () => {
       setSocketConnected(true);
-
-      socket.emit("chat:join", {
-        conversationId: conv._id,
-      });
+      socket.emit("chat:join", { conversationId: conv._id });
     });
 
     socket.on("disconnect", () => {
@@ -369,7 +382,7 @@ export default function LiveAgentChatPage() {
             : null;
 
       if (!msg?._id) {
-        loadMessages(conv._id);
+        loadMessages(conv._id, true);
         return;
       }
 
@@ -404,7 +417,7 @@ export default function LiveAgentChatPage() {
         );
       }
 
-      loadMessages(conv._id);
+      loadMessages(conv._id, true);
     });
 
     socket.on("chat:typing", (payload: any) => {
@@ -426,9 +439,7 @@ export default function LiveAgentChatPage() {
     });
 
     return () => {
-      socket.emit("chat:leave", {
-        conversationId: conv._id,
-      });
+      socket.emit("chat:leave", { conversationId: conv._id });
 
       socket.off("connect");
       socket.off("disconnect");
@@ -436,6 +447,7 @@ export default function LiveAgentChatPage() {
       socket.off("chat:updated");
       socket.off("chat:typing");
       socket.disconnect();
+
       socketRef.current = null;
       setSocketConnected(false);
     };
@@ -497,7 +509,7 @@ export default function LiveAgentChatPage() {
           return [...prev, msg];
         });
       } else {
-        await loadMessages(conv._id);
+        await loadMessages(conv._id, true);
       }
 
       showToast("Message sent.", "success");
@@ -540,7 +552,7 @@ export default function LiveAgentChatPage() {
       }
 
       setConv((p) => (p ? { ...p, status: "ENDED" } : p));
-      await loadMessages(conv._id);
+      await loadMessages(conv._id, true);
       showToast("Chat ended.", "success");
       window.setTimeout(scrollToBottom, 60);
     } catch {
@@ -556,8 +568,10 @@ export default function LiveAgentChatPage() {
     setMessages([]);
     setText("");
     setErr("");
+    setTyping(false);
     didInitialScrollRef.current = false;
-    await openConversation();
+    setLoading(true);
+    await openConversation(true);
   };
 
   const copyConversationId = async () => {
@@ -590,7 +604,7 @@ export default function LiveAgentChatPage() {
 
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref="/profile" />
 
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
 
@@ -743,7 +757,9 @@ export default function LiveAgentChatPage() {
                     {[1, 2, 3, 4].map((n) => (
                       <div
                         key={n}
-                        className={`flex ${n % 2 === 0 ? "justify-end" : "justify-start"}`}
+                        className={`flex ${
+                          n % 2 === 0 ? "justify-end" : "justify-start"
+                        }`}
                       >
                         <div className="w-[72%] rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
                           <div className="h-3 w-24 animate-pulse rounded bg-white/5" />
@@ -810,7 +826,9 @@ export default function LiveAgentChatPage() {
                   <button
                     type="button"
                     onClick={send}
-                    disabled={sending || conv?.status === "ENDED" || !text.trim()}
+                    disabled={
+                      sending || conv?.status === "ENDED" || !text.trim()
+                    }
                     className={primaryBtnClass}
                   >
                     {sending ? "Sending..." : "Send Message"}

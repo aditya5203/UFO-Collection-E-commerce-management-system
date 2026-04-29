@@ -6,7 +6,12 @@ function makeTicketCode() {
   return `#${n}`;
 }
 
-export type TicketStatus = "Open" | "Pending" | "Closed";
+export type TicketStatus =
+  | "Open"
+  | "Pending"
+  | "In Progress"
+  | "Resolved"
+  | "Closed";
 
 export const ticketService = {
   async createTicket(input: {
@@ -41,7 +46,7 @@ export const ticketService = {
         ? new mongoose.Types.ObjectId(input.productId)
         : null;
 
-    const doc = await Ticket.create({
+    return Ticket.create({
       ticketCode: code,
       status: "Open",
       issueType: input.issueType,
@@ -58,8 +63,6 @@ export const ticketService = {
       imageUrl: input.imageUrl || null,
       replies: [],
     });
-
-    return doc;
   },
 
   async listAdminTickets(q?: string) {
@@ -99,7 +102,7 @@ export const ticketService = {
       id,
       {
         $push: { replies: { sender: "admin", text } },
-        $set: { status: "Pending" },
+        $set: { status: "In Progress" },
       },
       { new: true }
     ).lean();
