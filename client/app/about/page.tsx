@@ -1,11 +1,15 @@
 "use client";
 
+import * as React from "react";
 import Image from "next/image";
-import CartHeader from "@/components/layout/InfoHeader";
+import Link from "next/link";
+import { motion } from "framer-motion";
+import InfoHeader from "@/components/layout/InfoHeader";
 import MainFooter from "@/components/layout/MainFooter";
 import SubscribeOffer from "@/components/SubscribeOffer";
 
-const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+const shellClass =
+  "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
 
 const containerClass =
   "mx-auto w-full max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
@@ -14,16 +18,50 @@ const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 
 const primaryBtnClass =
-  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
+  "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-white/40";
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0 },
+};
+
+const stats = [
+  { label: "Fashion Categories", value: "10+" },
+  { label: "Secure Checkout", value: "100%" },
+  { label: "Nepal Focused", value: "NPR" },
+];
+
+const reasons = [
+  {
+    title: "Quality Assurance",
+    desc: "Every product is selected with comfort, finish, and long-term usability in mind.",
+  },
+  {
+    title: "Easy Shopping",
+    desc: "Responsive pages, smart filters, clear details, and smooth checkout improve the customer journey.",
+  },
+  {
+    title: "Reliable Support",
+    desc: "Customers can get help for sizing, orders, delivery, reviews, and support tickets.",
+  },
+];
 
 export default function AboutPage() {
+  const [imageError, setImageError] = React.useState(false);
+
   return (
     <>
-      <CartHeader />
+      <InfoHeader />
 
       <main className={shellClass}>
         <section className={containerClass}>
-          <div className={`${panelClass} overflow-hidden`}>
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            animate="show"
+            transition={{ duration: 0.45 }}
+            className={`${panelClass} overflow-hidden`}
+          >
             <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[1.05fr_0.95fr] lg:p-10">
               <div className="flex flex-col justify-center">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
@@ -34,29 +72,65 @@ export default function AboutPage() {
                   Fashion built for confidence.
                 </h1>
 
-                <p className="mt-4 max-w-[600px] text-[13px] leading-7 text-[#a7aec4] sm:text-[15px]">
-                  UFO Collection is a modern fashion e-commerce brand focused on
-                  premium streetwear, everyday essentials, clean design, and a
-                  smooth shopping experience for customers in Nepal.
+                <p className="mt-4 max-w-[620px] text-[13px] leading-7 text-[#a7aec4] sm:text-[15px]">
+                  UFO Collection is a modern fashion e-commerce platform focused
+                  on premium clothing, shoes, clean design, secure checkout, and
+                  a smooth shopping experience for customers in Nepal.
                 </p>
 
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <a href="/collection" className={primaryBtnClass}>
+                  <Link href="/collection" className={primaryBtnClass}>
                     Explore Collection
-                  </a>
+                  </Link>
+
+                  <Link
+                    href="/contact"
+                    className="inline-flex items-center justify-center rounded-full border border-[#34384d] px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/20"
+                  >
+                    Contact Support
+                  </Link>
+                </div>
+
+                <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                  {stats.map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-[18px] border border-[#26293a] bg-[#161824] p-4"
+                    >
+                      <div className="text-[22px] font-semibold text-white">
+                        {item.value}
+                      </div>
+                      <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-[#a7aec4]">
+                        {item.label}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              <div className="relative min-h-[260px] overflow-hidden rounded-[22px] border border-[#26293a] bg-[#161824] sm:min-h-[340px]">
-                <Image
-                  src="/images/about-flatlay.jpg"
-                  alt="Folded clothes, shoes and accessories"
-                  fill
-                  className="object-cover opacity-80"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
+              <div className="relative min-h-[280px] overflow-hidden rounded-[22px] border border-[#26293a] bg-[#161824] sm:min-h-[360px]">
+                {!imageError ? (
+                  <Image
+                    src="/images/about-flatlay.jpg"
+                    alt="Folded clothes, shoes and fashion accessories"
+                    fill
+                    priority
+                    sizes="(max-width: 1024px) 100vw, 520px"
+                    className="object-cover opacity-80"
+                    onError={() => setImageError(true)}
+                  />
+                ) : (
+                  <div className="flex h-full min-h-[280px] items-center justify-center bg-[radial-gradient(circle_at_top_left,#2d2447,transparent_35%),linear-gradient(135deg,#161824,#0d0f17)] p-8 text-center sm:min-h-[360px]">
+                    <div>
+                      <div className="text-[12px] uppercase tracking-[0.22em] text-[#d6c7ff]">
+                        UFO Collection
+                      </div>
+                      <div className="mt-3 text-[32px] font-semibold tracking-[-0.04em] text-white">
+                        Premium Streetwear
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent" />
 
@@ -65,10 +139,17 @@ export default function AboutPage() {
                 </div>
               </div>
             </div>
-          </div>
+          </motion.div>
 
           <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_0.9fr]">
-            <section className={`${panelClass} p-5 sm:p-6`}>
+            <motion.section
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ duration: 0.4 }}
+              className={`${panelClass} p-5 sm:p-6`}
+            >
               <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
                 Our Story
               </div>
@@ -79,23 +160,28 @@ export default function AboutPage() {
 
               <div className="mt-5 space-y-4 text-[14px] leading-7 text-[#a7aec4]">
                 <p>
-                  UFO Collection was born from a passion for innovation and a
-                  desire to reimagine the way people experience everyday style.
-                  What started as a simple idea to make curated, premium
-                  streetwear accessible from home has grown into a brand focused
-                  on comfort, confidence, and clean design.
+                  UFO Collection was created to make fashion discovery easier,
+                  faster, and more enjoyable. The platform brings clothing and
+                  footwear products into one clean shopping experience with
+                  search, filters, cart, checkout, and order tracking.
                 </p>
 
                 <p>
-                  From laid-back basics to standout silhouettes, every product is
-                  selected with fabric, fit, and long-term usability in mind. Our
-                  goal is to make fashion discovery easier, faster, and more
-                  enjoyable.
+                  From everyday basics to standout pieces, the brand focuses on
+                  comfort, confidence, and a premium digital experience for
+                  modern customers.
                 </p>
               </div>
-            </section>
+            </motion.section>
 
-            <section className={`${panelClass} p-5 sm:p-6`}>
+            <motion.section
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ duration: 0.45 }}
+              className={`${panelClass} p-5 sm:p-6`}
+            >
               <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
                 Our Mission
               </div>
@@ -105,15 +191,22 @@ export default function AboutPage() {
               </h2>
 
               <p className="mt-5 text-[14px] leading-7 text-[#a7aec4]">
-                Our mission is to offer a seamless shopping journey from product
-                discovery and sizing to checkout and delivery. We want every
-                customer to feel confident about what they buy and excited about
-                what they wear.
+                Our mission is to provide a localized fashion shopping platform
+                with secure checkout, NPR pricing, customer-friendly order
+                management, and a responsive interface that works smoothly on
+                mobile, tablet, and desktop.
               </p>
-            </section>
+            </motion.section>
           </div>
 
-          <section className="mt-8">
+          <motion.section
+            variants={fadeUp}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, amount: 0.15 }}
+            transition={{ duration: 0.45 }}
+            className="mt-8"
+          >
             <div className="mb-5">
               <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
                 Why Choose Us
@@ -125,20 +218,7 @@ export default function AboutPage() {
             </div>
 
             <div className="grid gap-5 md:grid-cols-3">
-              {[
-                {
-                  title: "Quality Assurance",
-                  desc: "We carefully select every piece to meet standards for comfort, durability, and finish.",
-                },
-                {
-                  title: "Convenience",
-                  desc: "Shop easily with a responsive interface, smart filters, and simple product discovery.",
-                },
-                {
-                  title: "Customer Support",
-                  desc: "Our support flow helps customers with sizing, orders, delivery, and returns.",
-                },
-              ].map((item) => (
+              {reasons.map((item) => (
                 <div
                   key={item.title}
                   className="rounded-[22px] border border-[#26293a] bg-[#161824] p-5 transition hover:-translate-y-1 hover:border-[#4a506b] hover:shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
@@ -153,11 +233,18 @@ export default function AboutPage() {
                 </div>
               ))}
             </div>
-          </section>
+          </motion.section>
 
-          <section className="mt-8 overflow-hidden rounded-[24px]">
+          <motion.section
+            variants={fadeUp}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, amount: 0.2 }}
+            transition={{ duration: 0.45 }}
+            className="mt-8 overflow-hidden rounded-[24px]"
+          >
             <SubscribeOffer />
-          </section>
+          </motion.section>
         </section>
       </main>
 

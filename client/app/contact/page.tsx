@@ -1,11 +1,15 @@
 "use client";
 
+import * as React from "react";
 import Image from "next/image";
-import CartHeader from "@/components/layout/InfoHeader";
+import Link from "next/link";
+import { motion } from "framer-motion";
+import InfoHeader from "@/components/layout/InfoHeader";
 import MainFooter from "@/components/layout/MainFooter";
 import SubscribeOffer from "@/components/SubscribeOffer";
 
-const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+const shellClass =
+  "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
 
 const containerClass =
   "mx-auto w-full max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
@@ -14,19 +18,45 @@ const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 
 const primaryBtnClass =
-  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
+  "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-white/40";
 
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+  "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/20";
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 24 },
+  show: { opacity: 1, y: 0 },
+};
+
+const contactCards = [
+  {
+    label: "Phone",
+    value: "+977 9804880758",
+    href: "tel:+9779804880758",
+  },
+  {
+    label: "Email",
+    value: "ufocollection@gmail075.com",
+    href: "mailto:ufocollection@gmail.com",
+  },
+];
 
 export default function ContactPage() {
+  const [imageError, setImageError] = React.useState(false);
+
   return (
     <>
-      <CartHeader />
+      <InfoHeader />
 
       <main className={shellClass}>
         <section className={containerClass}>
-          <div className={`${panelClass} overflow-hidden`}>
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            animate="show"
+            transition={{ duration: 0.45 }}
+            className={`${panelClass} overflow-hidden`}
+          >
             <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[1.05fr_0.95fr] lg:p-10">
               <div className="flex flex-col justify-center">
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
@@ -56,16 +86,29 @@ export default function ContactPage() {
                 </div>
               </div>
 
-              <div className="relative min-h-[260px] overflow-hidden rounded-[22px] border border-[#26293a] bg-[#161824] sm:min-h-[340px]">
-                <Image
-                  src="/images/contact-desk.jpg"
-                  alt="UFO Collection contact desk"
-                  fill
-                  className="object-cover opacity-80"
-                  onError={(e) => {
-                    e.currentTarget.style.display = "none";
-                  }}
-                />
+              <div className="relative min-h-[280px] overflow-hidden rounded-[22px] border border-[#26293a] bg-[#161824] sm:min-h-[360px]">
+                {!imageError ? (
+                  <Image
+                    src="/images/contact-desk.jpg"
+                    alt="UFO Collection customer support desk"
+                    fill
+                    priority
+                    sizes="(max-width: 1024px) 100vw, 520px"
+                    className="object-cover opacity-80"
+                    onError={() => setImageError(true)}
+                  />
+                ) : (
+                  <div className="flex h-full min-h-[280px] items-center justify-center bg-[radial-gradient(circle_at_top_left,#2d2447,transparent_35%),linear-gradient(135deg,#161824,#0d0f17)] p-8 text-center sm:min-h-[360px]">
+                    <div>
+                      <div className="text-[12px] uppercase tracking-[0.22em] text-[#d6c7ff]">
+                        UFO Collection
+                      </div>
+                      <div className="mt-3 text-[32px] font-semibold tracking-[-0.04em] text-white">
+                        Customer Support
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/25 to-transparent" />
 
@@ -74,10 +117,17 @@ export default function ContactPage() {
                 </div>
               </div>
             </div>
-          </div>
+          </motion.div>
 
           <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_0.9fr]">
-            <section className={`${panelClass} p-5 sm:p-6`}>
+            <motion.section
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ duration: 0.4 }}
+              className={`${panelClass} p-5 sm:p-6`}
+            >
               <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
                 Store Information
               </div>
@@ -100,36 +150,33 @@ export default function ContactPage() {
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <a
-                    href="tel:+9779804880758"
-                    className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 transition hover:-translate-y-1 hover:border-[#4a506b]"
-                  >
-                    <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#d6c7ff]">
-                      Phone
-                    </div>
+                  {contactCards.map((item) => (
+                    <a
+                      key={item.label}
+                      href={item.href}
+                      className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 transition hover:-translate-y-1 hover:border-[#4a506b] focus:outline-none focus:ring-2 focus:ring-white/20"
+                    >
+                      <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#d6c7ff]">
+                        {item.label}
+                      </div>
 
-                    <div className="mt-2 text-[14px] text-white">
-                      +977 9804880758
-                    </div>
-                  </a>
-
-                  <a
-                    href="mailto:ufocollection@gmail.com"
-                    className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 transition hover:-translate-y-1 hover:border-[#4a506b]"
-                  >
-                    <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#d6c7ff]">
-                      Email
-                    </div>
-
-                    <div className="mt-2 break-all text-[14px] text-white">
-                      ufocollection@gmail.com
-                    </div>
-                  </a>
+                      <div className="mt-2 break-all text-[14px] text-white">
+                        {item.value}
+                      </div>
+                    </a>
+                  ))}
                 </div>
               </div>
-            </section>
+            </motion.section>
 
-            <section className={`${panelClass} p-5 sm:p-6`}>
+            <motion.section
+              variants={fadeUp}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ duration: 0.45 }}
+              className={`${panelClass} p-5 sm:p-6`}
+            >
               <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
                 Careers
               </div>
@@ -143,15 +190,22 @@ export default function ContactPage() {
                 We’re building a modern fashion commerce experience for Nepal.
               </p>
 
-              <a href="/careers" className={`${secondaryBtnClass} mt-6 inline-flex`}>
+              <Link href="/careers" className={`${secondaryBtnClass} mt-6`}>
                 Explore Jobs
-              </a>
-            </section>
+              </Link>
+            </motion.section>
           </div>
 
-          <section className="mt-8 overflow-hidden rounded-[24px]">
+          <motion.section
+            variants={fadeUp}
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, amount: 0.2 }}
+            transition={{ duration: 0.45 }}
+            className="mt-8 overflow-hidden rounded-[24px]"
+          >
             <SubscribeOffer />
-          </section>
+          </motion.section>
         </section>
       </main>
 
