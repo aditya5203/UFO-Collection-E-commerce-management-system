@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
@@ -100,6 +101,7 @@ function PasswordField({
           value={value}
           onChange={onChange}
           placeholder={placeholder}
+          autoComplete="new-password"
           aria-label={label}
           className="h-full min-w-0 flex-1 bg-transparent px-5 text-[13px] text-white outline-none placeholder:text-[#7f879f]"
         />
@@ -124,13 +126,15 @@ export default function ChangePasswordPage() {
     process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
     "http://localhost:8080/api";
 
+  const [checkingAuth, setCheckingAuth] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+
   const [form, setForm] = React.useState({
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
   });
 
-  const [saving, setSaving] = React.useState(false);
   const [showCurrent, setShowCurrent] = React.useState(false);
   const [showNew, setShowNew] = React.useState(false);
   const [showConfirm, setShowConfirm] = React.useState(false);
@@ -141,6 +145,7 @@ export default function ChangePasswordPage() {
   } | null>(null);
 
   const toastTimerRef = React.useRef<number | null>(null);
+  const redirectTimerRef = React.useRef<number | null>(null);
 
   const showToast = React.useCallback(
     (message: string, type: ToastType = "success") => {
@@ -158,9 +163,43 @@ export default function ChangePasswordPage() {
   );
 
   React.useEffect(() => {
+    let active = true;
+
+    async function checkAuth() {
+      try {
+        const res = await fetch(`${API}/auth/me`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!active) return;
+
+        if (!res.ok) {
+          router.replace("/login");
+          return;
+        }
+      } catch {
+        if (active) router.replace("/login");
+      } finally {
+        if (active) setCheckingAuth(false);
+      }
+    }
+
+    checkAuth();
+
+    return () => {
+      active = false;
+    };
+  }, [API, router]);
+
+  React.useEffect(() => {
     return () => {
       if (toastTimerRef.current) {
         window.clearTimeout(toastTimerRef.current);
+      }
+
+      if (redirectTimerRef.current) {
+        window.clearTimeout(redirectTimerRef.current);
       }
     };
   }, []);
@@ -173,6 +212,11 @@ export default function ChangePasswordPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
+    if (saving) return;
+
+    const strongPassword =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
     if (!form.currentPassword.trim()) {
       showToast("Current password is required.", "error");
       return;
@@ -183,8 +227,24 @@ export default function ChangePasswordPage() {
       return;
     }
 
-    if (form.newPassword.length < 6) {
-      showToast("New password must be at least 6 characters.", "error");
+    if (form.newPassword.length < 8) {
+      showToast("New password must be at least 8 characters.", "error");
+      return;
+    }
+
+    if (!strongPassword.test(form.newPassword)) {
+      showToast(
+        "Password must include uppercase, lowercase, number, and symbol.",
+        "error"
+      );
+      return;
+    }
+
+    if (form.currentPassword === form.newPassword) {
+      showToast(
+        "New password must be different from current password.",
+        "error"
+      );
       return;
     }
 
@@ -208,10 +268,15 @@ export default function ChangePasswordPage() {
         }),
       });
 
-      const data = await res.json().catch(() => ({} as any));
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        showToast(data?.message || "Failed to change password.", "error");
+        showToast(
+          typeof data?.message === "string"
+            ? data.message
+            : "Failed to change password.",
+          "error"
+        );
         return;
       }
 
@@ -223,7 +288,7 @@ export default function ChangePasswordPage() {
         confirmPassword: "",
       });
 
-      window.setTimeout(() => {
+      redirectTimerRef.current = window.setTimeout(() => {
         router.push("/profile");
       }, 700);
     } catch (error) {
@@ -234,9 +299,30 @@ export default function ChangePasswordPage() {
     }
   };
 
+  if (checkingAuth) {
+    return (
+      <>
+        <CartHeader backHref="/profile" />
+
+        <main className={shellClass}>
+          <div className={`${containerClass} flex min-h-[60vh] items-center`}>
+            <div className={`${panelClass} w-full p-8 text-center`}>
+              <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-white" />
+              <p className="text-[13px] font-medium text-[#a7aec4]">
+                Checking your account security...
+              </p>
+            </div>
+          </div>
+        </main>
+
+        <MainFooter />
+      </>
+    );
+  }
+
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref="/profile" />
 
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
 
@@ -253,8 +339,8 @@ export default function ChangePasswordPage() {
               </h1>
 
               <p className="mt-2 max-w-[560px] text-[13px] leading-6 text-[#a7aec4]">
-                Update your account password securely. Use a strong password
-                with at least 6 characters.
+                Update your account password securely. Use uppercase,
+                lowercase, number, and symbol for better protection.
               </p>
             </div>
 
@@ -270,8 +356,15 @@ export default function ChangePasswordPage() {
           <div className={`${panelClass} overflow-hidden`}>
             <div className="border-b border-[#26293a] bg-[radial-gradient(circle_at_top,#30214f,transparent_55%),linear-gradient(135deg,#161824,#0d0f17)] p-6 sm:p-8">
               <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/5">
-                  <span className="text-[28px]">🔐</span>
+                <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
+                  <Image
+                    src="/images/security-lock.png"
+                    alt="Security lock"
+                    width={42}
+                    height={42}
+                    className="h-10 w-10 object-contain"
+                    priority
+                  />
                 </div>
 
                 <div>
@@ -304,7 +397,7 @@ export default function ChangePasswordPage() {
                 name="newPassword"
                 value={form.newPassword}
                 show={showNew}
-                placeholder="Enter new password"
+                placeholder="Enter strong new password"
                 onChange={handleChange}
                 onToggle={() => setShowNew((prev) => !prev)}
               />
@@ -321,8 +414,10 @@ export default function ChangePasswordPage() {
               />
 
               <div className="mt-2 rounded-[18px] border border-[#26293a] bg-[#161824] px-4 py-3 text-[12px] leading-6 text-[#a7aec4]">
-                Tip: Avoid using your name, phone number, or simple passwords
-                like <span className="text-white">123456</span>.
+                Tip: Use at least{" "}
+                <span className="text-white">8 characters</span> with uppercase,
+                lowercase, number, and symbol. Avoid simple passwords like{" "}
+                <span className="text-white">12345678</span>.
               </div>
 
               <div className="mt-3 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">

@@ -12,6 +12,30 @@ const generateToken = (payload: JwtPayload): string => {
   } as jwt.SignOptions);
 };
 
+const STRONG_PASSWORD_REGEX =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+function validateStrongPassword(password: string, label = "Password") {
+  const clean = String(password || "").trim();
+
+  if (!clean) {
+    throw new AppError(`${label} is required`, 400);
+  }
+
+  if (clean.length < 8) {
+    throw new AppError(`${label} must be at least 8 characters`, 400);
+  }
+
+  if (!STRONG_PASSWORD_REGEX.test(clean)) {
+    throw new AppError(
+      `${label} must include uppercase, lowercase, number, and symbol`,
+      400
+    );
+  }
+
+  return clean;
+}
+
 const SIZES = ["XS", "S", "M", "L", "XL", "XXL"] as const;
 type Size = (typeof SIZES)[number];
 
@@ -257,7 +281,7 @@ export const authService = {
     data: {
       name?: string;
       address?: string;
-      phone?: string
+      phone?: string;
       height?: number | string;
       weight?: number | string;
     }
@@ -319,14 +343,6 @@ export const authService = {
       throw new AppError("Customer access only", 403);
     }
 
-    if (!currentPassword || !newPassword) {
-      throw new AppError("Current password and new password are required", 400);
-    }
-
-    if (String(newPassword).trim().length < 6) {
-      throw new AppError("New password must be at least 6 characters", 400);
-    }
-
     if (user.provider === "google") {
       throw new AppError(
         "This account uses Google login. Password change is not available.",
@@ -334,17 +350,27 @@ export const authService = {
       );
     }
 
+    if (!currentPassword || !newPassword) {
+      throw new AppError("Current password and new password are required", 400);
+    }
+
+    const cleanNewPassword = validateStrongPassword(
+      newPassword,
+      "New password"
+    );
+
     const ok = await user.comparePassword(String(currentPassword || ""));
     if (!ok) throw new AppError("Current password is incorrect", 400);
 
-    if (String(currentPassword) === String(newPassword)) {
+    const sameAsOld = await user.comparePassword(cleanNewPassword);
+    if (sameAsOld) {
       throw new AppError(
         "New password must be different from current password",
         400
       );
     }
 
-    (user as any).password = String(newPassword).trim();
+    (user as any).password = cleanNewPassword;
     await user.save();
 
     return sanitizeUserForResponse(user);
@@ -362,7 +388,9 @@ export const authService = {
     const name = String(userData.name || "").trim();
 
     const existingUser = await User.findOne({ email });
-    if (existingUser) throw new AppError("User with this email already exists", 409);
+    if (existingUser) {
+      throw new AppError("User with this email already exists", 409);
+    }
 
     const superAdmin = new User({
       email,
@@ -522,21 +550,23 @@ export const authService = {
       throw new AppError("Current password and new password are required", 400);
     }
 
-    if (String(newPassword).trim().length < 6) {
-      throw new AppError("New password must be at least 6 characters", 400);
-    }
+    const cleanNewPassword = validateStrongPassword(
+      newPassword,
+      "New password"
+    );
 
     const ok = await user.comparePassword(String(currentPassword || ""));
     if (!ok) throw new AppError("Current password is incorrect", 400);
 
-    if (String(currentPassword) === String(newPassword)) {
+    const sameAsOld = await user.comparePassword(cleanNewPassword);
+    if (sameAsOld) {
       throw new AppError(
         "New password must be different from current password",
         400
       );
     }
 
-    (user as any).password = String(newPassword).trim();
+    (user as any).password = cleanNewPassword;
     (user as any).mustChangePassword = false;
     await user.save();
 
@@ -569,9 +599,7 @@ export const authService = {
       throw new AppError("Invite token is required", 400);
     }
 
-    if (!password || String(password).trim().length < 8) {
-      throw new AppError("Password must be at least 8 characters", 400);
-    }
+    const cleanPassword = validateStrongPassword(password);
 
     const tokenHash = hashInviteToken(String(token).trim());
 
@@ -586,7 +614,7 @@ export const authService = {
       throw new AppError("Invalid or expired invitation link", 400);
     }
 
-    (user as any).password = String(password).trim();
+    (user as any).password = cleanPassword;
     (user as any).provider = "credentials";
     (user as any).status = "active";
     (user as any).mustChangePassword = false;

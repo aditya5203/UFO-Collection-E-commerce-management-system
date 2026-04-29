@@ -103,7 +103,7 @@ function Field({
   );
 }
 
-export default function SupportTicketPage() {
+function SupportTicketPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -119,6 +119,7 @@ export default function SupportTicketPage() {
   const [subject, setSubject] = React.useState("");
   const [message, setMessage] = React.useState("");
 
+  const [userLoaded, setUserLoaded] = React.useState(false);
   const [file, setFile] = React.useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState("");
   const [previewOpen, setPreviewOpen] = React.useState(false);
@@ -130,6 +131,7 @@ export default function SupportTicketPage() {
   } | null>(null);
 
   const toastTimerRef = React.useRef<number | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const showToast = React.useCallback(
     (message: string, type: ToastType = "success") => {
@@ -172,19 +174,23 @@ export default function SupportTicketPage() {
         let me: any = null;
 
         for (const url of candidates) {
-          const res = await fetch(url, {
-            method: "GET",
-            credentials: "include",
-            headers: {
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          });
+          try {
+            const res = await fetch(url, {
+  method: "GET",
+  credentials: "include",
+  cache: "no-store",
+  headers: {
+    "Cache-Control": "no-cache",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  },
+});
 
-          if (res.ok) {
-            const data = await res.json().catch(() => null);
-            me = data?.data || data?.user || data;
-            break;
-          }
+            if (res.ok) {
+              const data = await res.json().catch(() => null);
+              me = data?.data || data?.user || data?.customer || data;
+              break;
+            }
+          } catch {}
         }
 
         if (!me) {
@@ -194,10 +200,9 @@ export default function SupportTicketPage() {
           } catch {}
         }
 
-        if (!me) return;
-
         if (me?.name) setName(String(me.name));
         if (me?.email) setEmail(String(me.email));
+        if (me?.name || me?.email) setUserLoaded(true);
       } catch {
         try {
           const raw = localStorage.getItem("auth_user");
@@ -206,6 +211,7 @@ export default function SupportTicketPage() {
           const u = JSON.parse(raw);
           if (u?.name) setName(String(u.name));
           if (u?.email) setEmail(String(u.email));
+          if (u?.name || u?.email) setUserLoaded(true);
         } catch {}
       }
     };
@@ -249,15 +255,23 @@ export default function SupportTicketPage() {
     };
   }, [previewOpen]);
 
+  const resetFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const onPickFile = (f?: File | null) => {
     if (!f) {
       setFile(null);
       setPreviewOpen(false);
+      resetFileInput();
       return;
     }
 
     if (!f.type.startsWith("image/")) {
       showToast("Please upload an image file: JPG, PNG, or WEBP.", "error");
+      resetFileInput();
       return;
     }
 
@@ -265,6 +279,7 @@ export default function SupportTicketPage() {
 
     if (f.size > maxMb * 1024 * 1024) {
       showToast(`Image is too large. Max ${maxMb}MB allowed.`, "error");
+      resetFileInput();
       return;
     }
 
@@ -288,6 +303,8 @@ export default function SupportTicketPage() {
   };
 
   const submit = async () => {
+    if (submitting) return;
+
     const validationError = validate();
 
     if (validationError) {
@@ -300,6 +317,7 @@ export default function SupportTicketPage() {
     try {
       const fd = new FormData();
       fd.append("issueType", type);
+      fd.append("type", type);
       fd.append("name", name.trim());
       fd.append("email", email.trim());
       fd.append("subject", subject.trim());
@@ -317,7 +335,7 @@ export default function SupportTicketPage() {
         localStorage.getItem("token") ||
         "";
 
-      const res = await fetch(`${API}/tickets`, {
+      const res = await fetch(`${API}/customer-tickets/my`, {
         method: "POST",
         body: fd,
         credentials: "include",
@@ -338,17 +356,26 @@ export default function SupportTicketPage() {
         throw new Error(data?.message || "Failed to submit ticket.");
       }
 
-      const code = data?.item?.ticketCode || "";
+      const code =
+        data?.item?.ticketCode ||
+        data?.data?.ticketCode ||
+        data?.ticket?.ticketCode ||
+        data?.ticketCode ||
+        "";
+
       showToast(
-        code ? `Ticket submitted successfully: ${code}` : "Ticket submitted successfully.",
+        code
+          ? `Ticket submitted successfully: ${code}`
+          : "Ticket submitted successfully.",
         "success"
       );
 
       setType("");
-      setSubject("");
+      setSubject(productName && orderId ? `Issue with ${productName} (${orderId})` : "");
       setMessage("");
       setFile(null);
       setPreviewOpen(false);
+      resetFileInput();
     } catch (e: any) {
       showToast(e?.message || "Something went wrong.", "error");
     } finally {
@@ -356,13 +383,25 @@ export default function SupportTicketPage() {
     }
   };
 
-  const orderUrl = orderId
-    ? `/customerorderdetails/${encodeURIComponent(orderId.replace("#", ""))}`
+  const clearForm = () => {
+    setType("");
+    setSubject(productName && orderId ? `Issue with ${productName} (${orderId})` : "");
+    setMessage("");
+    setFile(null);
+    setPreviewOpen(false);
+    resetFileInput();
+    showToast("Form cleared.", "info");
+  };
+
+  const cleanOrderId = orderId.replaceAll("#", "");
+
+  const orderUrl = cleanOrderId
+    ? `/customerorderdetails/${encodeURIComponent(cleanOrderId)}`
     : "";
 
   return (
     <>
-      <CartHeader />
+      <CartHeader backHref="/profile" />
 
       <ToastMessage toast={toast} onClose={() => setToast(null)} />
 
@@ -457,6 +496,7 @@ export default function SupportTicketPage() {
                     onChange={(e) => setType(e.target.value as TicketType)}
                     className={inputClass}
                     aria-label="Ticket type"
+                    disabled={submitting}
                   >
                     <option value="">Choose ticket type</option>
                     <option value="Damaged Item">Damaged Item</option>
@@ -471,10 +511,14 @@ export default function SupportTicketPage() {
                   <input
                     id="name"
                     value={name}
-                    readOnly
-                    placeholder="Name"
-                    className={`${inputClass} opacity-80`}
+                    onChange={(e) => setName(e.target.value)}
+                    readOnly={userLoaded && Boolean(name)}
+                    placeholder="Enter your name"
+                    className={`${inputClass} ${
+                      userLoaded && name ? "opacity-80" : ""
+                    }`}
                     aria-label="Name"
+                    disabled={submitting}
                   />
                 </Field>
 
@@ -483,11 +527,15 @@ export default function SupportTicketPage() {
                     <input
                       id="email"
                       value={email}
-                      readOnly
-                      placeholder="Email"
+                      onChange={(e) => setEmail(e.target.value)}
+                      readOnly={userLoaded && Boolean(email)}
+                      placeholder="Enter your email"
                       type="email"
-                      className={`${inputClass} opacity-80`}
+                      className={`${inputClass} ${
+                        userLoaded && email ? "opacity-80" : ""
+                      }`}
                       aria-label="Email"
+                      disabled={submitting}
                     />
                   </Field>
                 </div>
@@ -501,6 +549,7 @@ export default function SupportTicketPage() {
                       placeholder="Subject"
                       className={inputClass}
                       aria-label="Subject"
+                      disabled={submitting}
                     />
                   </Field>
                 </div>
@@ -515,6 +564,7 @@ export default function SupportTicketPage() {
                       rows={7}
                       className={textareaClass}
                       aria-label="Message"
+                      disabled={submitting}
                     />
                   </Field>
                 </div>
@@ -523,14 +573,7 @@ export default function SupportTicketPage() {
               <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => {
-                    setType("");
-                    setSubject(productName && orderId ? `Issue with ${productName} (${orderId})` : "");
-                    setMessage("");
-                    setFile(null);
-                    setPreviewOpen(false);
-                    showToast("Form cleared.", "info");
-                  }}
+                  onClick={clearForm}
                   disabled={submitting}
                   className={secondaryBtnClass}
                 >
@@ -564,7 +607,8 @@ export default function SupportTicketPage() {
                     <button
                       type="button"
                       onClick={() => onPickFile(null)}
-                      className="rounded-full border border-red-500/25 bg-red-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-red-200 transition hover:bg-red-500/15"
+                      disabled={submitting}
+                      className="rounded-full border border-red-500/25 bg-red-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-red-200 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Remove
                     </button>
@@ -573,9 +617,11 @@ export default function SupportTicketPage() {
 
                 <label className="mt-5 flex cursor-pointer items-center justify-center rounded-[22px] border border-dashed border-[#26293a] bg-[#161824] px-4 py-8 text-center transition hover:border-[#4a506b] hover:bg-white/[0.03]">
                   <input
+                    ref={fileInputRef}
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp,image/jpg"
                     className="hidden"
+                    disabled={submitting}
                     onChange={(e) => onPickFile(e.target.files?.[0] || null)}
                   />
 
@@ -628,7 +674,9 @@ export default function SupportTicketPage() {
                     onClick={() =>
                       router.push(
                         orderId
-                          ? `/live-agent-chatt?orderId=${encodeURIComponent(orderId)}`
+                          ? `/live-agent-chat?orderId=${encodeURIComponent(
+                              orderId
+                            )}`
                           : "/live-agent-chat"
                       )
                     }
@@ -687,5 +735,27 @@ export default function SupportTicketPage() {
 
       <MainFooter />
     </>
+  );
+}
+
+export default function SupportTicketPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <>
+          <CartHeader />
+          <main className={shellClass}>
+            <div className={containerClass}>
+              <div className={`${panelClass} p-8 text-[#a7aec4]`}>
+                Loading support ticket...
+              </div>
+            </div>
+          </main>
+          <MainFooter />
+        </>
+      }
+    >
+      <SupportTicketPageInner />
+    </React.Suspense>
   );
 }

@@ -25,6 +25,26 @@ const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
 const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
 const DELIVERY_COOKIE = process.env.DELIVERY_COOKIE_NAME || "deliveryToken";
 
+const STRONG_PASSWORD_REGEX =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+
+function validateStrongPassword(password: string) {
+  const clean = String(password || "").trim();
+
+  if (!clean) {
+    throw new AppError("Password is required", 400);
+  }
+
+  if (!STRONG_PASSWORD_REGEX.test(clean)) {
+    throw new AppError(
+      "Password must be at least 8 characters and include uppercase, lowercase, number, and symbol",
+      400
+    );
+  }
+
+  return clean;
+}
+
 function getCookieOptions() {
   const isProd = config.nodeEnv === "production";
 
@@ -417,10 +437,8 @@ export const authController = {
       if (!token || !password) {
         throw new AppError("Token and password are required", 400);
       }
-      if (password.length < 6) {
-        throw new AppError("Password must be at least 6 characters", 400);
-      }
 
+      const cleanPassword = validateStrongPassword(password);
       const tokenHash = sha256(token);
 
       const user = await User.findOne({
@@ -430,7 +448,7 @@ export const authController = {
 
       if (!user) throw new AppError("Invalid or expired reset token", 400);
 
-      (user as any).password = password;
+      (user as any).password = cleanPassword;
       (user as any).provider = "credentials";
       (user as any).resetPasswordTokenHash = null;
       (user as any).resetPasswordExpires = null;
@@ -674,12 +692,12 @@ export const authController = {
       const { name, height, weight, address, phone } = req.body;
 
       const updatedUser = await authService.updateProfile(userId, {
-  name,
-  phone,
-  height,
-  weight,
-  address,
-});
+        name,
+        phone,
+        height,
+        weight,
+        address,
+      });
 
       res.status(200).json({
         success: true,
@@ -761,7 +779,9 @@ export const authController = {
       const email = profile.emails?.[0]?.value;
       const name =
         profile.displayName ||
-        `${profile.name?.givenName || ""} ${profile.name?.familyName || ""}`.trim();
+        `${profile.name?.givenName || ""} ${
+          profile.name?.familyName || ""
+        }`.trim();
       const providerId = profile.id;
       const avatar = profile.photos?.[0]?.value;
 

@@ -8,8 +8,12 @@ import CollectionHeader from "@/components/layout/InfoHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
+  "http://localhost:8080";
 const API = `${API_BASE}/api`;
+
+const STRONG_PASSWORD_REGEX =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
 const shellClass =
   "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
@@ -38,8 +42,29 @@ function getRedirectPath(role: string) {
   return "/login";
 }
 
-function getBackLoginPath(role: string) {
-  return getRedirectPath(role);
+function PasswordToggleButton({
+  show,
+  onClick,
+}: {
+  show: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:bg-white/10"
+      aria-label={show ? "Hide password" : "Show password"}
+    >
+      <Image
+        src="/images/view.png"
+        alt=""
+        width={18}
+        height={18}
+        className="brightness-0 invert"
+      />
+    </button>
+  );
 }
 
 export default function ResetPasswordPage() {
@@ -50,7 +75,9 @@ export default function ResetPasswordPage() {
   const role = sp.get("role") || "";
 
   const redirectPath = getRedirectPath(role);
-  const backLoginPath = getBackLoginPath(role);
+  const backLoginPath = redirectPath;
+
+  const redirectTimerRef = React.useRef<number | null>(null);
 
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -66,22 +93,37 @@ export default function ResetPasswordPage() {
     }
   }, [token]);
 
+  React.useEffect(() => {
+    return () => {
+      if (redirectTimerRef.current) {
+        window.clearTimeout(redirectTimerRef.current);
+      }
+    };
+  }, []);
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (loading) return;
+
     setError("");
     setSuccess("");
+
+    const cleanPassword = password.trim();
 
     if (!token) {
       setError("Reset token is missing. Please request a new reset link.");
       return;
     }
 
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+    if (!STRONG_PASSWORD_REGEX.test(cleanPassword)) {
+      setError(
+        "Password must be at least 8 characters and include uppercase, lowercase, number, and symbol."
+      );
       return;
     }
 
-    if (password !== confirm) {
+    if (cleanPassword !== confirm.trim()) {
       setError("Passwords do not match.");
       return;
     }
@@ -93,7 +135,7 @@ export default function ResetPasswordPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify({ token, password: cleanPassword }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -105,8 +147,8 @@ export default function ResetPasswordPage() {
 
       setSuccess("Password reset successful. Redirecting to login...");
 
-      window.setTimeout(() => {
-        router.push(redirectPath);
+      redirectTimerRef.current = window.setTimeout(() => {
+        router.replace(redirectPath);
       }, 900);
     } catch (err) {
       console.error(err);
@@ -166,8 +208,8 @@ export default function ResetPasswordPage() {
                   </h2>
 
                   <p className="mt-3 max-w-[520px] text-[14px] leading-7 text-[#d6dbeb]">
-                    Use a password that is easy for you to remember but hard for
-                    others to guess.
+                    Use uppercase, lowercase, number, and symbol to protect your
+                    UFO Collection account.
                   </p>
                 </div>
               </div>
@@ -206,27 +248,16 @@ export default function ResetPasswordPage() {
                       onChange={(e) => setPassword(e.target.value)}
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter new password"
-                      disabled={loading}
+                      disabled={loading || !!success}
                       className={`${inputClass} pr-12`}
+                      autoComplete="new-password"
                       required
                     />
 
-                    <button
-                      type="button"
+                    <PasswordToggleButton
+                      show={showPassword}
                       onClick={() => setShowPassword((s) => !s)}
-                      className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:bg-white/10"
-                      aria-label={
-                        showPassword ? "Hide password" : "Show password"
-                      }
-                    >
-                      <Image
-                        src="/images/view.png"
-                        alt="Toggle password visibility"
-                        width={18}
-                        height={18}
-                        className="brightness-0 invert"
-                      />
-                    </button>
+                    />
                   </div>
                 </div>
 
@@ -238,16 +269,31 @@ export default function ResetPasswordPage() {
                     Confirm Password
                   </label>
 
-                  <input
-                    id="confirm"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Confirm new password"
-                    disabled={loading}
-                    className={inputClass}
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      id="confirm"
+                      value={confirm}
+                      onChange={(e) => setConfirm(e.target.value)}
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Confirm new password"
+                      disabled={loading || !!success}
+                      className={`${inputClass} pr-12`}
+                      autoComplete="new-password"
+                      required
+                    />
+
+                    <PasswordToggleButton
+                      show={showPassword}
+                      onClick={() => setShowPassword((s) => !s)}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-[16px] border border-[#26293a] bg-[#161824] px-4 py-3 text-[12px] leading-6 text-[#a7aec4]">
+                  Password must include at least{" "}
+                  <span className="text-white">8 characters</span>, one
+                  uppercase letter, one lowercase letter, one number, and one
+                  symbol.
                 </div>
 
                 {error ? (
@@ -264,7 +310,7 @@ export default function ResetPasswordPage() {
 
                 <button
                   type="submit"
-                  disabled={loading || !token}
+                  disabled={loading || !token || !!success}
                   className={`${primaryBtnClass} mt-2 w-full`}
                 >
                   {loading ? "Resetting..." : "Reset Password"}

@@ -62,10 +62,12 @@ export const makeAuthMiddleware =
         clearAuthCookie(res, cookieName);
         return next(new AppError("Invalid token", 401));
       }
+
       if (error?.name === "TokenExpiredError") {
         clearAuthCookie(res, cookieName);
         return next(new AppError("Token expired", 401));
       }
+
       return next(error);
     }
   };
@@ -98,6 +100,7 @@ export const adminAuthMiddleware = (
     if (err) return next(err);
 
     const role = String(req.user?.role || "").toLowerCase();
+
     if (role !== "admin" && role !== "superadmin") {
       clearAuthCookie(res, ADMIN_COOKIE);
       return next(new AppError("Admin access only", 403));
@@ -116,6 +119,7 @@ export const deliveryAuthMiddleware = (
     if (err) return next(err);
 
     const role = String(req.user?.role || "").toLowerCase();
+
     if (role !== "delivery") {
       clearAuthCookie(res, DELIVERY_COOKIE);
       return next(new AppError("Delivery access only", 403));
@@ -150,11 +154,17 @@ export const anyAuthMiddleware = (
   makeAuthMiddleware(ADMIN_COOKIE)(req, res, (adminErr?: any) => {
     if (!adminErr && req.user?.userId) return next();
 
+    req.user = undefined;
+
     makeAuthMiddleware(CUSTOMER_COOKIE)(req, res, (custErr?: any) => {
       if (!custErr && req.user?.userId) return next();
 
-      makeAuthMiddleware(DELIVERY_COOKIE)(req, res, (deliveryErr?: any) => {
-        if (deliveryErr) return next(deliveryErr);
+      req.user = undefined;
+
+      makeAuthMiddleware(DELIVERY_COOKIE)(req, res, (_deliveryErr?: any) => {
+        if (req.user?.userId) return next();
+
+        req.user = undefined;
         return next();
       });
     });
