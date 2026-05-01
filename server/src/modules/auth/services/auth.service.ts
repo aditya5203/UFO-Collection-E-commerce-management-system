@@ -15,6 +15,8 @@ const generateToken = (payload: JwtPayload): string => {
 const STRONG_PASSWORD_REGEX =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
+const NEPALI_PHONE_REGEX = /^(97|98)\d{8}$/;
+
 function validateStrongPassword(password: string, label = "Password") {
   const clean = String(password || "").trim();
 
@@ -22,15 +24,25 @@ function validateStrongPassword(password: string, label = "Password") {
     throw new AppError(`${label} is required`, 400);
   }
 
-  if (clean.length < 8) {
-    throw new AppError(`${label} must be at least 8 characters`, 400);
-  }
-
   if (!STRONG_PASSWORD_REGEX.test(clean)) {
     throw new AppError(
-      `${label} must include uppercase, lowercase, number, and symbol`,
+      `${label} must be at least 8 characters and include uppercase, lowercase, number, and symbol`,
       400
     );
+  }
+
+  return clean;
+}
+
+function validateNepaliPhone(phone: string) {
+  const clean = String(phone || "").trim();
+
+  if (!clean) {
+    throw new AppError("Phone number is required", 400);
+  }
+
+  if (!NEPALI_PHONE_REGEX.test(clean)) {
+    throw new AppError("Please enter a valid Nepali mobile number", 400);
   }
 
   return clean;
@@ -100,17 +112,26 @@ const sanitizeUserForResponse = (user: any) => {
 };
 
 export const authService = {
-  registerUser: async (userData: RegisterDto) => {
+  registerUser: async (userData: RegisterDto & { phone?: string }) => {
     const email = String(userData.email || "").trim().toLowerCase();
     const name = String(userData.name || "").trim();
+    const phone = validateNepaliPhone(userData.phone || "");
+    const password = validateStrongPassword(userData.password, "Password");
 
-    if (!email || !name || !userData.password) {
-      throw new AppError("Email, password, and name are required", 400);
+    if (!email || !name || !password || !phone) {
+      throw new AppError("Email, password, name, and phone are required", 400);
     }
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({
+      $or: [{ email }, { phone }],
+    });
+
     if (existingUser) {
-      throw new AppError("User with this email already exists", 409);
+      if (existingUser.email === email) {
+        throw new AppError("User with this email already exists", 409);
+      }
+
+      throw new AppError("User with this mobile number already exists", 409);
     }
 
     const heightFt =
@@ -123,20 +144,26 @@ export const authService = {
         ? Number(userData.weight)
         : undefined;
 
-    const { men, women } = getRecommendedSizes(
-      Number.isFinite(heightFt as number) ? heightFt : undefined,
-      Number.isFinite(weightKg as number) ? weightKg : undefined
-    );
+    if (heightFt !== undefined && (!Number.isFinite(heightFt) || heightFt <= 0 || heightFt > 8)) {
+      throw new AppError("Please enter a valid height in feet", 400);
+    }
+
+    if (weightKg !== undefined && (!Number.isFinite(weightKg) || weightKg <= 0 || weightKg > 250)) {
+      throw new AppError("Please enter a valid weight in kg", 400);
+    }
+
+    const { men, women } = getRecommendedSizes(heightFt, weightKg);
 
     const user = new User({
       email,
       name,
-      password: userData.password,
+      phone,
+      password,
       address: userData.address,
       role: "customer",
       provider: "credentials",
-      height: Number.isFinite(heightFt as number) ? heightFt : undefined,
-      weight: Number.isFinite(weightKg as number) ? weightKg : undefined,
+      height: heightFt,
+      weight: weightKg,
       recommendedSizeMen: men,
       recommendedSizeWomen: women,
       isBlocked: false,
@@ -303,16 +330,40 @@ export const authService = {
 
     if (data.name !== undefined) user.name = String(data.name).trim();
     if (data.address !== undefined) user.address = String(data.address).trim();
-    if (data.phone !== undefined) (user as any).phone = String(data.phone).trim();
+
+    if (data.phone !== undefined) {
+      const cleanPhone = validateNepaliPhone(String(data.phone));
+
+      const existingPhone = await User.findOne({
+        phone: cleanPhone,
+        _id: { $ne: user._id },
+      });
+
+      if (existingPhone) {
+        throw new AppError("User with this mobile number already exists", 409);
+      }
+
+      (user as any).phone = cleanPhone;
+    }
 
     if (data.height !== undefined && data.height !== null) {
       const h = Number(data.height);
-      user.height = Number.isFinite(h) ? h : undefined;
+
+      if (!Number.isFinite(h) || h <= 0 || h > 8) {
+        throw new AppError("Please enter a valid height in feet", 400);
+      }
+
+      user.height = h;
     }
 
     if (data.weight !== undefined && data.weight !== null) {
       const w = Number(data.weight);
-      user.weight = Number.isFinite(w) ? w : undefined;
+
+      if (!Number.isFinite(w) || w <= 0 || w > 250) {
+        throw new AppError("Please enter a valid weight in kg", 400);
+      }
+
+      user.weight = w;
     }
 
     const { men, women } = getRecommendedSizes(user.height, user.weight);
@@ -386,6 +437,7 @@ export const authService = {
 
     const email = String(userData.email || "").trim().toLowerCase();
     const name = String(userData.name || "").trim();
+    const password = validateStrongPassword(userData.password, "Password");
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
@@ -395,7 +447,7 @@ export const authService = {
     const superAdmin = new User({
       email,
       name,
-      password: userData.password,
+      password,
       role: "superadmin",
       provider: "credentials",
       status: "active",

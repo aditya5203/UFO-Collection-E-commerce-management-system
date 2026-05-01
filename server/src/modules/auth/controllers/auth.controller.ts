@@ -28,6 +28,8 @@ const DELIVERY_COOKIE = process.env.DELIVERY_COOKIE_NAME || "deliveryToken";
 const STRONG_PASSWORD_REGEX =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
+const NEPALI_PHONE_REGEX = /^(97|98)\d{8}$/;
+
 function validateStrongPassword(password: string) {
   const clean = String(password || "").trim();
 
@@ -40,6 +42,20 @@ function validateStrongPassword(password: string) {
       "Password must be at least 8 characters and include uppercase, lowercase, number, and symbol",
       400
     );
+  }
+
+  return clean;
+}
+
+function validateNepaliPhone(phone: string) {
+  const clean = String(phone || "").trim();
+
+  if (!clean) {
+    throw new AppError("Phone number is required", 400);
+  }
+
+  if (!NEPALI_PHONE_REGEX.test(clean)) {
+    throw new AppError("Please enter a valid Nepali mobile number", 400);
   }
 
   return clean;
@@ -133,11 +149,18 @@ export const authController = {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const userData: RegisterDto = req.body;
+      const userData = req.body as RegisterDto & { phone?: string };
 
       if (!userData.email || !userData.password || !userData.name) {
         throw new AppError("Email, password, and name are required", 400);
       }
+
+      if (!userData.phone) {
+        throw new AppError("Phone number is required", 400);
+      }
+
+      validateNepaliPhone(userData.phone);
+      validateStrongPassword(userData.password);
 
       const result = await authService.registerUser(userData);
 
@@ -155,6 +178,7 @@ export const authController = {
             userId: String(result.user._id),
             name: result.user.name || "",
             email: result.user.email || "",
+            phone: result.user.phone || "",
             provider: result.user.provider || "credentials",
           },
         });

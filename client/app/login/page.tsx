@@ -17,36 +17,58 @@ const shellClass =
 const containerClass =
   "mx-auto w-full max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
 const panelClass =
-  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+  "rounded-[28px] border border-[#26293a] bg-[#11121a] shadow-[0_24px_90px_rgba(0,0,0,0.45)]";
 const inputClass =
   "h-[48px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7c86b1] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60";
 const primaryBtnClass =
-  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
   show: { opacity: 1, y: 0 },
 };
 
+type Toast = {
+  type: "success" | "error";
+  message: string;
+};
+
+function LoadingSpinner() {
+  return (
+    <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#090a12]/30 border-t-[#090a12]" />
+  );
+}
+
 export default function LoginPage() {
   const router = useRouter();
 
   const [showPassword, setShowPassword] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState("");
+  const [toast, setToast] = React.useState<Toast | null>(null);
+
+  const showToast = React.useCallback((type: Toast["type"], message: string) => {
+    setToast({ type, message });
+
+    window.setTimeout(() => {
+      setToast(null);
+    }, 3200);
+  }, []);
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError("");
+
+    if (loading) return;
+
+    setToast(null);
 
     const formData = new FormData(e.currentTarget);
-    const email = formData.get("email")?.toString().trim() || "";
+    const email = formData.get("email")?.toString().trim().toLowerCase() || "";
     const password = formData.get("password")?.toString() || "";
 
     if (!email || !password) {
-      setError("Email and password are required.");
+      showToast("error", "Email and password are required.");
       return;
     }
 
@@ -60,32 +82,62 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json().catch(() => ({} as any));
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setError(data?.message || "Login failed.");
+        showToast("error", data?.message || "Login failed. Please try again.");
         return;
       }
 
+      showToast("success", "Login successful. Redirecting...");
+
+      const redirectPath =
+        localStorage.getItem("ufo_redirect_after_login") || "/collection";
+
       localStorage.removeItem("ufo_redirect_after_login");
 
-      router.push("/collection");
+      window.setTimeout(() => {
+        router.push(redirectPath);
+        router.refresh();
+      }, 500);
     } catch (err) {
       console.error("Login error:", err);
-      setError("Network error. Please try again.");
+      showToast("error", "Network error. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const onGoogleLogin = () => {
-    localStorage.removeItem("ufo_redirect_after_login");
+    if (loading) return;
     window.location.href = `${API}/auth/google/oauth`;
   };
 
   return (
     <>
       <CollectionHeader />
+
+      <AnimatePresence>
+        {toast ? (
+          <motion.div
+            key="login-toast"
+            initial={{ opacity: 0, y: -18, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -18, scale: 0.96 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className={`fixed right-4 top-5 z-[9999] max-w-[360px] rounded-[18px] border px-4 py-3 text-[13px] leading-6 shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur ${
+              toast.type === "success"
+                ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-100"
+                : "border-red-400/30 bg-red-500/15 text-red-100"
+            }`}
+          >
+            <div className="font-semibold">
+              {toast.type === "success" ? "Success" : "Action needed"}
+            </div>
+            <div className="text-white/80">{toast.message}</div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <main className={shellClass}>
         <section className={containerClass}>
@@ -97,6 +149,10 @@ export default function LoginPage() {
             className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
           >
             <div>
+              <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
+                Login
+              </div>
+
               <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[44px]">
                 Welcome Back
               </h1>
@@ -117,19 +173,35 @@ export default function LoginPage() {
               variants={fadeUp}
               initial="hidden"
               animate="show"
+              whileHover={{ y: -4 }}
               transition={{ duration: 0.55, ease: "easeOut", delay: 0.08 }}
               className={`${panelClass} overflow-hidden`}
             >
-              <div className="relative min-h-[360px] bg-[#161824] sm:min-h-[520px]">
+              <div className="relative min-h-[360px] bg-[#161824] sm:min-h-[560px]">
                 <Image
-                  src="/images/loginw.jpg"
+                  src="/images/loginphoto.jpg"
                   alt="UFO Collection login"
                   fill
                   priority
+                  sizes="(max-width: 1024px) 100vw, 60vw"
                   className="object-cover opacity-80"
                 />
 
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-black/20 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a0f] via-black/25 to-transparent" />
+
+                <div className="absolute left-5 right-5 top-5 flex flex-wrap gap-2 sm:left-8 sm:right-8 sm:top-8">
+                  {["Secure Login", "Order Tracking", "Saved Profile"].map(
+                    (item) => (
+                      <motion.span
+                        key={item}
+                        whileHover={{ y: -2, scale: 1.03 }}
+                        className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur"
+                      >
+                        {item}
+                      </motion.span>
+                    )
+                  )}
+                </div>
 
                 <div className="absolute bottom-6 left-5 right-5 sm:bottom-8 sm:left-8 sm:right-8">
                   <div className="w-fit rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur">
@@ -157,7 +229,7 @@ export default function LoginPage() {
             >
               <div>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                  Login
+                  Account Access
                 </div>
 
                 <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
@@ -177,7 +249,7 @@ export default function LoginPage() {
                 className="mt-6 grid gap-4"
                 onSubmit={onSubmit}
               >
-                <div>
+                <motion.div whileHover={{ y: -1 }}>
                   <label
                     htmlFor="email"
                     className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
@@ -192,12 +264,13 @@ export default function LoginPage() {
                     placeholder="Enter your email"
                     required
                     disabled={loading}
+                    autoComplete="email"
                     aria-label="Email address"
                     className={inputClass}
                   />
-                </div>
+                </motion.div>
 
-                <div>
+                <motion.div whileHover={{ y: -1 }}>
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <label
                       htmlFor="password"
@@ -222,50 +295,40 @@ export default function LoginPage() {
                       placeholder="Enter your password"
                       required
                       disabled={loading}
+                      autoComplete="current-password"
                       aria-label="Password"
-                      className={`${inputClass} pr-12`}
+                      className={`${inputClass} pr-20`}
                     />
 
                     <button
                       type="button"
+                      disabled={loading}
                       aria-label={
                         showPassword ? "Hide password" : "Show password"
                       }
                       onClick={() => setShowPassword((s) => !s)}
-                      className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:bg-white/10"
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#d6c7ff] transition hover:text-white disabled:opacity-60"
                     >
-                      <Image
-                        src="/images/view.png"
-                        alt="Toggle password visibility"
-                        width={18}
-                        height={18}
-                        className="brightness-0 invert"
-                      />
+                      {showPassword ? "Hide" : "Show"}
                     </button>
                   </div>
-                </div>
+                </motion.div>
 
-                <AnimatePresence mode="wait">
-                  {error ? (
-                    <motion.div
-                      key="error"
-                      initial={{ opacity: 0, y: -8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      className="rounded-[16px] border border-red-400/30 bg-red-500/10 px-4 py-3 text-[13px] leading-6 text-red-200"
-                    >
-                      {error}
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
-
-                <button
+                <motion.button
                   type="submit"
                   disabled={loading}
-                  className={`${primaryBtnClass} mt-2 w-full`}
+                  whileTap={{ scale: 0.98 }}
+                  className={`${primaryBtnClass} mt-2 flex w-full items-center justify-center gap-2`}
                 >
-                  {loading ? "Logging in..." : "Login"}
-                </button>
+                  {loading ? (
+                    <>
+                      <LoadingSpinner />
+                      Logging in...
+                    </>
+                  ) : (
+                    "Login"
+                  )}
+                </motion.button>
 
                 <div className="flex items-center gap-3 text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
                   <div className="h-px flex-1 bg-[#26293a]" />
@@ -273,9 +336,10 @@ export default function LoginPage() {
                   <div className="h-px flex-1 bg-[#26293a]" />
                 </div>
 
-                <button
+                <motion.button
                   type="button"
                   disabled={loading}
+                  whileTap={{ scale: 0.98 }}
                   onClick={onGoogleLogin}
                   className={`${secondaryBtnClass} flex w-full items-center justify-center gap-2`}
                 >
@@ -286,7 +350,7 @@ export default function LoginPage() {
                     alt="Google"
                   />
                   Continue with Google
-                </button>
+                </motion.button>
               </motion.form>
 
               <div className="mt-5 text-center text-[13px] text-[#a7aec4]">
@@ -305,8 +369,9 @@ export default function LoginPage() {
                   ["Save", "Wishlist"],
                   ["Use", "Coupons"],
                 ].map(([a, b]) => (
-                  <div
+                  <motion.div
                     key={`${a}-${b}`}
+                    whileHover={{ y: -2 }}
                     className="rounded-[16px] border border-[#26293a] bg-[#161824] p-3 text-center"
                   >
                     <div className="text-[12px] font-semibold text-white">
@@ -314,7 +379,7 @@ export default function LoginPage() {
                     </div>
 
                     <div className="text-[11px] text-[#a7aec4]">{b}</div>
-                  </div>
+                  </motion.div>
                 ))}
               </div>
             </motion.aside>
