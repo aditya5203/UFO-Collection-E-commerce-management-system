@@ -117,7 +117,7 @@ export default function DeliverySidebar({
           >
             <span className="flex h-[21px] w-[21px] items-center justify-center">
               <Image
-                src="/images/admin/logout.png"
+                src="/images/delivery/log out.png"
                 alt="Logout"
                 width={19}
                 height={19}
