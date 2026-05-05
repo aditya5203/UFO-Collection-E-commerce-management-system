@@ -12,7 +12,7 @@ import {
   normalizeAdminPermissions,
 } from "../_components/adminPermissions";
 
-type CustomerRole = "customer" | "admin" | "superadmin";
+type CustomerRole = "customer" | "admin" | "superadmin" | "delivery";
 type CustomerStatus = "active" | "blocked" | "deleted";
 type FilterKey = "all" | "blocked" | "deleted";
 
@@ -38,18 +38,23 @@ const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 const primaryBtnClass =
-  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
+  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const filterBtnBase =
   "rounded-full border px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] transition hover:-translate-y-0.5";
 
 function formatDateShort(iso?: string) {
   if (!iso) return "-";
-  return String(iso).slice(0, 10);
+
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+
+  return d.toISOString().slice(0, 10);
 }
 
 function roleLabel(role: CustomerRole) {
   if (role === "superadmin") return "Super Admin";
   if (role === "admin") return "Admin";
+  if (role === "delivery") return "Delivery";
   return "Customer";
 }
 
@@ -61,11 +66,29 @@ function getCustomerStatus(customer: CustomerRow): CustomerStatus {
 
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
     return { raw: text };
   }
+}
+
+function normalizeCustomer(item: any): CustomerRow {
+  return {
+    id: String(item?.id || item?._id || ""),
+    name: String(item?.name || ""),
+    email: String(item?.email || ""),
+    role: (item?.role || "customer") as CustomerRole,
+    createdAt: String(item?.createdAt || ""),
+    lastLogin: item?.lastLogin ? String(item.lastLogin) : undefined,
+    numberOfOrders: Number(item?.numberOfOrders ?? item?.orders ?? 0),
+    orders: Number(item?.orders ?? item?.numberOfOrders ?? 0),
+    status: item?.status as CustomerStatus | undefined,
+    isBlocked: Boolean(item?.isBlocked),
+    isDeleted: Boolean(item?.isDeleted),
+    deletedAt: item?.deletedAt ? String(item.deletedAt) : undefined,
+  };
 }
 
 export default function CustomersPage() {
@@ -99,6 +122,7 @@ export default function CustomersPage() {
         if (!res.ok) return;
 
         const body = (await safeJson(res)) as AdminSettingsResponse;
+
         const nextRole = (body?.profile?.role || "admin") as
           | "admin"
           | "superadmin";
@@ -112,7 +136,9 @@ export default function CustomersPage() {
 
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {}
+      } catch {
+        // Ignore profile loading failure because AdminPageGuard already protects route.
+      }
     };
 
     loadAdminProfile();
@@ -129,11 +155,14 @@ export default function CustomersPage() {
 
       try {
         const params = new URLSearchParams();
-        if (search) params.set("search", search);
+
+        if (search.trim()) params.set("search", search.trim());
         if (selectedFilter !== "all") params.set("filter", selectedFilter);
 
+        const query = params.toString();
+
         const res = await fetch(
-          `${API_BASE}/api/admin/customers?${params.toString()}`,
+          `${API_BASE}/api/admin/customers${query ? `?${query}` : ""}`,
           {
             credentials: "include",
             cache: "no-store",
@@ -148,7 +177,13 @@ export default function CustomersPage() {
           return;
         }
 
-        setRows(Array.isArray((json as any)?.data) ? (json as any).data : []);
+        const data = Array.isArray((json as any)?.data)
+          ? (json as any).data
+          : Array.isArray((json as any)?.customers)
+            ? (json as any).customers
+            : [];
+
+        setRows(data.map(normalizeCustomer).filter((item: CustomerRow) => item.id));
       } catch {
         setRows([]);
         setError("Network error while loading customers");
@@ -160,11 +195,11 @@ export default function CustomersPage() {
   );
 
   React.useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = window.setTimeout(() => {
       load(q, filter);
     }, 300);
 
-    return () => clearTimeout(t);
+    return () => window.clearTimeout(timer);
   }, [q, filter, load]);
 
   const handleToggleBlock = async (customer: CustomerRow) => {
@@ -174,6 +209,12 @@ export default function CustomersPage() {
     }
 
     const status = getCustomerStatus(customer);
+
+    if (status === "deleted") {
+      setError("Deleted customers cannot be blocked or unblocked.");
+      return;
+    }
+
     const blocked = status === "blocked";
     const actionText = blocked ? "unblock" : "block";
 
@@ -209,19 +250,20 @@ export default function CustomersPage() {
 
       if (filter === "blocked" && blocked) {
         setRows((prev) => prev.filter((item) => item.id !== customer.id));
-      } else {
-        setRows((prev) =>
-          prev.map((item) =>
-            item.id === customer.id
-              ? {
-                  ...item,
-                  status: blocked ? "active" : "blocked",
-                  isBlocked: !blocked,
-                }
-              : item
-          )
-        );
+        return;
       }
+
+      setRows((prev) =>
+        prev.map((item) =>
+          item.id === customer.id
+            ? {
+                ...item,
+                status: blocked ? "active" : "blocked",
+                isBlocked: !blocked,
+              }
+            : item
+        )
+      );
     } catch {
       setError(`Network error while trying to ${actionText} customer`);
     } finally {
@@ -235,10 +277,17 @@ export default function CustomersPage() {
       return;
     }
 
+    const status = getCustomerStatus(customer);
+
+    if (status === "deleted") {
+      setError("This customer is already deleted.");
+      return;
+    }
+
     const ok = window.confirm(
       `Are you sure you want to delete ${
         customer.name || "this customer"
-      }?\n\nThis action cannot be undone.`
+      }?\n\nThis customer will be moved to deleted records.`
     );
 
     if (!ok) return;
@@ -261,20 +310,21 @@ export default function CustomersPage() {
 
       if (filter === "all" || filter === "blocked") {
         setRows((prev) => prev.filter((item) => item.id !== customer.id));
-      } else {
-        setRows((prev) =>
-          prev.map((item) =>
-            item.id === customer.id
-              ? {
-                  ...item,
-                  status: "deleted",
-                  isDeleted: true,
-                  deletedAt: new Date().toISOString(),
-                }
-              : item
-          )
-        );
+        return;
       }
+
+      setRows((prev) =>
+        prev.map((item) =>
+          item.id === customer.id
+            ? {
+                ...item,
+                status: "deleted",
+                isDeleted: true,
+                deletedAt: new Date().toISOString(),
+              }
+            : item
+        )
+      );
     } catch {
       setError("Network error while deleting customer");
     } finally {
@@ -337,9 +387,10 @@ export default function CustomersPage() {
               <button
                 type="button"
                 onClick={() => load(q, filter)}
+                disabled={loading}
                 className={primaryBtnClass}
               >
-                Refresh
+                {loading ? "Loading..." : "Refresh"}
               </button>
             </div>
 
@@ -462,42 +513,44 @@ export default function CustomersPage() {
                   </thead>
 
                   <tbody>
-                    {filteredRows.map((c) => {
+                    {filteredRows.map((customer) => {
                       const ordersCount = Number(
-                        c.numberOfOrders ?? c.orders ?? 0
+                        customer.numberOfOrders ?? customer.orders ?? 0
                       );
-                      const status = getCustomerStatus(c);
-                      const actionLoading = actionLoadingId === c.id;
+                      const status = getCustomerStatus(customer);
+                      const actionLoading = actionLoadingId === customer.id;
 
                       return (
                         <tr
-                          key={c.id}
+                          key={customer.id}
                           className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
                         >
                           <td className="px-5 py-4">
                             <div className="font-semibold text-white">
-                              {c.name || "-"}
+                              {customer.name || "-"}
                             </div>
                           </td>
 
                           <td className="px-5 py-4 text-[#a7aec4]">
-                            {c.email || "-"}
+                            {customer.email || "-"}
                           </td>
 
                           <td className="px-5 py-4">
-                            <RolePill>{roleLabel(c.role || "customer")}</RolePill>
+                            <RolePill>
+                              {roleLabel(customer.role || "customer")}
+                            </RolePill>
                           </td>
 
                           <td className="px-5 py-4">
-                            <StatusPill status={status} />
+                            <CustomerStatusPill status={status} />
                           </td>
 
                           <td className="px-5 py-4 text-[#a7aec4]">
-                            {formatDateShort(c.createdAt)}
+                            {formatDateShort(customer.createdAt)}
                           </td>
 
                           <td className="px-5 py-4 text-[#a7aec4]">
-                            {formatDateShort(c.lastLogin)}
+                            {formatDateShort(customer.lastLogin)}
                           </td>
 
                           <td className="px-5 py-4">
@@ -505,13 +558,13 @@ export default function CustomersPage() {
                           </td>
 
                           <td className="px-5 py-4 text-[#a7aec4]">
-                            {formatDateShort(c.deletedAt)}
+                            {formatDateShort(customer.deletedAt)}
                           </td>
 
                           <td className="px-5 py-4">
                             <div className="flex items-center justify-end gap-2">
                               <Link
-                                href={`/admin/customers/${c.id}`}
+                                href={`/admin/customers/${customer.id}`}
                                 className={actionBtnClass}
                               >
                                 View
@@ -522,7 +575,7 @@ export default function CustomersPage() {
                                   {canEdit ? (
                                     <button
                                       type="button"
-                                      onClick={() => handleToggleBlock(c)}
+                                      onClick={() => handleToggleBlock(customer)}
                                       disabled={actionLoading}
                                       className={[
                                         "rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60",
@@ -534,15 +587,15 @@ export default function CustomersPage() {
                                       {actionLoading
                                         ? "Wait"
                                         : status === "blocked"
-                                        ? "Unblock"
-                                        : "Block"}
+                                          ? "Unblock"
+                                          : "Block"}
                                     </button>
                                   ) : null}
 
                                   {canDelete ? (
                                     <button
                                       type="button"
-                                      onClick={() => handleDelete(c)}
+                                      onClick={() => handleDelete(customer)}
                                       disabled={actionLoading}
                                       className="rounded-full border border-red-400/20 bg-red-500/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-red-300 transition hover:-translate-y-0.5 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
                                     >
@@ -627,8 +680,8 @@ function FilterButton({
     tone === "danger"
       ? "border-red-400/20 bg-red-500/15 text-red-300"
       : tone === "warning"
-      ? "border-amber-400/20 bg-amber-500/15 text-amber-300"
-      : "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+        ? "border-amber-400/20 bg-amber-500/15 text-amber-300"
+        : "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
 
   return (
     <button
@@ -654,13 +707,13 @@ function RolePill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function StatusPill({ status }: { status: CustomerStatus }) {
+function CustomerStatusPill({ status }: { status: CustomerStatus }) {
   const styles =
     status === "blocked"
       ? "border-amber-400/20 bg-amber-500/15 text-amber-300"
       : status === "deleted"
-      ? "border-red-400/20 bg-red-500/15 text-red-300"
-      : "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+        ? "border-red-400/20 bg-red-500/15 text-red-300"
+        : "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
 
   return (
     <span
@@ -672,8 +725,8 @@ function StatusPill({ status }: { status: CustomerStatus }) {
       {status === "blocked"
         ? "Blocked"
         : status === "deleted"
-        ? "Deleted"
-        : "Active"}
+          ? "Deleted"
+          : "Active"}
     </span>
   );
 }

@@ -34,7 +34,10 @@ export const customerTicketController = {
       const user = getUser(req);
 
       if (!user?.email || !user?.userId) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
         return;
       }
 
@@ -65,7 +68,7 @@ export const customerTicketController = {
         imageUrl ||
         null;
 
-      const created = await ticketService.createTicket({
+      const created: any = await ticketService.createTicket({
         customerId: user.userId,
         issueType: String(issueType).trim(),
         subject: String(subject).trim(),
@@ -87,9 +90,9 @@ export const customerTicketController = {
             created.ticketCode
           }.`,
           type: "ticket",
-          link: `/admin/tickets/${String((created as any)._id)}`,
+          link: `/admin/customer-tickets/${String(created._id)}`,
           meta: {
-            ticketId: String((created as any)._id),
+            ticketId: String(created._id),
             ticketCode: created.ticketCode,
             customerId: String(user.userId),
             customerName: user.name || "Customer",
@@ -106,7 +109,7 @@ export const customerTicketController = {
         const io = getIO();
 
         io.to("admins").emit("admin:ticket:new", {
-          ticketId: String((created as any)._id),
+          ticketId: String(created._id),
           ticketCode: created.ticketCode,
           status: created.status,
           customerName: user.name || "Customer",
@@ -115,6 +118,8 @@ export const customerTicketController = {
           issueType: created.issueType,
           productName: created.productName || null,
           orderId: created.orderId || null,
+          size: created.size || null,
+          color: created.color || null,
           submittedAt: created.createdAt,
           updatedAt: new Date().toISOString(),
         });
@@ -140,7 +145,10 @@ export const customerTicketController = {
       const user = getUser(req);
 
       if (!user?.email) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
         return;
       }
 
@@ -149,7 +157,7 @@ export const customerTicketController = {
       res.json({
         success: true,
         items: items.map((t: any) => ({
-          id: t._id,
+          id: String(t._id),
           ticketId: t.ticketCode,
           ticketCode: t.ticketCode,
           status: t.status,
@@ -183,7 +191,10 @@ export const customerTicketController = {
       const user = getUser(req);
 
       if (!user?.email) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
         return;
       }
 
@@ -195,14 +206,17 @@ export const customerTicketController = {
       );
 
       if (!t) {
-        res.status(404).json({ success: false, message: "Ticket not found" });
+        res.status(404).json({
+          success: false,
+          message: "Ticket not found",
+        });
         return;
       }
 
       res.json({
         success: true,
         item: {
-          id: t._id,
+          id: String(t._id),
           ticketCode: t.ticketCode,
           status: t.status,
           submittedAt: t.createdAt,
@@ -220,7 +234,7 @@ export const customerTicketController = {
             name: t.productName || "-",
           },
           replies: (t.replies || []).map((r: any) => ({
-            id: r._id,
+            id: String(r._id),
             sender: r.sender,
             text: r.text,
             createdAt: r.createdAt,
@@ -243,7 +257,10 @@ export const customerTicketController = {
       const user = getUser(req);
 
       if (!user?.email) {
-        res.status(401).json({ success: false, message: "Unauthorized" });
+        res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
         return;
       }
 
@@ -265,7 +282,10 @@ export const customerTicketController = {
       );
 
       if (!updated) {
-        res.status(404).json({ success: false, message: "Ticket not found" });
+        res.status(404).json({
+          success: false,
+          message: "Ticket not found",
+        });
         return;
       }
 
@@ -282,7 +302,7 @@ export const customerTicketController = {
               user.name || user.email || "Customer"
             } replied on ticket ${fresh.ticketCode}.`,
             type: "ticket",
-            link: `/admin/tickets/${String(fresh._id)}`,
+            link: `/admin/customer-tickets/${String(fresh._id)}`,
             meta: {
               ticketId: String(fresh._id),
               ticketCode: fresh.ticketCode,
@@ -304,7 +324,7 @@ export const customerTicketController = {
               customerName: user.name || "Customer",
               customerEmail: user.email,
               reply: {
-                id: lastReply?._id || "",
+                id: String(lastReply?._id || ""),
                 sender: "customer",
                 text,
                 createdAt: lastReply?.createdAt || new Date().toISOString(),
@@ -329,7 +349,10 @@ export const customerTicketController = {
         );
       }
 
-      res.json({ success: true, item: updated });
+      res.json({
+        success: true,
+        item: updated,
+      });
       return;
     } catch (e) {
       next(e);

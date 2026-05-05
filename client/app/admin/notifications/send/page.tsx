@@ -1,9 +1,6 @@
 // client/app/admin/notifications/send/page.tsx
 "use client";
 
-// Same API/logic, premium UI updated.
-// Icon flow matches Admin Dashboard: iconSrc + next/image.
-
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -33,15 +30,30 @@ type BroadcastHistoryItem = {
   isExpired?: boolean;
 };
 
-const API_BASE_URL = (
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
-).replace(/\/+$/, "");
+type AlertState = {
+  type: "success" | "error" | "info";
+  message: string;
+};
+
+const RAW_API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:8080";
+
+const CLEAN_API_BASE = RAW_API_BASE.replace(/\/+$/, "");
+
+const API_BASE = CLEAN_API_BASE.endsWith("/api")
+  ? CLEAN_API_BASE
+  : `${CLEAN_API_BASE}/api`;
 
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
 const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
 
@@ -89,10 +101,48 @@ const TYPE_OPTIONS: Array<{
 
 async function safeJson<T = unknown>(res: Response): Promise<T> {
   const text = await res.text();
+
   try {
     return text ? (JSON.parse(text) as T) : ({} as T);
   } catch {
     return {} as T;
+  }
+}
+
+function normalizeNotificationType(value?: string): NotificationType {
+  if (value === "product") return "product";
+  if (value === "account") return "account";
+  if (value === "system") return "system";
+  return "offer";
+}
+
+function normalizeHistoryItem(row: any, index: number): BroadcastHistoryItem {
+  return {
+    broadcastId: String(
+      row?.broadcastId || row?.id || row?._id || `broadcast-${index}`
+    ),
+    title: String(row?.title || "Notification"),
+    message: String(row?.message || row?.body || ""),
+    type: normalizeNotificationType(row?.type),
+    link: row?.link ? String(row.link) : "",
+    createdAt: row?.createdAt ? String(row.createdAt) : "",
+    expiresAt: row?.expiresAt ? String(row.expiresAt) : null,
+    sentCount: Number(row?.sentCount ?? row?.count ?? 0),
+    isExpired: Boolean(row?.isExpired),
+  };
+}
+
+function isSafeNotificationLink(value: string) {
+  const v = value.trim();
+
+  if (!v) return true;
+  if (v.startsWith("/") && !v.startsWith("//")) return true;
+
+  try {
+    const url = new URL(v);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
   }
 }
 
@@ -112,7 +162,9 @@ function getTypeTone(type: NotificationType) {
 
 function formatDateTime(iso?: string | null) {
   if (!iso) return "—";
+
   const d = new Date(iso);
+
   if (Number.isNaN(d.getTime())) return "—";
 
   return d.toLocaleString(undefined, {
@@ -128,10 +180,11 @@ function timeAgo(iso?: string | null) {
   if (!iso) return "";
 
   const d = new Date(iso);
+
   if (Number.isNaN(d.getTime())) return "";
 
   const diff = Date.now() - d.getTime();
-  const s = Math.floor(diff / 1000);
+  const s = Math.max(0, Math.floor(diff / 1000));
 
   if (s < 60) return `${s}s ago`;
 
@@ -160,8 +213,8 @@ export default function AdminSendNotificationsPage() {
   const [sendEmail, setSendEmail] = React.useState(false);
 
   const [submitting, setSubmitting] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState<string | null>(null);
+  const [alert, setAlert] = React.useState<AlertState | null>(null);
+
   const [sentCount, setSentCount] = React.useState<number | null>(null);
   const [emailSentCount, setEmailSentCount] = React.useState<number | null>(
     null
@@ -181,13 +234,17 @@ export default function AdminSendNotificationsPage() {
 
   const previewLink = link.trim() || selectedTypeMeta?.autoLink || "/homepage";
 
+  function showAlert(nextAlert: AlertState) {
+    setAlert(nextAlert);
+  }
+
   const fetchHistory = React.useCallback(async () => {
     try {
       setHistoryLoading(true);
       setHistoryError(null);
 
       const res = await fetch(
-        `${API_BASE_URL}/api/notifications/admin/broadcast-history?limit=12`,
+        `${API_BASE}/notifications/admin/broadcast-history?limit=12`,
         {
           method: "GET",
           credentials: "include",
@@ -217,13 +274,17 @@ export default function AdminSendNotificationsPage() {
         return;
       }
 
-      const list = Array.isArray(json?.items)
+      const rawList = Array.isArray(json?.items)
         ? json.items
         : Array.isArray(json?.data)
-          ? json.data
-          : [];
+        ? json.data
+        : [];
 
-      setHistory(list);
+      const nextHistory = rawList
+        .map(normalizeHistoryItem)
+        .filter((item: BroadcastHistoryItem) => Boolean(item.broadcastId));
+
+      setHistory(nextHistory);
     } catch (e: any) {
       setHistoryError(e?.message || "Failed to load send history.");
       setHistory([]);
@@ -242,8 +303,7 @@ export default function AdminSendNotificationsPage() {
     setType("offer");
     setLink("");
     setSendEmail(false);
-    setError(null);
-    setSuccess(null);
+    setAlert(null);
     setSentCount(null);
     setEmailSentCount(null);
     setEmailFailedCount(null);
@@ -256,8 +316,7 @@ export default function AdminSendNotificationsPage() {
       "Limited-time deal. Shop now and enjoy 20% discount on all jackets before the offer ends."
     );
     setLink("");
-    setError(null);
-    setSuccess(null);
+    setAlert(null);
   }, []);
 
   const fillProductExample = React.useCallback(() => {
@@ -267,8 +326,7 @@ export default function AdminSendNotificationsPage() {
       "Fresh new styles are now live in the Men’s Collection. Explore the latest arrivals today."
     );
     setLink("");
-    setError(null);
-    setSuccess(null);
+    setAlert(null);
   }, []);
 
   const fillSystemExample = React.useCallback(() => {
@@ -278,8 +336,7 @@ export default function AdminSendNotificationsPage() {
       "The website may be temporarily unavailable during scheduled maintenance tonight from 11 PM."
     );
     setLink("");
-    setError(null);
-    setSuccess(null);
+    setAlert(null);
   }, []);
 
   const handleSubmit = React.useCallback(
@@ -290,46 +347,61 @@ export default function AdminSendNotificationsPage() {
       const cleanMessage = message.trim();
       const cleanLink = link.trim();
 
-      setError(null);
-      setSuccess(null);
+      setAlert(null);
       setSentCount(null);
       setEmailSentCount(null);
       setEmailFailedCount(null);
 
-      if (!cleanTitle) return setError("Title is required.");
+      if (!cleanTitle) {
+        showAlert({ type: "error", message: "Title is required." });
+        return;
+      }
+
       if (cleanTitle.length < 3) {
-        return setError("Title must be at least 3 characters.");
+        showAlert({
+          type: "error",
+          message: "Title must be at least 3 characters.",
+        });
+        return;
       }
 
-      if (!cleanMessage) return setError("Message is required.");
+      if (!cleanMessage) {
+        showAlert({ type: "error", message: "Message is required." });
+        return;
+      }
+
       if (cleanMessage.length < 5) {
-        return setError("Message must be at least 5 characters.");
+        showAlert({
+          type: "error",
+          message: "Message must be at least 5 characters.",
+        });
+        return;
       }
 
-      if (cleanLink && !cleanLink.startsWith("/")) {
-        return setError(
-          "Link must start with / . Example: /collection or /profile"
-        );
+      if (!isSafeNotificationLink(cleanLink)) {
+        showAlert({
+          type: "error",
+          message:
+            "Link must be a safe internal path like /collection or a valid http/https URL.",
+        });
+        return;
       }
 
       try {
         setSubmitting(true);
 
-        const res = await fetch(
-          `${API_BASE_URL}/api/notifications/admin/broadcast`,
-          {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              title: cleanTitle,
-              message: cleanMessage,
-              type,
-              link: cleanLink,
-              sendEmail,
-            }),
-          }
-        );
+        const res = await fetch(`${API_BASE}/notifications/admin/broadcast`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: cleanTitle,
+            message: cleanMessage,
+            type,
+            link: cleanLink,
+            sendEmail,
+          }),
+        });
 
         if (res.status === 401) {
           window.location.href = "/admin/adminlogin";
@@ -339,15 +411,20 @@ export default function AdminSendNotificationsPage() {
         const json = await safeJson<ApiResponse<any[]>>(res);
 
         if (res.status === 403) {
-          setError(
-            json?.message ||
-              "You do not have permission to send notifications. Ask Superadmin to enable Notification Send permission."
-          );
+          showAlert({
+            type: "error",
+            message:
+              json?.message ||
+              "You do not have permission to send notifications. Ask Superadmin to enable Notification Send permission.",
+          });
           return;
         }
 
         if (!res.ok || !json?.success) {
-          setError(json?.message || "Failed to send notification.");
+          showAlert({
+            type: "error",
+            message: json?.message || "Failed to send notification.",
+          });
           return;
         }
 
@@ -355,34 +432,23 @@ export default function AdminSendNotificationsPage() {
           typeof json?.count === "number"
             ? json.count
             : Array.isArray(json?.data)
-              ? json.data.length
-              : null;
+            ? json.data.length
+            : null;
+
+        const emailSent =
+          typeof json?.emailSent === "number" ? json.emailSent : null;
+
+        const emailFailed =
+          typeof json?.emailFailed === "number" ? json.emailFailed : null;
 
         setSentCount(count);
-        setEmailSentCount(
-          typeof json?.emailSent === "number" ? json.emailSent : null
-        );
-        setEmailFailedCount(
-          typeof json?.emailFailed === "number" ? json.emailFailed : null
-        );
+        setEmailSentCount(emailSent);
+        setEmailFailedCount(emailFailed);
 
-        const successParts = [
-          "Notification sent successfully to customer users.",
-        ];
-
-        if (sendEmail) {
-          successParts.push(
-            `Emails sent: ${
-              typeof json?.emailSent === "number" ? json.emailSent : 0
-            }.`
-          );
-
-          if ((json?.emailFailed || 0) > 0) {
-            successParts.push(`Email failed: ${json?.emailFailed}.`);
-          }
-        }
-
-        setSuccess(successParts.join(" "));
+        showAlert({
+          type: "success",
+          message: "Notification sent successfully.",
+        });
 
         setTitle("");
         setMessage("");
@@ -392,7 +458,10 @@ export default function AdminSendNotificationsPage() {
 
         fetchHistory();
       } catch (err: any) {
-        setError(err?.message || "Failed to send notification.");
+        showAlert({
+          type: "error",
+          message: err?.message || "Failed to send notification.",
+        });
       } finally {
         setSubmitting(false);
       }
@@ -442,6 +511,7 @@ export default function AdminSendNotificationsPage() {
               value={String(history.length)}
               iconSrc="/images/admin/history.png"
             />
+
             <StatCard
               label="Last Sent"
               value={
@@ -451,11 +521,13 @@ export default function AdminSendNotificationsPage() {
               }
               iconSrc="/images/admin/send.png"
             />
+
             <StatCard
               label="Email Mode"
               value={sendEmail ? "On" : "Off"}
               iconSrc="/images/admin/email.png"
             />
+
             <StatCard
               label="Preview Link"
               value={previewLink}
@@ -471,9 +543,11 @@ export default function AdminSendNotificationsPage() {
                   <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                     Compose Broadcast
                   </div>
+
                   <h2 className="mt-1 text-[20px] font-semibold text-white">
                     Notification Details
                   </h2>
+
                   <p className="mt-1 text-[13px] text-[#a7aec4]">
                     Select the broadcast type, write the customer message, and
                     choose whether email should also be sent.
@@ -494,7 +568,10 @@ export default function AdminSendNotificationsPage() {
                           <button
                             key={option.value}
                             type="button"
-                            onClick={() => setType(option.value)}
+                            onClick={() => {
+                              setType(option.value);
+                              setAlert(null);
+                            }}
                             className={[
                               "rounded-[20px] border p-4 text-left transition duration-300 hover:-translate-y-0.5",
                               active
@@ -518,6 +595,7 @@ export default function AdminSendNotificationsPage() {
                                   <div className="text-[14px] font-semibold text-white">
                                     {option.label}
                                   </div>
+
                                   <div className="mt-1 text-[11px] text-[#7f879f]">
                                     {option.validity}
                                   </div>
@@ -554,6 +632,7 @@ export default function AdminSendNotificationsPage() {
                       maxLength={120}
                       className={inputClassName()}
                     />
+
                     <div className="mt-2 text-right text-[11px] text-[#7f879f]">
                       {title.length}/120
                     </div>
@@ -569,6 +648,7 @@ export default function AdminSendNotificationsPage() {
                       maxLength={500}
                       className="w-full resize-none rounded-[20px] border border-white/10 bg-[#0d0f17] px-4 py-3 text-[13px] leading-6 text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]"
                     />
+
                     <div className="mt-2 text-right text-[11px] text-[#7f879f]">
                       {message.length}/500
                     </div>
@@ -585,6 +665,7 @@ export default function AdminSendNotificationsPage() {
                       })`}
                       className={inputClassName()}
                     />
+
                     <p className="mt-2 text-[12px] text-[#7f879f]">
                       Leave empty to auto-generate by type. Current fallback:{" "}
                       <code className="text-[#d6c7ff]">
@@ -605,6 +686,7 @@ export default function AdminSendNotificationsPage() {
                       <div className="text-[14px] font-semibold text-white">
                         Send email also
                       </div>
+
                       <div className="mt-1 text-[12px] leading-6 text-[#a7aec4]">
                         Customers will receive the same message by email with
                         the same destination link.
@@ -612,25 +694,20 @@ export default function AdminSendNotificationsPage() {
                     </div>
                   </label>
 
-                  {error ? <Alert type="error" message={error} /> : null}
+                  {alert ? (
+                    <AlertBox
+                      type={alert.type}
+                      message={alert.message}
+                      onClose={() => setAlert(null)}
+                    />
+                  ) : null}
 
-                  {success ? (
-                    <Alert
-                      type="success"
-                      message={`${success}${
-                        typeof sentCount === "number"
-                          ? ` Notifications: ${sentCount}.`
-                          : ""
-                      }${
-                        typeof emailSentCount === "number"
-                          ? ` Emails sent: ${emailSentCount}.`
-                          : ""
-                      }${
-                        typeof emailFailedCount === "number" &&
-                        emailFailedCount > 0
-                          ? ` Email failed: ${emailFailedCount}.`
-                          : ""
-                      }`}
+                  {alert?.type === "success" ? (
+                    <SendResult
+                      sentCount={sentCount}
+                      emailSentCount={emailSentCount}
+                      emailFailedCount={emailFailedCount}
+                      sendEmail={sendEmail}
                     />
                   ) : null}
 
@@ -661,9 +738,11 @@ export default function AdminSendNotificationsPage() {
                     <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                       Send History
                     </div>
+
                     <h2 className="mt-1 text-[20px] font-semibold text-white">
                       Recently Sent Notifications
                     </h2>
+
                     <p className="mt-1 text-[13px] text-[#a7aec4]">
                       Latest broadcast campaigns sent to customer users.
                     </p>
@@ -672,9 +751,10 @@ export default function AdminSendNotificationsPage() {
                   <button
                     type="button"
                     onClick={fetchHistory}
+                    disabled={historyLoading}
                     className={secondaryBtnClass}
                   >
-                    Refresh
+                    {historyLoading ? "Refreshing..." : "Refresh"}
                   </button>
                 </div>
 
@@ -682,7 +762,11 @@ export default function AdminSendNotificationsPage() {
                   {historyLoading ? (
                     <HistorySkeleton />
                   ) : historyError ? (
-                    <Alert type="error" message={historyError} />
+                    <AlertBox
+                      type="error"
+                      message={historyError}
+                      onClose={() => setHistoryError(null)}
+                    />
                   ) : history.length === 0 ? (
                     <EmptyHistory />
                   ) : (
@@ -703,6 +787,7 @@ export default function AdminSendNotificationsPage() {
                                     height={18}
                                     className="h-[18px] w-[18px] shrink-0 object-contain"
                                   />
+
                                   <div className="truncate text-[14px] font-semibold text-white">
                                     {item.title || "Notification"}
                                   </div>
@@ -748,7 +833,7 @@ export default function AdminSendNotificationsPage() {
                               </div>
 
                               {item.link ? (
-                                <div className="mt-2 text-[12px] text-[#93c5fd]">
+                                <div className="mt-2 break-all text-[12px] text-[#93c5fd]">
                                   Link: {item.link}
                                 </div>
                               ) : null}
@@ -769,6 +854,7 @@ export default function AdminSendNotificationsPage() {
                     <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                       Live Preview
                     </div>
+
                     <h2 className="mt-1 text-[20px] font-semibold text-white">
                       Customer Notification
                     </h2>
@@ -838,6 +924,7 @@ export default function AdminSendNotificationsPage() {
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                   Templates
                 </div>
+
                 <h2 className="mt-1 text-[20px] font-semibold text-white">
                   Quick Examples
                 </h2>
@@ -870,6 +957,7 @@ export default function AdminSendNotificationsPage() {
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                   Rules
                 </div>
+
                 <h2 className="mt-1 text-[20px] font-semibold text-white">
                   Validity Rules
                 </h2>
@@ -891,6 +979,7 @@ export default function AdminSendNotificationsPage() {
                           />
                           {item.label}
                         </div>
+
                         <span
                           className={[
                             "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]",
@@ -916,6 +1005,67 @@ export default function AdminSendNotificationsPage() {
   );
 }
 
+function SendResult({
+  sentCount,
+  emailSentCount,
+  emailFailedCount,
+  sendEmail,
+}: {
+  sentCount: number | null;
+  emailSentCount: number | null;
+  emailFailedCount: number | null;
+  sendEmail: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <ResultChip
+        label="Notifications"
+        value={typeof sentCount === "number" ? sentCount : "—"}
+      />
+
+      <ResultChip
+        label="Emails Sent"
+        value={
+          sendEmail
+            ? typeof emailSentCount === "number"
+              ? emailSentCount
+              : 0
+            : "Off"
+        }
+      />
+
+      <ResultChip
+        label="Emails Failed"
+        value={
+          sendEmail
+            ? typeof emailFailedCount === "number"
+              ? emailFailedCount
+              : 0
+            : "Off"
+        }
+      />
+    </div>
+  );
+}
+
+function ResultChip({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+      <div className="text-[11px] uppercase tracking-[0.14em] text-[#a7aec4]">
+        {label}
+      </div>
+
+      <div className="mt-2 text-[18px] font-semibold text-white">{value}</div>
+    </div>
+  );
+}
+
 function StatCard({
   label,
   value,
@@ -934,6 +1084,7 @@ function StatCard({
           <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
             {label}
           </div>
+
           <div
             className={[
               "mt-3 font-semibold tracking-[-0.03em] text-white",
@@ -970,6 +1121,7 @@ function Field({
       <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
         {label}
       </label>
+
       {children}
     </div>
   );
@@ -979,23 +1131,42 @@ function inputClassName() {
   return "h-[48px] w-full rounded-full border border-white/10 bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]";
 }
 
-function Alert({
+function AlertBox({
   type,
   message,
+  onClose,
 }: {
-  type: "success" | "error";
+  type: "success" | "error" | "info";
   message: string;
+  onClose?: () => void;
 }) {
+  const tone =
+    type === "success"
+      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+      : type === "error"
+      ? "border-red-400/20 bg-red-500/15 text-red-200"
+      : "border-blue-400/20 bg-blue-500/15 text-blue-200";
+
   return (
     <div
       className={[
-        "rounded-[20px] border px-4 py-3 text-[13px] leading-6",
-        type === "success"
-          ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
-          : "border-red-400/20 bg-red-500/15 text-red-200",
+        "flex items-start justify-between gap-3 rounded-[20px] border px-4 py-3 text-[13px] leading-6",
+        tone,
       ].join(" ")}
     >
-      {message}
+      <p>{message}</p>
+
+      {onClose ? (
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-white"
+          aria-label="Dismiss"
+          title="Dismiss"
+        >
+          ✕
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1030,6 +1201,7 @@ function ExampleButton({
 
         <div>
           <div className="text-[14px] font-semibold text-white">{title}</div>
+
           <div className="mt-1 text-[12px] leading-6 text-[#a7aec4]">
             {text}
           </div>

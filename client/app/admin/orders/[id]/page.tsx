@@ -16,6 +16,8 @@ import {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
+const PLACEHOLDER = "/images/products/placeholder.png";
+
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
@@ -23,10 +25,15 @@ const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+const dangerBtnClass =
+  "rounded-full border border-red-400/20 bg-red-500/10 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-red-300 transition hover:-translate-y-0.5 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60";
+const inputClass =
+  "h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60";
 
 type PaymentStatus = "Paid" | "Pending" | "Failed";
 type OrderStatus =
   | "Pending"
+  | "Confirmed"
   | "Shipped"
   | "Transit"
   | "Delivered"
@@ -39,6 +46,13 @@ type DeliveryAssignmentStatus =
   | "Delivered"
   | "Failed Delivery"
   | "Returned";
+
+type ToastType = "success" | "error" | "info";
+
+type ToastState = {
+  type: ToastType;
+  message: string;
+} | null;
 
 type TimelineStep = {
   label: string;
@@ -57,15 +71,86 @@ type RiderRow = {
   isActive?: boolean;
 };
 
+type OrderItem = {
+  productId?: string;
+  name?: string;
+  size?: string;
+  color?: string;
+  colorLabel?: string;
+  qty?: number;
+  pricePaisa?: number;
+  image?: string;
+};
+
+type OrderAddress = {
+  label?: string;
+  fullName?: string;
+  phone?: string;
+  street?: string;
+  addressLine?: string;
+  area?: string;
+  district?: string;
+  cityOrMunicipality?: string;
+  city?: string;
+  provinceId?: string;
+  lat?: number;
+  lng?: number;
+};
+
+type DeliveryAssignment = {
+  deliveryManId?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  vehicleType?: string;
+  note?: string;
+  status?: DeliveryAssignmentStatus;
+  assignedAt?: string;
+  isOtpVerified?: boolean;
+  otpVerifiedAt?: string;
+};
+
+type AdminOrderDetail = {
+  id: string;
+  orderCode?: string;
+  createdAt?: string;
+  confirmedAt?: string | null;
+  shippedAt?: string | null;
+  inTransitAt?: string | null;
+  deliveredAt?: string | null;
+  paymentStatus?: PaymentStatus | string;
+  orderStatus?: OrderStatus | string;
+  paymentMethod?: string;
+  paymentRef?: string | null;
+  customer?: {
+    id?: string;
+    _id?: string;
+    name?: string;
+    email?: string;
+    phone?: string;
+  };
+  items?: OrderItem[];
+  address?: OrderAddress | null;
+  subtotalPaisa?: number;
+  shippingPaisa?: number;
+  discountPaisa?: number;
+  totalPaisa?: number;
+  deliveryAssignment?: DeliveryAssignment | null;
+};
+
 function formatNPR(paisa: number) {
   const safe = Number.isFinite(paisa) ? paisa : 0;
   return `Rs. ${(safe / 100).toFixed(2)}`;
 }
 
-function formatDate(d: any) {
+function formatDate(d: unknown) {
   if (!d) return "-";
+
   try {
-    return new Date(d).toLocaleDateString("en-US", {
+    const date = new Date(String(d));
+    if (Number.isNaN(date.getTime())) return "-";
+
+    return date.toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -75,10 +160,14 @@ function formatDate(d: any) {
   }
 }
 
-function formatDateTime(d: any) {
+function formatDateTime(d: unknown) {
   if (!d) return "-";
+
   try {
-    return new Date(d).toLocaleString("en-US", {
+    const date = new Date(String(d));
+    if (Number.isNaN(date.getTime())) return "-";
+
+    return date.toLocaleString("en-US", {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -90,7 +179,7 @@ function formatDateTime(d: any) {
   }
 }
 
-function safeStr(v: any) {
+function safeStr(v: unknown) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
@@ -107,6 +196,39 @@ function getInitials(name?: string) {
   return initials || "CU";
 }
 
+function normalizePaymentStatus(value?: string): PaymentStatus {
+  const v = safeStr(value).toLowerCase();
+
+  if (v === "paid" || v === "success" || v === "successful") return "Paid";
+  if (v === "failed") return "Failed";
+
+  return "Pending";
+}
+
+function normalizeOrderStatus(value?: string): OrderStatus {
+  const v = safeStr(value).toLowerCase();
+
+  if (v === "confirmed") return "Confirmed";
+  if (v === "shipped") return "Shipped";
+  if (v === "transit" || v === "in transit") return "Transit";
+  if (v === "delivered") return "Delivered";
+  if (v === "cancelled" || v === "canceled") return "Cancelled";
+
+  return "Pending";
+}
+
+function normalizeDeliveryStatus(value?: string): DeliveryAssignmentStatus {
+  const v = safeStr(value).toLowerCase();
+
+  if (v === "picked up") return "Picked Up";
+  if (v === "out for delivery") return "Out for Delivery";
+  if (v === "delivered") return "Delivered";
+  if (v === "failed delivery") return "Failed Delivery";
+  if (v === "returned") return "Returned";
+
+  return "Assigned";
+}
+
 function getStatusTone(status?: string) {
   const s = safeStr(status).toLowerCase();
 
@@ -121,7 +243,12 @@ function getStatusTone(status?: string) {
     return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
   }
 
-  if (s === "pending" || s === "shipped" || s === "transit") {
+  if (
+    s === "pending" ||
+    s === "confirmed" ||
+    s === "shipped" ||
+    s === "transit"
+  ) {
     return "border-amber-400/20 bg-amber-500/15 text-amber-300";
   }
 
@@ -138,18 +265,64 @@ function getStatusTone(status?: string) {
   return "border-white/10 bg-white/5 text-[#a7aec4]";
 }
 
-function hasLatLng(addr: any) {
+function hasLatLng(addr: unknown) {
+  const a = addr as OrderAddress | null;
+
   return (
-    typeof addr?.lat === "number" &&
-    Number.isFinite(addr.lat) &&
-    typeof addr?.lng === "number" &&
-    Number.isFinite(addr.lng)
+    typeof a?.lat === "number" &&
+    Number.isFinite(a.lat) &&
+    typeof a?.lng === "number" &&
+    Number.isFinite(a.lng)
   );
 }
 
-function getGoogleMapsUrl(addr: any) {
-  if (!hasLatLng(addr)) return "";
-  return `https://www.google.com/maps?q=${addr.lat},${addr.lng}`;
+function getGoogleMapsUrl(addr: unknown) {
+  const a = addr as OrderAddress | null;
+  if (!hasLatLng(a)) return "";
+
+  return `https://www.google.com/maps?q=${a?.lat},${a?.lng}`;
+}
+
+function getImageSrc(image: string | undefined | null): string {
+  if (!image) return PLACEHOLDER;
+
+  const src = image.trim();
+  if (!src) return PLACEHOLDER;
+  if (src.startsWith("/")) return src;
+
+  if (src.startsWith("http://") || src.startsWith("https://")) {
+    try {
+      const u = new URL(src);
+      const allowed = new Set([
+        "res.cloudinary.com",
+        "localhost",
+        "lh3.googleusercontent.com",
+        "t3.ftcdn.net",
+        "images.unsplash.com",
+      ]);
+
+      if (!allowed.has(u.hostname)) return PLACEHOLDER;
+
+      return src;
+    } catch {
+      return PLACEHOLDER;
+    }
+  }
+
+  return PLACEHOLDER;
+}
+
+function getOrderFromResponse(body: any): AdminOrderDetail | null {
+  return (body?.data || body?.order || body || null) as AdminOrderDetail | null;
+}
+
+function getRidersFromResponse(body: any): any[] {
+  if (Array.isArray(body?.data)) return body.data;
+  if (Array.isArray(body?.deliveryStaff)) return body.deliveryStaff;
+  if (Array.isArray(body?.data?.deliveryStaff)) return body.data.deliveryStaff;
+  if (Array.isArray(body)) return body;
+
+  return [];
 }
 
 async function safeJson(res: Response) {
@@ -167,9 +340,13 @@ export default function OrderDetailsPage() {
   const id = params?.id;
 
   const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [order, setOrder] = React.useState<any>(null);
+  const [downloadingInvoice, setDownloadingInvoice] = React.useState(false);
+
+  const [order, setOrder] = React.useState<AdminOrderDetail | null>(null);
   const [error, setError] = React.useState("");
+  const [toast, setToast] = React.useState<ToastState>(null);
 
   const [paymentStatus, setPaymentStatus] =
     React.useState<PaymentStatus>("Pending");
@@ -189,6 +366,20 @@ export default function OrderDetailsPage() {
     React.useState<DeliveryAssignmentStatus>("Assigned");
 
   const canUpdate = hasPermission(role, permissions, "orderUpdate");
+
+  const showToast = React.useCallback(
+    (message: string, type: ToastType = "info") => {
+      setToast({ message, type });
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    if (!toast) return;
+
+    const t = window.setTimeout(() => setToast(null), 3200);
+    return () => window.clearTimeout(t);
+  }, [toast]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -217,7 +408,9 @@ export default function OrderDetailsPage() {
 
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {}
+      } catch {
+        // AdminPageGuard handles auth.
+      }
     };
 
     loadAdminProfile();
@@ -228,6 +421,8 @@ export default function OrderDetailsPage() {
   }, []);
 
   React.useEffect(() => {
+    let mounted = true;
+
     const loadRiders = async () => {
       try {
         setRidersLoading(true);
@@ -238,9 +433,12 @@ export default function OrderDetailsPage() {
         });
 
         const json = await safeJson(res);
-        const data = Array.isArray((json as any)?.data)
-          ? (json as any).data
-          : [];
+
+        if (!res.ok) {
+          throw new Error((json as any)?.message || "Failed to load riders");
+        }
+
+        const data = getRidersFromResponse(json);
 
         const normalized: RiderRow[] = data
           .map((item: any) => ({
@@ -250,68 +448,94 @@ export default function OrderDetailsPage() {
             phone: safeStr(item?.phone),
             vehicleType: safeStr(item?.vehicleType),
             vehicleNumber: safeStr(item?.vehicleNumber),
-            area: safeStr(item?.area),
+            area: safeStr(item?.area || item?.deliveryArea),
             isActive:
               typeof item?.isActive === "boolean"
                 ? item.isActive
-                : Boolean(item?.active),
+                : String(item?.status || "").toLowerCase() === "active" ||
+                  Boolean(item?.active),
           }))
           .filter((item: RiderRow) => item.id && item.isActive);
 
-        setRiders(normalized);
+        if (mounted) setRiders(normalized);
       } catch {
-        setRiders([]);
+        if (mounted) setRiders([]);
       } finally {
-        setRidersLoading(false);
+        if (mounted) setRidersLoading(false);
       }
     };
 
     loadRiders();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const loadOrder = React.useCallback(async () => {
-    if (!id) return;
+  const syncOrderState = React.useCallback((nextOrder: AdminOrderDetail) => {
+    setOrder(nextOrder);
+    setPaymentStatus(normalizePaymentStatus(nextOrder?.paymentStatus));
+    setOrderStatus(normalizeOrderStatus(nextOrder?.orderStatus));
+    setDeliveryManId(safeStr(nextOrder?.deliveryAssignment?.deliveryManId));
+    setDeliveryNote(safeStr(nextOrder?.deliveryAssignment?.note));
+    setDeliveryStatus(
+      normalizeDeliveryStatus(nextOrder?.deliveryAssignment?.status)
+    );
+  }, []);
 
-    try {
-      setLoading(true);
-      setError("");
+  const loadOrder = React.useCallback(
+    async (mode: "initial" | "refresh" | "silent" = "initial") => {
+      if (!id) return;
 
-      const res = await fetch(`${API_BASE}/api/admin/orders/${id}`, {
-        credentials: "include",
-        cache: "no-store",
-      });
+      try {
+        if (mode === "initial") setLoading(true);
+        if (mode === "refresh") setRefreshing(true);
 
-      const json = await safeJson(res);
+        setError("");
 
-      if (!res.ok) {
-        setError((json as any)?.message || "Order not found");
+        const res = await fetch(`${API_BASE}/api/admin/orders/${id}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const json = await safeJson(res);
+
+        if (!res.ok) {
+          setError((json as any)?.message || "Order not found");
+          setOrder(null);
+          return;
+        }
+
+        const nextOrder = getOrderFromResponse(json);
+
+        if (!nextOrder) {
+          setError("Order response was empty");
+          setOrder(null);
+          return;
+        }
+
+        syncOrderState(nextOrder);
+
+        if (mode === "refresh") {
+          showToast("Order refreshed successfully.", "success");
+        }
+      } catch {
+        setError("Failed to load order");
         setOrder(null);
-        return;
+
+        if (mode === "refresh") {
+          showToast("Failed to refresh order.", "error");
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      const nextOrder = (json as any).data;
-
-      setOrder(nextOrder);
-      setPaymentStatus((nextOrder?.paymentStatus || "Pending") as PaymentStatus);
-      setOrderStatus((nextOrder?.orderStatus || "Pending") as OrderStatus);
-      setDeliveryManId(
-        safeStr(nextOrder?.deliveryAssignment?.deliveryManId || "")
-      );
-      setDeliveryNote(safeStr(nextOrder?.deliveryAssignment?.note || ""));
-      setDeliveryStatus(
-        (nextOrder?.deliveryAssignment?.status ||
-          "Assigned") as DeliveryAssignmentStatus
-      );
-    } catch {
-      setError("Failed to load order");
-      setOrder(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+    },
+    [id, showToast, syncOrderState]
+  );
 
   React.useEffect(() => {
-    loadOrder();
+    loadOrder("initial");
   }, [loadOrder]);
 
   React.useEffect(() => {
@@ -323,9 +547,20 @@ export default function OrderDetailsPage() {
     });
 
     socket.on("order:updated", (payload: any) => {
-      const updatedOrderId = String(payload?.orderId || "");
-      if (updatedOrderId && updatedOrderId === String(id)) {
-        loadOrder();
+      const updatedOrderId = safeStr(payload?.orderId);
+      const updatedOrderCode = safeStr(payload?.orderCode);
+      const currentId = safeStr(id);
+      const currentOrderId = safeStr(order?.id);
+      const currentOrderCode = safeStr(order?.orderCode);
+
+      const matches =
+        updatedOrderId === currentId ||
+        updatedOrderId === currentOrderId ||
+        updatedOrderCode === currentId ||
+        updatedOrderCode === currentOrderCode;
+
+      if (matches) {
+        loadOrder("silent");
       }
     });
 
@@ -333,69 +568,153 @@ export default function OrderDetailsPage() {
       socket.off("order:updated");
       socket.disconnect();
     };
-  }, [id, loadOrder]);
+  }, [id, order?.id, order?.orderCode, loadOrder]);
+
+  const originalPaymentStatus = normalizePaymentStatus(order?.paymentStatus);
+  const originalOrderStatus = normalizeOrderStatus(order?.orderStatus);
+  const originalDeliveryManId = safeStr(order?.deliveryAssignment?.deliveryManId);
+  const originalDeliveryNote = safeStr(order?.deliveryAssignment?.note).trim();
+  const originalDeliveryStatus = normalizeDeliveryStatus(
+    order?.deliveryAssignment?.status
+  );
+
+  const deliveryChanged =
+    deliveryManId !== originalDeliveryManId ||
+    deliveryNote.trim() !== originalDeliveryNote ||
+    deliveryStatus !== originalDeliveryStatus;
+
+  const baseChanged =
+    paymentStatus !== originalPaymentStatus ||
+    orderStatus !== originalOrderStatus;
+
+  const hasChanges = baseChanged || deliveryChanged;
+
+  const otpVerified = Boolean(order?.deliveryAssignment?.isOtpVerified);
 
   const saveChanges = async () => {
     if (!order?.id) return;
 
     if (!canUpdate) {
-      alert("You do not have permission to update orders.");
+      showToast("You do not have permission to update orders.", "error");
       return;
     }
 
-    if (!deliveryManId) {
-      alert("Please select a delivery rider.");
+    if (!hasChanges) {
+      showToast("No changes to save.", "info");
+      return;
+    }
+
+    if (deliveryChanged && !deliveryManId) {
+      showToast(
+        "Please select a delivery rider before updating delivery details.",
+        "error"
+      );
+      return;
+    }
+
+    if (
+      (orderStatus === "Delivered" || deliveryStatus === "Delivered") &&
+      !otpVerified
+    ) {
+      showToast(
+        "Delivered status requires delivery OTP verification. Use delivery OTP flow.",
+        "error"
+      );
       return;
     }
 
     try {
       setSaving(true);
+      setToast(null);
+
+      const payload: {
+        paymentStatus: PaymentStatus;
+        orderStatus: OrderStatus;
+        deliveryAssignment?: {
+          deliveryManId: string;
+          note: string;
+          status: DeliveryAssignmentStatus;
+        };
+      } = {
+        paymentStatus,
+        orderStatus,
+      };
+
+      if (deliveryChanged) {
+        payload.deliveryAssignment = {
+          deliveryManId,
+          note: deliveryNote.trim(),
+          status: deliveryStatus,
+        };
+      }
 
       const res = await fetch(`${API_BASE}/api/admin/orders/${order.id}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentStatus,
-          orderStatus,
-          deliveryAssignment: {
-            deliveryManId,
-            note: deliveryNote,
-            status: deliveryStatus,
-          },
-        }),
+        body: JSON.stringify(payload),
       });
 
       const json = await safeJson(res);
 
       if (!res.ok) {
-        alert((json as any)?.message || "Failed to save changes");
+        showToast((json as any)?.message || "Failed to save changes", "error");
         return;
       }
 
-      const updated = (json as any)?.data;
+      const updated = getOrderFromResponse(json);
 
       if (updated) {
-        setOrder(updated);
-        setPaymentStatus((updated.paymentStatus || "Pending") as PaymentStatus);
-        setOrderStatus((updated.orderStatus || "Pending") as OrderStatus);
-        setDeliveryManId(
-          safeStr(updated?.deliveryAssignment?.deliveryManId || deliveryManId)
-        );
-        setDeliveryNote(
-          safeStr(updated?.deliveryAssignment?.note || deliveryNote)
-        );
-        setDeliveryStatus(
-          (updated?.deliveryAssignment?.status ||
-            deliveryStatus) as DeliveryAssignmentStatus
-        );
+        syncOrderState(updated);
+      } else {
+        await loadOrder("silent");
       }
 
-      alert("Order updated successfully.");
+      showToast("Order updated successfully.", "success");
     } catch {
-      alert("Failed to save changes");
+      showToast("Failed to save changes.", "error");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const downloadInvoice = async () => {
+    if (!order?.id) return;
+
+    try {
+      setDownloadingInvoice(true);
+
+      const target = encodeURIComponent(order.id);
+
+      const res = await fetch(`${API_BASE}/api/orders/${target}/invoice`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const body = await safeJson(res);
+        throw new Error((body as any)?.message || "Failed to download invoice");
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+
+      const fileBase = safeStr(order.orderCode || order.id).replace("#", "");
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoice-${fileBase || "order"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      window.URL.revokeObjectURL(url);
+      showToast("Invoice downloaded successfully.", "success");
+    } catch (e: unknown) {
+      const message =
+        e instanceof Error ? e.message : "Failed to download invoice.";
+      showToast(message, "error");
+    } finally {
+      setDownloadingInvoice(false);
     }
   };
 
@@ -417,6 +736,8 @@ export default function OrderDetailsPage() {
     return (
       <AdminPageGuard permission="orderView">
         <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+          <Toast toast={toast} />
+
           <div className="space-y-4">
             <div className={`${panelClass} p-6 text-[14px] text-red-200`}>
               {error || "Order not found"}
@@ -435,6 +756,16 @@ export default function OrderDetailsPage() {
 
   const timeline: TimelineStep[] = [
     { label: "Order Placed", date: placedOn, status: "done" },
+    {
+      label: "Order Confirmed",
+      date: order.confirmedAt ? formatDate(order.confirmedAt) : "—",
+      status:
+        orderStatus === "Confirmed"
+          ? "current"
+          : ["Shipped", "Transit", "Delivered"].includes(orderStatus)
+          ? "done"
+          : "upcoming",
+    },
     {
       label: "Order Shipped",
       date: order.shippedAt ? formatDate(order.shippedAt) : "—",
@@ -479,7 +810,7 @@ export default function OrderDetailsPage() {
   const customerId = order?.customer?.id || order?.customer?._id || "";
   const items = Array.isArray(order.items) ? order.items : [];
 
-  const subtotalPaisa = items.reduce((sum: number, it: any) => {
+  const subtotalPaisa = items.reduce((sum: number, it: OrderItem) => {
     const qty = Number(it?.qty || 0);
     const pricePaisa = Number(it?.pricePaisa || 0);
     return sum + qty * pricePaisa;
@@ -497,9 +828,13 @@ export default function OrderDetailsPage() {
     ? formatDateTime(order?.deliveryAssignment?.assignedAt)
     : "-";
 
+  const deliveredBlocked = !otpVerified;
+
   return (
     <AdminPageGuard permission="orderView">
       <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+        <Toast toast={toast} />
+
         <div className="space-y-6">
           <section
             className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
@@ -507,12 +842,12 @@ export default function OrderDetailsPage() {
             <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                  Orders / {order.orderCode}
+                  Orders / {order.orderCode || order.id}
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <h1 className="text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
-                    {order.orderCode}
+                    {order.orderCode || order.id}
                   </h1>
 
                   <StatusPill>{paymentStatus}</StatusPill>
@@ -532,9 +867,35 @@ export default function OrderDetailsPage() {
                     </>
                   ) : null}
                 </p>
+
+                {!otpVerified &&
+                (orderStatus === "Delivered" ||
+                  deliveryStatus === "Delivered") ? (
+                  <div className="mt-4 rounded-[16px] border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-6 text-amber-200">
+                    Delivered status requires delivery OTP verification.
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => loadOrder("refresh")}
+                  disabled={refreshing}
+                  className={secondaryBtnClass}
+                >
+                  {refreshing ? "Refreshing..." : "Refresh"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={downloadInvoice}
+                  disabled={downloadingInvoice}
+                  className={secondaryBtnClass}
+                >
+                  {downloadingInvoice ? "Downloading..." : "Invoice"}
+                </button>
+
                 {customerId ? (
                   <Link
                     href={`/admin/customers/${customerId}?tab=addresses`}
@@ -563,7 +924,7 @@ export default function OrderDetailsPage() {
               label="Items"
               value={String(items.length)}
               hint="Products in this order"
-              iconSrc="/images/admin/products.png"
+              iconSrc="/images/admin/product.png"
             />
 
             <SummaryCard
@@ -611,7 +972,7 @@ export default function OrderDetailsPage() {
 
                     <tbody>
                       {items.length ? (
-                        items.map((it: any, i: number) => {
+                        items.map((it: OrderItem, i: number) => {
                           const colorValue = safeStr(it?.color);
                           const colorLabel = safeStr(it?.colorLabel);
                           const qty = Number(it?.qty || 0);
@@ -620,25 +981,19 @@ export default function OrderDetailsPage() {
 
                           return (
                             <tr
-                              key={i}
+                              key={`${safeStr(it?.productId)}-${i}`}
                               className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
                             >
                               <td className="px-5 py-4">
                                 <div className="flex items-center gap-3">
                                   <div className="relative h-14 w-14 overflow-hidden rounded-[18px] border border-white/10 bg-[#0d0f17]">
-                                    {it?.image ? (
-                                      <Image
-                                        src={it.image}
-                                        alt={it?.name || "Product"}
-                                        fill
-                                        sizes="56px"
-                                        className="object-cover"
-                                      />
-                                    ) : (
-                                      <div className="grid h-full w-full place-items-center text-[10px] text-[#7f879f]">
-                                        No image
-                                      </div>
-                                    )}
+                                    <Image
+                                      src={getImageSrc(it?.image)}
+                                      alt={it?.name || "Product"}
+                                      fill
+                                      sizes="56px"
+                                      className="object-cover"
+                                    />
                                   </div>
 
                                   <div className="min-w-0">
@@ -855,6 +1210,14 @@ export default function OrderDetailsPage() {
                           )
                         }
                       />
+
+                      <LineItem
+                        label="OTP Verified"
+                        value={otpVerified ? "Yes" : "No"}
+                        valueClassName={
+                          otpVerified ? "text-emerald-300" : "text-[#a7aec4]"
+                        }
+                      />
                     </div>
                   </div>
 
@@ -912,8 +1275,12 @@ export default function OrderDetailsPage() {
                       <option value="Out for Delivery" className="bg-[#11121a]">
                         Out for Delivery
                       </option>
-                      <option value="Delivered" className="bg-[#11121a]">
-                        Delivered
+                      <option
+                        value="Delivered"
+                        className="bg-[#11121a]"
+                        disabled={deliveredBlocked}
+                      >
+                        Delivered {deliveredBlocked ? "(OTP required)" : ""}
                       </option>
                       <option value="Failed Delivery" className="bg-[#11121a]">
                         Failed Delivery
@@ -1024,14 +1391,21 @@ export default function OrderDetailsPage() {
                       <option value="Pending" className="bg-[#11121a]">
                         Pending
                       </option>
+                      <option value="Confirmed" className="bg-[#11121a]">
+                        Confirmed
+                      </option>
                       <option value="Shipped" className="bg-[#11121a]">
                         Shipped
                       </option>
                       <option value="Transit" className="bg-[#11121a]">
                         Transit
                       </option>
-                      <option value="Delivered" className="bg-[#11121a]">
-                        Delivered
+                      <option
+                        value="Delivered"
+                        className="bg-[#11121a]"
+                        disabled={deliveredBlocked}
+                      >
+                        Delivered {deliveredBlocked ? "(OTP required)" : ""}
                       </option>
                       <option value="Cancelled" className="bg-[#11121a]">
                         Cancelled
@@ -1048,7 +1422,7 @@ export default function OrderDetailsPage() {
                       <button
                         type="button"
                         onClick={saveChanges}
-                        disabled={saving}
+                        disabled={saving || !hasChanges}
                         className={primaryBtnClass}
                       >
                         {saving ? "Saving..." : "Save Changes"}
@@ -1059,6 +1433,19 @@ export default function OrderDetailsPage() {
                       </div>
                     )}
                   </div>
+
+                  {deliveryChanged && !deliveryManId ? (
+                    <div className="rounded-[16px] border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-6 text-amber-200">
+                      Select a delivery rider before saving delivery assignment
+                      changes.
+                    </div>
+                  ) : null}
+
+                  {!hasChanges ? (
+                    <div className="text-[12px] text-[#7f879f]">
+                      No unsaved changes.
+                    </div>
+                  ) : null}
                 </div>
               </InfoPanel>
             </div>
@@ -1069,8 +1456,24 @@ export default function OrderDetailsPage() {
   );
 }
 
-const inputClass =
-  "h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60";
+function Toast({ toast }: { toast: ToastState }) {
+  if (!toast) return null;
+
+  return (
+    <div
+      className={[
+        "fixed right-5 top-5 z-[1200] max-w-[380px] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur",
+        toast.type === "success"
+          ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+          : toast.type === "info"
+          ? "border-blue-400/20 bg-blue-500/15 text-blue-200"
+          : "border-red-400/20 bg-red-500/15 text-red-200",
+      ].join(" ")}
+    >
+      {toast.message}
+    </div>
+  );
+}
 
 function StatusPill({ children }: { children: React.ReactNode }) {
   const tone = getStatusTone(String(children));

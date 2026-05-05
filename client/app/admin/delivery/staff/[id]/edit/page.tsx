@@ -23,11 +23,11 @@ const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 const inputClass =
-  "h-12 w-full rounded-2xl border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] font-medium text-white outline-none transition placeholder:text-[#7f879f] focus:border-[#8b5cf6]/60 focus:ring-4 focus:ring-[#8b5cf6]/10";
+  "h-12 w-full rounded-2xl border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] font-medium text-white outline-none transition placeholder:text-[#7f879f] focus:border-[#8b5cf6]/60 focus:ring-4 focus:ring-[#8b5cf6]/10 disabled:cursor-not-allowed disabled:opacity-60";
 const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
 
 function Field({
   label,
@@ -49,6 +49,7 @@ function Field({
         {label}
         {required ? <span className="ml-1 text-red-300">*</span> : null}
       </label>
+
       {children}
     </div>
   );
@@ -56,6 +57,7 @@ function Field({
 
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -97,6 +99,7 @@ export default function EditDeliveryStaffPage() {
     const load = async () => {
       setLoading(true);
       setError("");
+      setSuccess("");
 
       try {
         const res = await fetch(`${API_BASE}/api/admin/delivery-staff/${id}`, {
@@ -143,7 +146,13 @@ export default function EditDeliveryStaffPage() {
             typeof item?.isActive === "boolean"
               ? item.isActive
               : Boolean(item?.active),
-          forcePasswordChange: Boolean(item?.forcePasswordChange),
+
+          // Important production-safe fallback:
+          // Backend User model uses mustChangePassword,
+          // while frontend sends forcePasswordChange.
+          forcePasswordChange: Boolean(
+            item?.forcePasswordChange ?? item?.mustChangePassword
+          ),
         });
       } catch {
         if (mounted) {
@@ -156,7 +165,12 @@ export default function EditDeliveryStaffPage() {
       }
     };
 
-    if (id) load();
+    if (id) {
+      load();
+    } else {
+      setLoading(false);
+      setError("Delivery rider ID is missing.");
+    }
 
     return () => {
       mounted = false;
@@ -169,6 +183,7 @@ export default function EditDeliveryStaffPage() {
     if (!form.phone.trim()) return "Phone number is required.";
     if (!form.vehicleType.trim()) return "Vehicle type is required.";
     if (!form.area.trim()) return "Delivery area is required.";
+
     return "";
   };
 
@@ -178,6 +193,7 @@ export default function EditDeliveryStaffPage() {
     setSuccess("");
 
     const validationMessage = validate();
+
     if (validationMessage) {
       setError(validationMessage);
       return;
@@ -228,7 +244,7 @@ export default function EditDeliveryStaffPage() {
 
       setSuccess("Delivery rider updated successfully.");
 
-      setTimeout(() => {
+      window.setTimeout(() => {
         router.push(`/admin/delivery/staff/${id}`);
       }, 700);
     } catch {
@@ -271,7 +287,9 @@ export default function EditDeliveryStaffPage() {
           </section>
 
           {loading ? (
-            <div className={`${panelClass} p-10 text-center text-[13px] text-[#a7aec4]`}>
+            <div
+              className={`${panelClass} p-10 text-center text-[13px] text-[#a7aec4]`}
+            >
               Loading rider...
             </div>
           ) : (
@@ -396,6 +414,7 @@ export default function EditDeliveryStaffPage() {
                           <div className="text-[15px] font-semibold text-white">
                             Rider Status
                           </div>
+
                           <div className="mt-1 text-[13px] leading-6 text-[#a7aec4]">
                             Mark this delivery rider as active and available for
                             order assignment.
@@ -406,6 +425,7 @@ export default function EditDeliveryStaffPage() {
                           <span className="text-[13px] font-medium text-[#a7aec4]">
                             Active
                           </span>
+
                           <input
                             type="checkbox"
                             checked={form.isActive}
@@ -426,6 +446,7 @@ export default function EditDeliveryStaffPage() {
                           <div className="text-[15px] font-semibold text-white">
                             Force Password Change
                           </div>
+
                           <div className="mt-1 text-[13px] leading-6 text-[#a7aec4]">
                             Rider must change password on next login.
                           </div>
@@ -435,6 +456,7 @@ export default function EditDeliveryStaffPage() {
                           <span className="text-[13px] font-medium text-[#a7aec4]">
                             Enabled
                           </span>
+
                           <input
                             type="checkbox"
                             checked={form.forcePasswordChange}

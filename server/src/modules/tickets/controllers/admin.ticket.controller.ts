@@ -6,15 +6,6 @@ import { User } from "../../../models/User.model";
 import { Product } from "../../../models/Product.model";
 import { getIO } from "../../../socket";
 
-function toDateOnly(d: any) {
-  try {
-    const x = new Date(d);
-    return Number.isNaN(x.getTime()) ? "" : x.toISOString().slice(0, 10);
-  } catch {
-    return "";
-  }
-}
-
 async function resolveCustomerIdFromTicket(ticket: any) {
   const direct = String(ticket?.customer || "");
   if (direct) return direct;
@@ -61,7 +52,7 @@ export const adminTicketController = {
       res.json({
         success: true,
         items: items.map((t: any) => ({
-          id: t._id,
+          id: String(t._id),
           ticketId: t.ticketCode,
           customerName: t.customerName,
           customerEmail: t.customerEmail,
@@ -74,7 +65,7 @@ export const adminTicketController = {
           size: t.size || null,
           color: t.color || null,
           issueType: t.issueType,
-          submittedAt: toDateOnly(t.createdAt),
+          submittedAt: t.createdAt,
           status: t.status,
         })),
       });
@@ -110,6 +101,7 @@ export const adminTicketController = {
           const p: any = await Product.findById(t.productId)
             .select("_id name")
             .lean();
+
           productName = p?.name || "Product";
           productId = p?._id || t.productId || null;
         }
@@ -118,7 +110,7 @@ export const adminTicketController = {
       res.json({
         success: true,
         item: {
-          id: t._id,
+          id: String(t._id),
           ticketCode: t.ticketCode,
           status: t.status,
           submittedAt: t.createdAt,
@@ -138,7 +130,7 @@ export const adminTicketController = {
             id: productId || null,
           },
           replies: (t.replies || []).map((r: any) => ({
-            id: r._id,
+            id: String(r._id),
             sender: r.sender,
             text: r.text,
             createdAt: r.createdAt,
@@ -206,7 +198,11 @@ export const adminTicketController = {
               message: `Your ticket ${before.ticketCode} is now ${status}.`,
               type: "ticket",
               link: `/profile/tickets/${id}`,
-              meta: { ticketId: id, ticketCode: before.ticketCode, status },
+              meta: {
+                ticketId: id,
+                ticketCode: before.ticketCode,
+                status,
+              },
             });
           } catch {}
         }
@@ -233,7 +229,10 @@ export const adminTicketController = {
         });
       }
 
-      res.json({ success: true, item: updated });
+      res.json({
+        success: true,
+        item: updated,
+      });
       return;
     } catch (e) {
       next(e);
@@ -273,6 +272,7 @@ export const adminTicketController = {
         .lean();
 
       const customerId = await resolveCustomerIdFromTicket(fresh);
+
       const lastReply = Array.isArray(fresh?.replies)
         ? fresh.replies[fresh.replies.length - 1]
         : null;
@@ -285,7 +285,10 @@ export const adminTicketController = {
             message: `Admin replied on your ticket ${fresh.ticketCode}.`,
             type: "ticket",
             link: `/profile/tickets/${id}`,
-            meta: { ticketId: id, ticketCode: fresh.ticketCode },
+            meta: {
+              ticketId: id,
+              ticketCode: fresh.ticketCode,
+            },
           });
         } catch {}
       }
@@ -298,7 +301,7 @@ export const adminTicketController = {
           ticketCode: fresh?.ticketCode,
           status: fresh?.status || updated?.status,
           reply: {
-            id: lastReply?._id || "",
+            id: String(lastReply?._id || ""),
             sender: "admin",
             text,
             createdAt: lastReply?.createdAt || new Date().toISOString(),
@@ -313,7 +316,10 @@ export const adminTicketController = {
         io.to("admins").emit("admin:ticket:reply:new", payload);
       });
 
-      res.json({ success: true, item: updated });
+      res.json({
+        success: true,
+        item: updated,
+      });
       return;
     } catch (e) {
       next(e);

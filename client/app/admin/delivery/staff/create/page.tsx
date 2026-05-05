@@ -1,3 +1,4 @@
+// client/app/admin/delivery/staff/create/page.tsx
 "use client";
 
 import * as React from "react";
@@ -17,26 +18,38 @@ type FormState = {
   area: string;
 };
 
+type ToastType = "success" | "error" | "info";
+
+type ToastState = {
+  type: ToastType;
+  message: string;
+} | null;
+
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 const inputClass =
-  "h-12 w-full rounded-2xl border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] font-medium text-white outline-none transition placeholder:text-[#7f879f] focus:border-[#8b5cf6]/60 focus:ring-4 focus:ring-[#8b5cf6]/10";
+  "h-12 w-full rounded-2xl border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] font-medium text-white outline-none transition placeholder:text-[#7f879f] focus:border-[#8b5cf6]/60 focus:ring-4 focus:ring-[#8b5cf6]/10 disabled:cursor-not-allowed disabled:opacity-60";
 const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NEPAL_PHONE_REGEX = /^9[6-8]\d{8}$/;
 
 function Field({
   label,
   htmlFor,
   required,
   children,
+  hint,
 }: {
   label: string;
   htmlFor: string;
   required?: boolean;
   children: React.ReactNode;
+  hint?: string;
 }) {
   return (
     <div>
@@ -47,18 +60,26 @@ function Field({
         {label}
         {required ? <span className="ml-1 text-red-300">*</span> : null}
       </label>
+
       {children}
+
+      {hint ? <div className="mt-2 text-[11px] text-[#7f879f]">{hint}</div> : null}
     </div>
   );
 }
 
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
     return { raw: text };
   }
+}
+
+function normalizePhone(phone: string) {
+  return phone.replace(/\D/g, "");
 }
 
 export default function CreateDeliveryStaffPage() {
@@ -76,6 +97,24 @@ export default function CreateDeliveryStaffPage() {
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState("");
+  const [toast, setToast] = React.useState<ToastState>(null);
+
+  const showToast = React.useCallback(
+    (message: string, type: ToastType = "info") => {
+      setToast({ message, type });
+    },
+    []
+  );
+
+  React.useEffect(() => {
+    if (!toast) return;
+
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, 2800);
+
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const updateField = <K extends keyof FormState>(
     key: K,
@@ -85,22 +124,53 @@ export default function CreateDeliveryStaffPage() {
   };
 
   const validate = () => {
-    if (!form.name.trim()) return "Full name is required.";
-    if (!form.email.trim()) return "Email is required.";
-    if (!form.phone.trim()) return "Phone number is required.";
-    if (!form.vehicleType.trim()) return "Vehicle type is required.";
-    if (!form.area.trim()) return "Delivery area is required.";
+    const name = form.name.trim();
+    const email = form.email.trim().toLowerCase();
+    const phone = normalizePhone(form.phone);
+    const vehicleType = form.vehicleType.trim();
+    const area = form.area.trim();
+
+    if (!name) return "Full name is required.";
+    if (name.length < 2) return "Full name must be at least 2 characters.";
+
+    if (!email) return "Email is required.";
+    if (!EMAIL_REGEX.test(email)) return "Enter a valid email address.";
+
+    if (!phone) return "Phone number is required.";
+    if (!NEPAL_PHONE_REGEX.test(phone)) {
+      return "Enter a valid Nepali phone number, for example 98XXXXXXXX.";
+    }
+
+    if (!vehicleType) return "Vehicle type is required.";
+    if (!area) return "Delivery area is required.";
+
     return "";
+  };
+
+  const resetForm = () => {
+    setForm({
+      name: "",
+      email: "",
+      phone: "",
+      vehicleType: "",
+      vehicleNumber: "",
+      area: "",
+    });
   };
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (saving) return;
+
     setError("");
     setSuccess("");
 
     const validationMessage = validate();
+
     if (validationMessage) {
       setError(validationMessage);
+      showToast(validationMessage, "error");
       return;
     }
 
@@ -109,8 +179,8 @@ export default function CreateDeliveryStaffPage() {
 
       const payload = {
         name: form.name.trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
+        email: form.email.trim().toLowerCase(),
+        phone: normalizePhone(form.phone),
         vehicleType: form.vehicleType.trim(),
         vehicleNumber: form.vehicleNumber.trim(),
         area: form.area.trim(),
@@ -133,25 +203,38 @@ export default function CreateDeliveryStaffPage() {
       }
 
       if (res.status === 403) {
-        setError(
+        const message =
           (json as any)?.message ||
-            "You do not have permission to create delivery staff."
-        );
+          "You do not have permission to create delivery staff.";
+
+        setError(message);
+        showToast(message, "error");
         return;
       }
 
       if (!res.ok) {
-        setError((json as any)?.message || "Failed to send delivery invitation");
+        const message =
+          (json as any)?.message || "Failed to send delivery invitation";
+
+        setError(message);
+        showToast(message, "error");
         return;
       }
 
-      setSuccess("Delivery invitation sent successfully.");
+      const message =
+        (json as any)?.message || "Delivery invitation sent successfully.";
 
-      setTimeout(() => {
+      setSuccess(message);
+      showToast(message, "success");
+      resetForm();
+
+      window.setTimeout(() => {
         router.push("/admin/delivery/staff");
-      }, 700);
+      }, 800);
     } catch {
-      setError("Failed to send delivery invitation");
+      const message = "Network error while sending delivery invitation.";
+      setError(message);
+      showToast(message, "error");
     } finally {
       setSaving(false);
     }
@@ -180,7 +263,12 @@ export default function CreateDeliveryStaffPage() {
                 </p>
               </div>
 
-              <Link href="/admin/delivery/staff" className={secondaryBtnClass}>
+              <Link
+                href="/admin/delivery/staff"
+                className={`${secondaryBtnClass} ${
+                  saving ? "pointer-events-none opacity-60" : ""
+                }`}
+              >
                 Back to Staff
               </Link>
             </div>
@@ -203,10 +291,13 @@ export default function CreateDeliveryStaffPage() {
               <Field label="Full Name" htmlFor="delivery-name" required>
                 <input
                   id="delivery-name"
+                  name="name"
                   type="text"
                   value={form.name}
                   onChange={(e) => updateField("name", e.target.value)}
                   placeholder="Enter rider full name"
+                  autoComplete="name"
+                  disabled={saving}
                   className={inputClass}
                 />
               </Field>
@@ -214,46 +305,70 @@ export default function CreateDeliveryStaffPage() {
               <Field label="Email" htmlFor="delivery-email" required>
                 <input
                   id="delivery-email"
+                  name="email"
                   type="email"
                   value={form.email}
                   onChange={(e) => updateField("email", e.target.value)}
                   placeholder="Enter rider email"
+                  autoComplete="email"
+                  disabled={saving}
                   className={inputClass}
                 />
               </Field>
 
-              <Field label="Phone Number" htmlFor="delivery-phone" required>
+              <Field
+                label="Phone Number"
+                htmlFor="delivery-phone"
+                required
+                hint="Use a valid Nepali mobile number, for example 98XXXXXXXX."
+              >
                 <input
                   id="delivery-phone"
-                  type="text"
+                  name="phone"
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
                   value={form.phone}
-                  onChange={(e) => updateField("phone", e.target.value)}
-                  placeholder="Enter rider phone number"
+                  onChange={(e) => {
+                    const onlyDigits = e.target.value
+                      .replace(/\D/g, "")
+                      .slice(0, 10);
+                    updateField("phone", onlyDigits);
+                  }}
+                  placeholder="98XXXXXXXX"
+                  autoComplete="tel"
+                  disabled={saving}
                   className={inputClass}
                 />
               </Field>
 
               <Field label="Vehicle Type" htmlFor="delivery-vehicle-type" required>
                 <select
-                 id="delivery-vehicle-type"
-                 aria-label="Vehicle Type"
-                 title="Vehicle Type"
-                 value={form.vehicleType}
-                onChange={(e) => updateField("vehicleType", e.target.value)}
-                className={inputClass}
+                  id="delivery-vehicle-type"
+                  name="vehicleType"
+                  aria-label="Vehicle Type"
+                  title="Vehicle Type"
+                  value={form.vehicleType}
+                  onChange={(e) => updateField("vehicleType", e.target.value)}
+                  disabled={saving}
+                  className={inputClass}
                 >
                   <option value="" className="bg-[#11121a]">
                     Select vehicle type
                   </option>
+
                   <option value="Bike" className="bg-[#11121a]">
                     Bike
                   </option>
+
                   <option value="Scooter" className="bg-[#11121a]">
                     Scooter
                   </option>
+
                   <option value="Van" className="bg-[#11121a]">
                     Van
                   </option>
+
                   <option value="Other" className="bg-[#11121a]">
                     Other
                   </option>
@@ -263,10 +378,15 @@ export default function CreateDeliveryStaffPage() {
               <Field label="Vehicle Number" htmlFor="delivery-vehicle-number">
                 <input
                   id="delivery-vehicle-number"
+                  name="vehicleNumber"
                   type="text"
                   value={form.vehicleNumber}
-                  onChange={(e) => updateField("vehicleNumber", e.target.value)}
+                  onChange={(e) =>
+                    updateField("vehicleNumber", e.target.value.toUpperCase())
+                  }
                   placeholder="Optional vehicle number"
+                  autoComplete="off"
+                  disabled={saving}
                   className={inputClass}
                 />
               </Field>
@@ -275,10 +395,13 @@ export default function CreateDeliveryStaffPage() {
                 <Field label="Delivery Area" htmlFor="delivery-area" required>
                   <input
                     id="delivery-area"
+                    name="area"
                     type="text"
                     value={form.area}
                     onChange={(e) => updateField("area", e.target.value)}
                     placeholder="Kathmandu, Lalitpur, Bhaktapur, etc."
+                    autoComplete="address-level2"
+                    disabled={saving}
                     className={inputClass}
                   />
                 </Field>
@@ -292,18 +415,46 @@ export default function CreateDeliveryStaffPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <Link href="/admin/delivery/staff" className={secondaryBtnClass}>
+                <Link
+                  href="/admin/delivery/staff"
+                  className={`${secondaryBtnClass} ${
+                    saving ? "pointer-events-none opacity-60" : ""
+                  }`}
+                >
                   Cancel
                 </Link>
 
-                <button type="submit" disabled={saving} className={primaryBtnClass}>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className={primaryBtnClass}
+                >
                   {saving ? "Sending..." : "Send Invite"}
                 </button>
               </div>
             </div>
           </form>
         </div>
+
+        {toast ? <Toast toast={toast} /> : null}
       </div>
     </AdminPageGuard>
+  );
+}
+
+function Toast({ toast }: { toast: Exclude<ToastState, null> }) {
+  return (
+    <div
+      className={[
+        "fixed bottom-5 right-5 z-[1200] max-w-[380px] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur",
+        toast.type === "success"
+          ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+          : toast.type === "error"
+          ? "border-red-400/20 bg-red-500/15 text-red-200"
+          : "border-[#8b5cf6]/30 bg-[#8b5cf6]/15 text-[#e9ddff]",
+      ].join(" ")}
+    >
+      {toast.message}
+    </div>
   );
 }

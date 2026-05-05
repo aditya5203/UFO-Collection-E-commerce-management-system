@@ -22,6 +22,8 @@ const primaryBtnClass =
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
 
+type RatingFilter = "" | "1" | "2" | "3" | "4" | "5";
+
 type ReviewRow = {
   id: string;
   rating: number;
@@ -48,31 +50,88 @@ type Pagination = {
   pages: number;
 };
 
-const PLACEHOLDER = "/images/products/placeholder.png";
+type ToastState = {
+  type: "success" | "error";
+  message: string;
+} | null;
 
-const getImageSrc = (image?: string) => {
-  if (!image) return PLACEHOLDER;
-  const src = image.trim();
-  if (!src) return PLACEHOLDER;
+const PLACEHOLDER_IMAGES = [
+  "/images/product-placeholder.png",
+  "/images/products/placeholder.png",
+];
+
+function getImageSrc(image?: string) {
+  const src = String(image || "").trim();
+
+  if (!src) return PLACEHOLDER_IMAGES[0];
   if (src.startsWith("/")) return src;
   if (src.startsWith("http://") || src.startsWith("https://")) return src;
-  return PLACEHOLDER;
-};
+
+  return PLACEHOLDER_IMAGES[0];
+}
 
 function fmtDate(iso?: string) {
   if (!iso) return "-";
+
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString();
+
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
     return { raw: text };
   }
+}
+
+function normalizePagination(input: any): Pagination {
+  const page = Math.max(1, Number(input?.page || 1));
+  const limit = Math.max(1, Number(input?.limit || 20));
+  const total = Math.max(0, Number(input?.total || 0));
+  const pages = Math.max(1, Number(input?.pages || Math.ceil(total / limit) || 1));
+
+  return {
+    page,
+    limit,
+    total,
+    pages,
+  };
+}
+
+function normalizeReview(item: any): ReviewRow {
+  return {
+    id: String(item?.id || item?._id || ""),
+    rating: Number(item?.rating || 0),
+    title: String(item?.title || ""),
+    comment: String(item?.comment || ""),
+    orderCode: String(item?.orderCode || ""),
+    createdAt: item?.createdAt ? String(item.createdAt) : undefined,
+    product: item?.product
+      ? {
+          id: String(item.product?.id || item.product?._id || ""),
+          name: String(item.product?.name || ""),
+          image: String(item.product?.image || ""),
+        }
+      : null,
+    customer: item?.customer
+      ? {
+          id: String(item.customer?.id || item.customer?._id || ""),
+          name: String(item.customer?.name || ""),
+          email: String(item.customer?.email || ""),
+        }
+      : null,
+  };
 }
 
 export default function AdminReviewsPage() {
@@ -85,17 +144,14 @@ export default function AdminReviewsPage() {
   });
 
   const [loading, setLoading] = React.useState(true);
+  const [deletingId, setDeletingId] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
 
   const [search, setSearch] = React.useState("");
-  const [rating, setRating] = React.useState<"" | "1" | "2" | "3" | "4" | "5">(
-    ""
-  );
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
+  const [rating, setRating] = React.useState<RatingFilter>("");
 
-  const [toast, setToast] = React.useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
+  const [toast, setToast] = React.useState<ToastState>(null);
 
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
   const [permissions, setPermissions] =
@@ -104,9 +160,21 @@ export default function AdminReviewsPage() {
   const canDelete = hasPermission(role, permissions, "reviewDelete");
 
   React.useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  React.useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2500);
-    return () => clearTimeout(t);
+
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, 2600);
+
+    return () => window.clearTimeout(timer);
   }, [toast]);
 
   React.useEffect(() => {
@@ -123,18 +191,23 @@ export default function AdminReviewsPage() {
         if (!res.ok) return;
 
         const body = (await safeJson(res)) as AdminSettingsResponse;
+
         const nextRole = (body?.profile?.role || "admin") as
           | "admin"
           | "superadmin";
+
         const nextPermissions = normalizeAdminPermissions(
           nextRole,
           body?.profile?.permissions
         );
 
         if (!mounted) return;
+
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {}
+      } catch {
+        // ignore settings failure here because AdminPageGuard still protects page
+      }
     };
 
     loadAdminProfile();
@@ -151,9 +224,11 @@ export default function AdminReviewsPage() {
         setError(null);
 
         const params = new URLSearchParams();
-        if (search.trim()) params.set("search", search.trim());
+
+        if (debouncedSearch) params.set("search", debouncedSearch);
         if (rating) params.set("rating", rating);
-        params.set("page", String(page));
+
+        params.set("page", String(Math.max(1, page)));
         params.set("limit", String(pagination.limit));
 
         const res = await fetch(
@@ -166,18 +241,28 @@ export default function AdminReviewsPage() {
         );
 
         const body = await safeJson(res);
+
         if (!res.ok) {
           throw new Error((body as any)?.message || "Failed to load reviews");
         }
 
-        setReviews(
-          Array.isArray((body as any)?.reviews) ? (body as any).reviews : []
-        );
+        const rows = Array.isArray((body as any)?.reviews)
+          ? (body as any).reviews
+          : Array.isArray((body as any)?.data)
+            ? (body as any).data
+            : [];
+
+        setReviews(rows.map(normalizeReview).filter((item: ReviewRow) => item.id));
+
         setPagination(
-          (body as any)?.pagination &&
-            typeof (body as any).pagination === "object"
-            ? (body as any).pagination
-            : { page: 1, limit: 20, total: 0, pages: 1 }
+          normalizePagination(
+            (body as any)?.pagination || {
+              page,
+              limit: pagination.limit,
+              total: rows.length,
+              pages: 1,
+            }
+          )
         );
       } catch (e: any) {
         setError(e?.message || "Failed to load reviews");
@@ -186,7 +271,7 @@ export default function AdminReviewsPage() {
         setLoading(false);
       }
     },
-    [search, rating, pagination.limit]
+    [debouncedSearch, rating, pagination.limit]
   );
 
   React.useEffect(() => {
@@ -197,40 +282,50 @@ export default function AdminReviewsPage() {
     if (!canDelete) {
       setToast({
         type: "error",
-        message: "You do not have permission to delete reviews",
+        message: "You do not have permission to delete reviews.",
       });
       return;
     }
 
-    const ok = confirm("Delete this review?");
+    const ok = window.confirm("Are you sure you want to delete this review?");
     if (!ok) return;
 
     try {
+      setDeletingId(id);
+
       const res = await fetch(`${API_BASE_URL}/api/admin/reviews/${id}`, {
         method: "DELETE",
         credentials: "include",
       });
 
       const body = await safeJson(res);
+
       if (!res.ok) {
         throw new Error((body as any)?.message || "Failed to delete review");
       }
 
-      setReviews((prev) => prev.filter((r) => r.id !== id));
-      setToast({ type: "success", message: "Review deleted" });
+      setToast({ type: "success", message: "Review deleted successfully." });
 
-      setPagination((prev) => ({
-        ...prev,
-        total: Math.max(0, prev.total - 1),
-      }));
+      const isLastItemOnPage = reviews.length <= 1;
+      const nextPage =
+        isLastItemOnPage && pagination.page > 1
+          ? pagination.page - 1
+          : pagination.page;
+
+      await fetchReviews(nextPage);
     } catch (e: any) {
-      setToast({ type: "error", message: e?.message || "Delete failed" });
+      setToast({
+        type: "error",
+        message: e?.message || "Delete failed.",
+      });
+    } finally {
+      setDeletingId("");
     }
   }
 
   const averageRating =
     reviews.length > 0
-      ? reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) /
+      ? reviews.reduce((sum, review) => sum + Number(review.rating || 0), 0) /
         reviews.length
       : 0;
 
@@ -259,10 +354,11 @@ export default function AdminReviewsPage() {
 
               <button
                 type="button"
-                onClick={() => fetchReviews(1)}
+                onClick={() => fetchReviews(pagination.page)}
+                disabled={loading}
                 className={primaryBtnClass}
               >
-                Refresh
+                {loading ? "Refreshing..." : "Refresh"}
               </button>
             </div>
 
@@ -271,6 +367,7 @@ export default function AdminReviewsPage() {
                 <label htmlFor="review-search" className="sr-only">
                   Search reviews
                 </label>
+
                 <input
                   id="review-search"
                   name="reviewSearch"
@@ -290,20 +387,33 @@ export default function AdminReviewsPage() {
                 title="Review rating filter"
                 aria-label="Review rating filter"
                 value={rating}
-                onChange={(e) => setRating(e.target.value as any)}
+                onChange={(e) => setRating(e.target.value as RatingFilter)}
                 className="h-[48px] rounded-full border border-white/10 bg-white/5 px-4 text-[13px] text-white outline-none transition focus:border-[#d6c7ff]"
               >
-                <option value="">Rating: All</option>
-                <option value="5">Rating: 5</option>
-                <option value="4">Rating: 4</option>
-                <option value="3">Rating: 3</option>
-                <option value="2">Rating: 2</option>
-                <option value="1">Rating: 1</option>
+                <option value="" className="bg-[#11121a]">
+                  Rating: All
+                </option>
+                <option value="5" className="bg-[#11121a]">
+                  Rating: 5
+                </option>
+                <option value="4" className="bg-[#11121a]">
+                  Rating: 4
+                </option>
+                <option value="3" className="bg-[#11121a]">
+                  Rating: 3
+                </option>
+                <option value="2" className="bg-[#11121a]">
+                  Rating: 2
+                </option>
+                <option value="1" className="bg-[#11121a]">
+                  Rating: 1
+                </option>
               </select>
 
               <button
                 type="button"
                 onClick={() => fetchReviews(1)}
+                disabled={loading}
                 className={secondaryBtnClass}
               >
                 Apply
@@ -318,18 +428,21 @@ export default function AdminReviewsPage() {
               hint="All matching reviews"
               iconSrc="/images/admin/review.png"
             />
+
             <StatCard
               label="Current Page"
               value={String(reviews.length)}
               hint="Loaded reviews"
               iconSrc="/images/admin/page.png"
             />
+
             <StatCard
               label="Avg Rating"
               value={averageRating.toFixed(1)}
               hint="Current page average"
               iconSrc="/images/admin/rating.png"
             />
+
             <StatCard
               label="Pages"
               value={`${pagination.page}/${pagination.pages}`}
@@ -350,9 +463,11 @@ export default function AdminReviewsPage() {
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                   Customer Feedback
                 </div>
+
                 <h2 className="mt-1 text-[20px] font-semibold text-white">
                   Product Reviews
                 </h2>
+
                 <p className="mt-1 text-[13px] text-[#a7aec4]">
                   Product, customer, rating, comment, order and review date.
                 </p>
@@ -385,85 +500,104 @@ export default function AdminReviewsPage() {
                   </thead>
 
                   <tbody>
-                    {reviews.map((r) => (
-                      <tr
-                        key={r.id}
-                        className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
-                      >
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[16px] border border-white/10 bg-[#0d0f17]">
-                              <Image
-                                src={getImageSrc(r.product?.image)}
-                                alt={r.product?.name || "Product"}
-                                fill
-                                sizes="48px"
-                                className="object-cover"
-                              />
+                    {reviews.map((review) => {
+                      const deleting = deletingId === review.id;
+
+                      return (
+                        <tr
+                          key={review.id}
+                          className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                        >
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[16px] border border-white/10 bg-[#0d0f17]">
+                                <Image
+                                  src={getImageSrc(review.product?.image)}
+                                  alt={review.product?.name || "Product"}
+                                  fill
+                                  sizes="48px"
+                                  className="object-cover"
+                                  onError={(e) => {
+                                    const target = e.currentTarget;
+                                    if (
+                                      target.src.includes(
+                                        PLACEHOLDER_IMAGES[0]
+                                      )
+                                    ) {
+                                      return;
+                                    }
+                                    target.src = PLACEHOLDER_IMAGES[0];
+                                  }}
+                                />
+                              </div>
+
+                              <div className="min-w-0">
+                                <div className="line-clamp-1 font-semibold text-white">
+                                  {review.product?.name || "-"}
+                                </div>
+
+                                <div className="mt-1 text-[12px] text-[#7f879f]">
+                                  Product
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="font-semibold text-white">
+                              {review.customer?.name || "-"}
                             </div>
 
-                            <div className="min-w-0">
-                              <div className="line-clamp-1 font-semibold text-white">
-                                {r.product?.name || "-"}
-                              </div>
-                              <div className="mt-1 text-[12px] text-[#7f879f]">
-                                Product
-                              </div>
+                            <div className="mt-1 text-[12px] text-[#7f879f]">
+                              {review.customer?.email || "-"}
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        <td className="px-5 py-4">
-                          <div className="font-semibold text-white">
-                            {r.customer?.name || "-"}
-                          </div>
-                          <div className="mt-1 text-[12px] text-[#7f879f]">
-                            {r.customer?.email || ""}
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <span className="inline-flex rounded-full border border-amber-400/20 bg-amber-500/15 px-3 py-1 text-[11px] font-semibold text-amber-300">
-                            {Number(r.rating || 0).toFixed(1)} / 5
-                          </span>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="font-semibold text-white">
-                            {r.title?.trim() ? r.title : "Review"}
-                          </div>
-                          <div className="mt-1 line-clamp-2 max-w-[360px] text-[12px] leading-5 text-[#a7aec4]">
-                            {r.comment || "-"}
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
-                            {r.orderCode || "-"}
-                          </span>
-                        </td>
-
-                        <td className="px-5 py-4 text-[#a7aec4]">
-                          {fmtDate(r.createdAt)}
-                        </td>
-
-                        <td className="px-5 py-4 text-right">
-                          {canDelete ? (
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(r.id)}
-                              className="rounded-full border border-red-400/20 bg-red-500/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-red-300 transition hover:-translate-y-0.5 hover:bg-red-500/15"
-                            >
-                              Delete
-                            </button>
-                          ) : (
-                            <span className="text-[12px] text-[#7f879f]">
-                              No delete access
+                          <td className="px-5 py-4">
+                            <span className="inline-flex rounded-full border border-amber-400/20 bg-amber-500/15 px-3 py-1 text-[11px] font-semibold text-amber-300">
+                              {Number(review.rating || 0).toFixed(1)} / 5
                             </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="font-semibold text-white">
+                              {review.title?.trim() ? review.title : "Review"}
+                            </div>
+
+                            <div className="mt-1 line-clamp-2 max-w-[360px] text-[12px] leading-5 text-[#a7aec4]">
+                              {review.comment || "-"}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
+                              {review.orderCode || "-"}
+                            </span>
+                          </td>
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
+                            {fmtDate(review.createdAt)}
+                          </td>
+
+                          <td className="px-5 py-4 text-right">
+                            {canDelete ? (
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(review.id)}
+                                disabled={deleting}
+                                className="rounded-full border border-red-400/20 bg-red-500/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-red-300 transition hover:-translate-y-0.5 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {deleting ? "Deleting..." : "Delete"}
+                              </button>
+                            ) : (
+                              <span className="text-[12px] text-[#7f879f]">
+                                No delete access
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -478,7 +612,7 @@ export default function AdminReviewsPage() {
               </span>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 disabled={pagination.page <= 1 || loading}
@@ -510,20 +644,7 @@ export default function AdminReviewsPage() {
             </div>
           </div>
 
-          {toast && (
-            <div
-              className={[
-                "fixed bottom-5 right-5 z-[1200] rounded-[18px] px-5 py-4 text-[13px] font-semibold shadow-[0_10px_30px_rgba(0,0,0,0.35)]",
-                toast.type === "success"
-                  ? "border border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
-                  : "border border-red-400/20 bg-red-500/15 text-red-200",
-              ].join(" ")}
-              role="status"
-              aria-live="polite"
-            >
-              {toast.message}
-            </div>
-          )}
+          {toast ? <Toast toast={toast} /> : null}
         </div>
       </div>
     </AdminPageGuard>
@@ -548,9 +669,11 @@ function StatCard({
           <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
             {label}
           </div>
+
           <div className="mt-3 text-[26px] font-semibold tracking-[-0.03em] text-white">
             {value}
           </div>
+
           {hint ? (
             <div className="mt-2 text-[12px] text-[#7f879f]">{hint}</div>
           ) : null}
@@ -567,9 +690,9 @@ function StatCard({
 function ReviewSkeleton() {
   return (
     <div className="space-y-3 p-5 sm:p-6">
-      {Array.from({ length: 6 }).map((_, i) => (
+      {Array.from({ length: 6 }).map((_, index) => (
         <div
-          key={i}
+          key={index}
           className="h-[72px] animate-pulse rounded-[18px] border border-white/5 bg-white/[0.03]"
         />
       ))}
@@ -597,6 +720,23 @@ function EmptyState() {
         Reviews will appear here when customers submit product feedback or when
         your search and rating filter match existing reviews.
       </p>
+    </div>
+  );
+}
+
+function Toast({ toast }: { toast: Exclude<ToastState, null> }) {
+  return (
+    <div
+      className={[
+        "fixed bottom-5 right-5 z-[1200] max-w-[360px] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur",
+        toast.type === "success"
+          ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+          : "border-red-400/20 bg-red-500/15 text-red-200",
+      ].join(" ")}
+      role="status"
+      aria-live="polite"
+    >
+      {toast.message}
     </div>
   );
 }

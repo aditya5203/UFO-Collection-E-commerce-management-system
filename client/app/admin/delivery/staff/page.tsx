@@ -1,3 +1,4 @@
+// client/app/admin/delivery/staff/page.tsx
 "use client";
 
 import * as React from "react";
@@ -23,31 +24,38 @@ type DeliveryStaffRow = {
   createdAt?: string;
 };
 
+type ToastType = "success" | "error" | "info";
+
+type ToastState = {
+  type: ToastType;
+  message: string;
+} | null;
+
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 const softPanelClass =
   "rounded-[20px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)]";
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
 const primaryBtnClass =
-  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
+  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 
-function safeStr(v: any) {
+function safeStr(v: unknown) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
 function formatDateShort(iso?: string) {
   if (!iso) return "-";
-  try {
-    return new Date(iso).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return "-";
-  }
+
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function StatusPill({
@@ -65,6 +73,7 @@ function StatusPill({
     <span
       className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
     >
+      <span className="mr-2 h-1.5 w-1.5 rounded-full bg-current" />
       {children}
     </span>
   );
@@ -134,6 +143,7 @@ function Select({
 
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -145,76 +155,128 @@ export default function DeliveryStaffPage() {
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<DeliveryStaffRow[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [searching, setSearching] = React.useState(false);
   const [error, setError] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [toast, setToast] = React.useState<ToastState>(null);
 
-  const load = React.useCallback(async (search: string) => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/admin/delivery-staff?search=${encodeURIComponent(
-          search
-        )}`,
-        {
-          credentials: "include",
-          cache: "no-store",
-        }
-      );
-
-      const json = await safeJson(res);
-
-      if (!res.ok) {
-        setRows([]);
-        setError((json as any)?.message || "Failed to load delivery staff");
-        return;
-      }
-
-      const data = Array.isArray((json as any)?.data) ? (json as any).data : [];
-
-      const normalized: DeliveryStaffRow[] = data.map((item: any) => ({
-        id: safeStr(item?.id || item?._id),
-        name: safeStr(item?.name),
-        email: safeStr(item?.email),
-        phone: safeStr(item?.phone),
-        vehicleType: safeStr(item?.vehicleType),
-        vehicleNumber: safeStr(item?.vehicleNumber),
-        area: safeStr(item?.area),
-        isActive:
-          typeof item?.isActive === "boolean"
-            ? item.isActive
-            : Boolean(item?.active),
-        assignedOrdersCount: Number(item?.assignedOrdersCount || 0),
-        deliveredOrdersCount: Number(item?.deliveredOrdersCount || 0),
-        failedOrdersCount: Number(item?.failedOrdersCount || 0),
-        createdAt: safeStr(item?.createdAt),
-      }));
-
-      setRows(normalized);
-    } catch {
-      setRows([]);
-      setError("Network error while loading delivery staff");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const showToast = React.useCallback(
+    (message: string, type: ToastType = "info") => {
+      setToast({ message, type });
+    },
+    []
+  );
 
   React.useEffect(() => {
-    load("");
+    if (!toast) return;
+
+    const timer = window.setTimeout(() => {
+      setToast(null);
+    }, 2800);
+
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const load = React.useCallback(
+    async (search: string, mode: "initial" | "refresh" | "search" = "initial") => {
+      if (mode === "initial") setLoading(true);
+      if (mode === "refresh") setRefreshing(true);
+      if (mode === "search") setSearching(true);
+
+      setError("");
+
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/admin/delivery-staff?search=${encodeURIComponent(
+            search
+          )}`,
+          {
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
+
+        const json = await safeJson(res);
+
+        if (!res.ok) {
+          setRows([]);
+          const message =
+            (json as any)?.message || "Failed to load delivery staff";
+          setError(message);
+
+          if (mode === "refresh") {
+            showToast(message, "error");
+          }
+
+          return;
+        }
+
+        const data = Array.isArray((json as any)?.data)
+          ? (json as any).data
+          : [];
+
+        const normalized: DeliveryStaffRow[] = data
+          .map((item: any) => ({
+            id: safeStr(item?.id || item?._id),
+            name: safeStr(item?.name),
+            email: safeStr(item?.email),
+            phone: safeStr(item?.phone),
+            vehicleType: safeStr(item?.vehicleType),
+            vehicleNumber: safeStr(item?.vehicleNumber),
+            area: safeStr(item?.area),
+            isActive:
+              typeof item?.isActive === "boolean"
+                ? item.isActive
+                : Boolean(item?.active),
+            assignedOrdersCount: Number(item?.assignedOrdersCount || 0),
+            deliveredOrdersCount: Number(item?.deliveredOrdersCount || 0),
+            failedOrdersCount: Number(item?.failedOrdersCount || 0),
+            createdAt: safeStr(item?.createdAt),
+          }))
+          .filter((item: DeliveryStaffRow) => item.id);
+
+        setRows(normalized);
+
+        if (mode === "refresh") {
+          showToast("Delivery staff refreshed successfully.", "success");
+        }
+      } catch {
+        setRows([]);
+        const message = "Network error while loading delivery staff";
+        setError(message);
+
+        if (mode === "refresh") {
+          showToast(message, "error");
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setSearching(false);
+      }
+    },
+    [showToast]
+  );
+
+  React.useEffect(() => {
+    load("", "initial");
   }, [load]);
 
   React.useEffect(() => {
-    const t = setTimeout(() => load(q), 300);
-    return () => clearTimeout(t);
+    const t = window.setTimeout(() => {
+      load(q, "search");
+    }, 300);
+
+    return () => window.clearTimeout(t);
   }, [q, load]);
 
   const onDelete = async (item: DeliveryStaffRow) => {
+    const name = item.name || "this delivery staff";
+    const email = item.email || "-";
+
     const ok = window.confirm(
-      `Are you sure you want to delete ${
-        item.name || "this delivery staff"
-      } (${item.email || "-"})? This will permanently delete the account from the database.`
+      `Are you sure you want to permanently delete ${name} (${email})?\n\nThis action cannot be undone.`
     );
 
     if (!ok) return;
@@ -230,14 +292,20 @@ export default function DeliveryStaffPage() {
       const json = await safeJson(res);
 
       if (!res.ok) {
-        alert((json as any)?.message || "Failed to delete delivery staff");
+        showToast(
+          (json as any)?.message || "Failed to delete delivery staff",
+          "error"
+        );
         return;
       }
 
-      await load(q);
-      alert((json as any)?.message || "Delivery staff deleted successfully");
+      setRows((prev) => prev.filter((row) => row.id !== item.id));
+      showToast(
+        (json as any)?.message || "Delivery staff deleted successfully.",
+        "success"
+      );
     } catch {
-      alert("Network error while deleting delivery staff");
+      showToast("Network error while deleting delivery staff", "error");
     } finally {
       setDeletingId(null);
     }
@@ -245,8 +313,15 @@ export default function DeliveryStaffPage() {
 
   const filteredRows = React.useMemo(() => {
     if (statusFilter === "all") return rows;
-    if (statusFilter === "active") return rows.filter((item) => item.isActive);
-    if (statusFilter === "inactive") return rows.filter((item) => !item.isActive);
+
+    if (statusFilter === "active") {
+      return rows.filter((item) => item.isActive);
+    }
+
+    if (statusFilter === "inactive") {
+      return rows.filter((item) => !item.isActive);
+    }
+
     return rows;
   }, [rows, statusFilter]);
 
@@ -257,6 +332,11 @@ export default function DeliveryStaffPage() {
     (sum, item) => sum + Number(item.assignedOrdersCount || 0),
     0
   );
+
+  const clearFilters = () => {
+    setQ("");
+    setStatusFilter("all");
+  };
 
   return (
     <AdminPageGuard permission="deliveryStaffView">
@@ -291,6 +371,12 @@ export default function DeliveryStaffPage() {
                     placeholder="Search by name, email, phone"
                     className="h-12 w-full rounded-2xl border border-[#26293a] bg-[#0d0f17] px-4 pr-12 text-[13px] font-medium text-white outline-none transition placeholder:text-[#7f879f] focus:border-[#8b5cf6]/60 xl:w-[340px]"
                   />
+
+                  {searching ? (
+                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-[11px] text-[#7f879f]">
+                      ...
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto] xl:w-[520px]">
@@ -306,10 +392,31 @@ export default function DeliveryStaffPage() {
 
                   <Link
                     href="/admin/delivery/staff/create"
-                    className={`${primaryBtnClass} h-12`}
+                    className={`${primaryBtnClass} flex h-12 items-center justify-center`}
                   >
                     + Add Delivery Man
                   </Link>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => load(q, "refresh")}
+                    disabled={refreshing}
+                    className={secondaryBtnClass}
+                  >
+                    {refreshing ? "Refreshing..." : "Refresh"}
+                  </button>
+
+                  {(q || statusFilter !== "all") && (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className={secondaryBtnClass}
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -322,18 +429,21 @@ export default function DeliveryStaffPage() {
               helper="All registered riders"
               iconSrc="/images/admin/customer.png"
             />
+
             <StatCard
               label="Active"
               value={String(activeStaff)}
               helper="Available for assignment"
               iconSrc="/images/admin/active.png"
             />
+
             <StatCard
               label="Inactive"
               value={String(inactiveStaff)}
               helper="Currently disabled"
               iconSrc="/images/admin/pending.png"
             />
+
             <StatCard
               label="Assigned Orders"
               value={String(assignedLoad)}
@@ -409,6 +519,7 @@ export default function DeliveryStaffPage() {
                           <div className="font-semibold text-white">
                             {item.name || "-"}
                           </div>
+
                           <div className="mt-1 text-[12px] text-[#7f879f]">
                             {item.email || "-"}
                           </div>
@@ -422,6 +533,7 @@ export default function DeliveryStaffPage() {
                           <div className="font-medium text-white">
                             {item.vehicleType || "-"}
                           </div>
+
                           <div className="mt-1 text-[12px] text-[#7f879f]">
                             {item.vehicleNumber || "-"}
                           </div>
@@ -500,7 +612,26 @@ export default function DeliveryStaffPage() {
             </div>
           </section>
         </div>
+
+        {toast ? <Toast toast={toast} /> : null}
       </div>
     </AdminPageGuard>
+  );
+}
+
+function Toast({ toast }: { toast: Exclude<ToastState, null> }) {
+  return (
+    <div
+      className={[
+        "fixed bottom-5 right-5 z-[1200] max-w-[380px] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur",
+        toast.type === "success"
+          ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+          : toast.type === "error"
+          ? "border-red-400/20 bg-red-500/15 text-red-200"
+          : "border-[#8b5cf6]/30 bg-[#8b5cf6]/15 text-[#e9ddff]",
+      ].join(" ")}
+    >
+      {toast.message}
+    </div>
   );
 }

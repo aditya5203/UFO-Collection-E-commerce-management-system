@@ -31,6 +31,81 @@ type Product = {
   categoryId: string;
 };
 
+type ApiProduct = {
+  _id?: string;
+  id?: string;
+  name?: string;
+  slug?: string;
+  description?: string;
+  price?: number | string;
+  stock?: number | string;
+  status?: string;
+  image?: string;
+  images?: string[];
+  gender?: string;
+  colors?: string[];
+  sizes?: string[];
+  categoryId?: string;
+  category?: string | { _id?: string; id?: string };
+};
+
+type ApiCategory = {
+  _id?: string;
+  id?: string;
+  name?: string;
+  isActive?: boolean;
+};
+
+type ProductListResponse = {
+  success?: boolean;
+  message?: string;
+  data?:
+    | ApiProduct[]
+    | {
+        products?: ApiProduct[];
+        items?: ApiProduct[];
+        docs?: ApiProduct[];
+        result?: ApiProduct[];
+        data?: ApiProduct[];
+      };
+  products?: ApiProduct[];
+  items?: ApiProduct[];
+  docs?: ApiProduct[];
+  result?: ApiProduct[];
+};
+
+type CategoryListResponse = {
+  success?: boolean;
+  message?: string;
+  data?:
+    | ApiCategory[]
+    | {
+        categories?: ApiCategory[];
+        items?: ApiCategory[];
+        docs?: ApiCategory[];
+        result?: ApiCategory[];
+        data?: ApiCategory[];
+      };
+  categories?: ApiCategory[];
+  items?: ApiCategory[];
+  docs?: ApiCategory[];
+  result?: ApiCategory[];
+};
+
+type ProductSaveResponse = {
+  success?: boolean;
+  message?: string;
+  data?: ApiProduct;
+  product?: ApiProduct;
+};
+
+type ToastType = "success" | "error" | "info";
+
+type ToastState = {
+  type: ToastType;
+  message: string;
+} | null;
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
@@ -43,6 +118,8 @@ const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+const inputClass =
+  "h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]";
 
 const getImageSrc = (image: string | undefined | null): string => {
   if (!image) return PLACEHOLDER;
@@ -54,14 +131,24 @@ const getImageSrc = (image: string | undefined | null): string => {
   if (src.startsWith("http://") || src.startsWith("https://")) {
     try {
       const u = new URL(src);
-      const allowed = new Set([
+
+      const allowedHosts = new Set([
         "res.cloudinary.com",
         "localhost",
         "lh3.googleusercontent.com",
+        "images.unsplash.com",
         "t3.ftcdn.net",
       ]);
 
-      if (!allowed.has(u.hostname)) return PLACEHOLDER;
+      const isLocalUpload =
+        u.hostname === "localhost" &&
+        u.port === "8080" &&
+        u.pathname.startsWith("/uploads/");
+
+      if (!allowedHosts.has(u.hostname) && !isLocalUpload) {
+        return PLACEHOLDER;
+      }
+
       return src;
     } catch {
       return PLACEHOLDER;
@@ -71,7 +158,11 @@ const getImageSrc = (image: string | undefined | null): string => {
   return PLACEHOLDER;
 };
 
-const formatPriceNPR = (value: number) => `Rs. ${value.toFixed(2)}`;
+const formatPriceNPR = (value: number) =>
+  `Rs. ${Number(value || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 async function safeJson(res: Response) {
   const text = await res.text();
@@ -81,6 +172,94 @@ async function safeJson(res: Response) {
   } catch {
     return { raw: text };
   }
+}
+
+function normalizeStatus(status?: string): ProductStatus {
+  return String(status || "").toLowerCase() === "inactive"
+    ? "Inactive"
+    : "Active";
+}
+
+function normalizeGender(gender?: string): Gender {
+  return String(gender || "").toLowerCase() === "female" ? "Female" : "Male";
+}
+
+function normalizeSizes(values?: string[]): Size[] {
+  const allowed: Size[] = ["S", "M", "L", "XL", "XXL"];
+
+  if (!Array.isArray(values)) return [];
+
+  return values.filter((v): v is Size => allowed.includes(v as Size));
+}
+
+function getProductCategoryId(product: ApiProduct) {
+  if (typeof product.categoryId === "string") return product.categoryId;
+  if (typeof product.category === "string") return product.category;
+
+  if (product.category && typeof product.category === "object") {
+    return String(product.category._id || product.category.id || "");
+  }
+
+  return "";
+}
+
+function mapProduct(p: ApiProduct): Product {
+  return {
+    id: String(p._id || p.id || ""),
+    name: String(p.name || "Untitled Product"),
+    slug: String(p.slug || "-"),
+    description: p.description || "",
+    price: Number(p.price) || 0,
+    stock: Number(p.stock) || 0,
+    status: normalizeStatus(p.status),
+    image: String(p.image || ""),
+    images: Array.isArray(p.images) ? p.images : [],
+    gender: normalizeGender(p.gender),
+    colors: Array.isArray(p.colors) ? p.colors : [],
+    sizes: normalizeSizes(p.sizes),
+    categoryId: getProductCategoryId(p),
+  };
+}
+
+function getProductArray(body: ProductListResponse | ApiProduct[]): ApiProduct[] {
+  if (Array.isArray(body)) return body;
+
+  if (Array.isArray(body.data)) return body.data;
+  if (Array.isArray(body.products)) return body.products;
+  if (Array.isArray(body.items)) return body.items;
+  if (Array.isArray(body.docs)) return body.docs;
+  if (Array.isArray(body.result)) return body.result;
+
+  if (body.data && Array.isArray(body.data.products)) return body.data.products;
+  if (body.data && Array.isArray(body.data.items)) return body.data.items;
+  if (body.data && Array.isArray(body.data.docs)) return body.data.docs;
+  if (body.data && Array.isArray(body.data.result)) return body.data.result;
+  if (body.data && Array.isArray(body.data.data)) return body.data.data;
+
+  return [];
+}
+
+function getCategoryArray(
+  body: CategoryListResponse | ApiCategory[]
+): ApiCategory[] {
+  if (Array.isArray(body)) return body;
+
+  if (Array.isArray(body.data)) return body.data;
+  if (Array.isArray(body.categories)) return body.categories;
+  if (Array.isArray(body.items)) return body.items;
+  if (Array.isArray(body.docs)) return body.docs;
+  if (Array.isArray(body.result)) return body.result;
+
+  if (body.data && Array.isArray(body.data.categories)) {
+    return body.data.categories;
+  }
+
+  if (body.data && Array.isArray(body.data.items)) return body.data.items;
+  if (body.data && Array.isArray(body.data.docs)) return body.data.docs;
+  if (body.data && Array.isArray(body.data.result)) return body.data.result;
+  if (body.data && Array.isArray(body.data.data)) return body.data.data;
+
+  return [];
 }
 
 function emptyForm() {
@@ -102,6 +281,7 @@ function emptyForm() {
 export default function AdminProductsPage() {
   const [products, setProducts] = React.useState<Product[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const [search, setSearch] = React.useState("");
@@ -133,10 +313,7 @@ export default function AdminProductsPage() {
     null
   );
 
-  const [toast, setToast] = React.useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
+  const [toast, setToast] = React.useState<ToastState>(null);
 
   const mainFileRef = React.useRef<HTMLInputElement | null>(null);
   const galleryFileRef = React.useRef<HTMLInputElement | null>(null);
@@ -152,11 +329,18 @@ export default function AdminProductsPage() {
   const canEdit = hasPermission(role, permissions, "productEdit");
   const canDelete = hasPermission(role, permissions, "productDelete");
 
+  const showToast = React.useCallback(
+    (message: string, type: ToastType = "info") => {
+      setToast({ message, type });
+    },
+    []
+  );
+
   React.useEffect(() => {
     if (!toast) return;
 
-    const t = setTimeout(() => setToast(null), 2500);
-    return () => clearTimeout(t);
+    const t = window.setTimeout(() => setToast(null), 2600);
+    return () => window.clearTimeout(t);
   }, [toast]);
 
   React.useEffect(() => {
@@ -185,7 +369,9 @@ export default function AdminProductsPage() {
 
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {}
+      } catch {
+        // AdminPageGuard handles access.
+      }
     };
 
     loadAdminProfile();
@@ -195,67 +381,79 @@ export default function AdminProductsPage() {
     };
   }, []);
 
-  const fetchProducts = React.useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const fetchProducts = React.useCallback(
+    async (mode: "initial" | "refresh" | "silent" = "initial") => {
+      try {
+        if (mode === "initial") setLoading(true);
+        if (mode === "refresh") setRefreshing(true);
 
-      const res = await fetch(`${API_BASE_URL}/api/admin/products`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        cache: "no-store",
-      });
+        setError(null);
 
-      const body = await safeJson(res);
+        const res = await fetch(`${API_BASE_URL}/api/admin/products`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          cache: "no-store",
+        });
 
-      if (!res.ok) {
-        throw new Error(
-          body?.message || `Failed to load products (status ${res.status})`
-        );
+        const body = (await safeJson(res)) as ProductListResponse | ApiProduct[];
+
+        if (!res.ok) {
+          const message = Array.isArray(body)
+            ? `Failed to load products (status ${res.status})`
+            : body?.message || `Failed to load products (status ${res.status})`;
+
+          throw new Error(message);
+        }
+
+        const normalized = getProductArray(body)
+          .map(mapProduct)
+          .filter((p) => p.id);
+
+        setProducts(normalized);
+
+        if (mode === "refresh") {
+          showToast("Products refreshed successfully.", "success");
+        }
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Something went wrong while loading products.";
+
+        setError(message);
+
+        if (mode === "refresh") showToast(message, "error");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      const data: any[] = body.data ?? body;
-
-      const normalized: Product[] = data.map((p) => ({
-        id: p._id || p.id,
-        name: p.name,
-        slug: p.slug,
-        description: p.description,
-        price: Number(p.price) || 0,
-        stock: Number(p.stock) || 0,
-        status: (p.status as ProductStatus) ?? "Active",
-        image: p.image,
-        images: p.images ?? [],
-        gender: p.gender,
-        colors: p.colors ?? [],
-        sizes: p.sizes ?? [],
-        categoryId: p.categoryId,
-      }));
-
-      setProducts(normalized);
-    } catch (err: any) {
-      setError(err.message || "Something went wrong while loading products.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [showToast]
+  );
 
   React.useEffect(() => {
-    fetchProducts();
+    fetchProducts("initial");
 
-    const interval = setInterval(() => {
-      fetchProducts();
-    }, 10000);
+    const interval = window.setInterval(() => {
+      if (!showModal && !confirmDeleteId) {
+        fetchProducts("silent");
+      }
+    }, 15000);
 
-    const onFocus = () => fetchProducts();
+    const onFocus = () => {
+      if (!showModal && !confirmDeleteId) {
+        fetchProducts("silent");
+      }
+    };
+
     window.addEventListener("focus", onFocus);
 
     return () => {
-      clearInterval(interval);
+      window.clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, [fetchProducts]);
+  }, [fetchProducts, showModal, confirmDeleteId]);
 
   React.useEffect(() => {
     const fetchCategories = async () => {
@@ -265,46 +463,80 @@ export default function AdminProductsPage() {
           cache: "no-store",
         });
 
-        const body = await safeJson(res);
+        const body = (await safeJson(res)) as
+          | CategoryListResponse
+          | ApiCategory[];
 
         if (!res.ok) {
-          throw new Error(body?.message || "Failed to load categories");
+          const message = Array.isArray(body)
+            ? "Failed to load categories"
+            : body?.message || "Failed to load categories";
+
+          throw new Error(message);
         }
 
-        const data: any[] = body.data ?? body;
-
-        setCategories(
-          data.map((c) => ({
-            id: c._id || c.id,
-            name: c.name,
+        const mapped = getCategoryArray(body)
+          .map((c) => ({
+            id: String(c._id || c.id || ""),
+            name: String(c.name || "Unnamed Category"),
           }))
-        );
-      } catch (err: any) {
-        setToast({
-          type: "error",
-          message: err.message || "Failed to load categories",
-        });
+          .filter((c) => c.id);
+
+        setCategories(mapped);
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Failed to load categories";
+
+        showToast(message, "error");
       }
     };
 
     fetchCategories();
+  }, [showToast]);
+
+  React.useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowModal(false);
+        setConfirmDeleteId(null);
+      }
+    };
+
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
   }, []);
 
   const statuses: (ProductStatus | "All")[] = ["All", "Active", "Inactive"];
 
-  const filteredProducts = products.filter((p) => {
-    const q = search.toLowerCase();
-    const matchesSearch =
-      p.name.toLowerCase().includes(q) || p.slug.toLowerCase().includes(q);
+  const filteredProducts = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
 
-    const matchesStatus = statusFilter === "All" || p.status === statusFilter;
+    return products.filter((p) => {
+      const matchesSearch =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.slug.toLowerCase().includes(q);
 
-    return matchesSearch && matchesStatus;
-  });
+      const matchesStatus = statusFilter === "All" || p.status === statusFilter;
 
-  const activeCount = products.filter((p) => p.status === "Active").length;
-  const inactiveCount = products.filter((p) => p.status === "Inactive").length;
-  const lowStockCount = products.filter((p) => p.stock <= 5).length;
+      return matchesSearch && matchesStatus;
+    });
+  }, [products, search, statusFilter]);
+
+  const activeCount = React.useMemo(
+    () => products.filter((p) => p.status === "Active").length,
+    [products]
+  );
+
+  const inactiveCount = React.useMemo(
+    () => products.filter((p) => p.status === "Inactive").length,
+    [products]
+  );
+
+  const lowStockCount = React.useMemo(
+    () => products.filter((p) => p.stock <= 5).length,
+    [products]
+  );
 
   const toggleSize = (value: Size) => {
     setSizes((prev) =>
@@ -334,10 +566,7 @@ export default function AdminProductsPage() {
 
   const openCreateModal = () => {
     if (!canCreate) {
-      setToast({
-        type: "error",
-        message: "You do not have permission to create product",
-      });
+      showToast("You do not have permission to create product.", "error");
       return;
     }
 
@@ -347,10 +576,7 @@ export default function AdminProductsPage() {
 
   const openEditModal = (product: Product) => {
     if (!canEdit) {
-      setToast({
-        type: "error",
-        message: "You do not have permission to edit product",
-      });
+      showToast("You do not have permission to edit product.", "error");
       return;
     }
 
@@ -374,10 +600,7 @@ export default function AdminProductsPage() {
 
   const requestDelete = (id: string) => {
     if (!canDelete) {
-      setToast({
-        type: "error",
-        message: "You do not have permission to delete product",
-      });
+      showToast("You do not have permission to delete product.", "error");
       return;
     }
 
@@ -394,12 +617,11 @@ export default function AdminProductsPage() {
       body: formData,
     });
 
+    const body = await safeJson(res);
+
     if (!res.ok) {
-      const body = await safeJson(res);
       throw new Error(body?.message || "Failed to upload image");
     }
-
-    const body = await safeJson(res);
 
     const candidate =
       (typeof body === "string" && body) ||
@@ -416,7 +638,7 @@ export default function AdminProductsPage() {
 
     if (!candidate) throw new Error("Upload response missing URL");
 
-    return candidate as string;
+    return String(candidate);
   };
 
   const uploadMultipleToCloudinary = async (
@@ -432,12 +654,11 @@ export default function AdminProductsPage() {
       body: formData,
     });
 
+    const body = await safeJson(res);
+
     if (!res.ok) {
-      const body = await safeJson(res);
       throw new Error(body?.message || "Failed to upload gallery images");
     }
-
-    const body = await safeJson(res);
 
     const urls: string[] =
       (Array.isArray(body?.imageUrls) && body.imageUrls) ||
@@ -451,7 +672,7 @@ export default function AdminProductsPage() {
       throw new Error("Upload response missing URLs");
     }
 
-    return urls;
+    return urls.map(String);
   };
 
   const handleMainFileChange = async (
@@ -467,12 +688,12 @@ export default function AdminProductsPage() {
 
       setImage(url);
       setMainPreview(url);
-      setToast({ type: "success", message: "Main image uploaded" });
-    } catch (err: any) {
-      setToast({
-        type: "error",
-        message: err.message || "Failed to upload image",
-      });
+      showToast("Main image uploaded.", "success");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to upload image";
+
+      showToast(message, "error");
     } finally {
       setSubmitting(false);
       e.target.value = "";
@@ -503,12 +724,12 @@ export default function AdminProductsPage() {
         return merged.join(", ");
       });
 
-      setToast({ type: "success", message: "Gallery images uploaded" });
-    } catch (err: any) {
-      setToast({
-        type: "error",
-        message: err.message || "Failed to upload gallery",
-      });
+      showToast("Gallery images uploaded.", "success");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to upload gallery";
+
+      showToast(message, "error");
     } finally {
       setSubmitting(false);
       e.target.value = "";
@@ -523,18 +744,12 @@ export default function AdminProductsPage() {
     const isEditing = Boolean(editingId);
 
     if (isEditing && !canEdit) {
-      setToast({
-        type: "error",
-        message: "You do not have permission to edit product",
-      });
+      showToast("You do not have permission to edit product.", "error");
       return;
     }
 
     if (!isEditing && !canCreate) {
-      setToast({
-        type: "error",
-        message: "You do not have permission to create product",
-      });
+      showToast("You do not have permission to create product.", "error");
       return;
     }
 
@@ -557,49 +772,43 @@ export default function AdminProductsPage() {
     if (
       !cleanName ||
       priceNum == null ||
+      Number.isNaN(priceNum) ||
       priceNum < 0 ||
       stockNum == null ||
+      Number.isNaN(stockNum) ||
       stockNum < 0
     ) {
-      setToast({
-        type: "error",
-        message: "Name, price, and stock are required",
-      });
+      showToast("Name, valid price, and valid stock are required.", "error");
       return;
     }
 
     if (!categoryId) {
-      setToast({ type: "error", message: "Select a category" });
+      showToast("Select a category.", "error");
       return;
     }
 
     if (!image.trim()) {
-      setToast({ type: "error", message: "Main image is required" });
+      showToast("Main image is required.", "error");
       return;
     }
 
     if (colorArr.length === 0) {
-      setToast({
-        type: "error",
-        message: "Add at least one color (hex, e.g. #000000)",
-      });
+      showToast("Add at least one color. Example: #000000", "error");
       return;
     }
 
     const invalidColors = colorArr.filter((c) => !/^#([0-9a-f]{6})$/.test(c));
 
     if (invalidColors.length) {
-      setToast({
-        type: "error",
-        message: `Invalid color(s): ${invalidColors.join(
-          ", "
-        )}. Use hex like #000000`,
-      });
+      showToast(
+        `Invalid color(s): ${invalidColors.join(", ")}. Use hex like #000000`,
+        "error"
+      );
       return;
     }
 
     if (sizes.length === 0) {
-      setToast({ type: "error", message: "Select at least one size" });
+      showToast("Select at least one size.", "error");
       return;
     }
 
@@ -631,31 +840,33 @@ export default function AdminProductsPage() {
         body: JSON.stringify(payload),
       });
 
-      const body = await safeJson(res);
+      const body = (await safeJson(res)) as ProductSaveResponse | ApiProduct;
 
       if (!res.ok) {
-        throw new Error(
-          body?.message || `Failed to save product (status ${res.status})`
-        );
+        const message =
+          "message" in body && body.message
+            ? body.message
+            : `Failed to save product (status ${res.status})`;
+
+        throw new Error(message);
       }
 
-      const created = body.data ?? body;
+      const saved =
+        "data" in body && body.data
+          ? body.data
+          : "product" in body && body.product
+          ? body.product
+          : (body as ApiProduct);
 
-      const normalizedProduct: Product = {
-        id: created._id || created.id,
-        name: created.name,
-        slug: created.slug,
-        description: created.description,
-        price: Number(created.price) || 0,
-        stock: Number(created.stock) || 0,
-        status: created.status,
-        image: created.image,
-        images: created.images ?? [],
-        gender: created.gender,
-        colors: created.colors ?? [],
-        sizes: created.sizes ?? [],
-        categoryId: created.categoryId,
-      };
+      if (!saved) {
+        throw new Error("Product saved, but server returned invalid data.");
+      }
+
+      const normalizedProduct = mapProduct(saved);
+
+      if (!normalizedProduct.id) {
+        throw new Error("Product saved, but product id was missing.");
+      }
 
       if (isEditing && editingId) {
         setProducts((prev) =>
@@ -665,19 +876,19 @@ export default function AdminProductsPage() {
         setProducts((prev) => [normalizedProduct, ...prev]);
       }
 
-      setToast({
-        type: "success",
-        message: isEditing ? "Product updated" : "Product created",
-      });
+      showToast(
+        isEditing ? "Product updated successfully." : "Product created.",
+        "success"
+      );
 
       setShowModal(false);
       resetForm();
-    } catch (err: any) {
-      setError(err.message || "Failed to save product");
-      setToast({
-        type: "error",
-        message: err.message || "Failed to save product",
-      });
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to save product";
+
+      setError(message);
+      showToast(message, "error");
     } finally {
       setSubmitting(false);
     }
@@ -690,10 +901,7 @@ export default function AdminProductsPage() {
     }
 
     if (!canDelete) {
-      setToast({
-        type: "error",
-        message: "You do not have permission to delete product",
-      });
+      showToast("You do not have permission to delete product.", "error");
       setConfirmDeleteId(null);
       return;
     }
@@ -713,16 +921,21 @@ export default function AdminProductsPage() {
       }
 
       setProducts((prev) => prev.filter((item) => item.id !== id));
-      setToast({ type: "success", message: "Product deleted" });
-    } catch (err: any) {
-      setToast({
-        type: "error",
-        message: err.message || "Failed to delete product",
-      });
+      showToast("Product deleted successfully.", "success");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to delete product";
+
+      showToast(message, "error");
     } finally {
       setDeletingId(null);
       setConfirmDeleteId(null);
     }
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setStatusFilter("All");
   }
 
   return (
@@ -748,15 +961,26 @@ export default function AdminProductsPage() {
                 </p>
               </div>
 
-              {canCreate ? (
+              <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
-                  onClick={openCreateModal}
-                  className={primaryBtnClass}
+                  onClick={() => fetchProducts("refresh")}
+                  disabled={refreshing}
+                  className={secondaryBtnClass}
                 >
-                  Add Product
+                  {refreshing ? "Refreshing..." : "Refresh"}
                 </button>
-              ) : null}
+
+                {canCreate ? (
+                  <button
+                    type="button"
+                    onClick={openCreateModal}
+                    className={primaryBtnClass}
+                  >
+                    Add Product
+                  </button>
+                ) : null}
+              </div>
             </div>
           </section>
 
@@ -799,13 +1023,6 @@ export default function AdminProductsPage() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <label
-                  htmlFor="product-search"
-                  className="sr-only"
-                >
-                  Search products
-                </label>
-
                 <div className="flex h-[46px] min-w-[260px] items-center rounded-full border border-white/10 bg-white/5 px-4">
                   <input
                     id="product-search"
@@ -834,6 +1051,16 @@ export default function AdminProductsPage() {
                     ? "Status: All"
                     : `Status: ${statusFilter}`}
                 </button>
+
+                {(search || statusFilter !== "All") && (
+                  <button
+                    type="button"
+                    className={secondaryBtnClass}
+                    onClick={clearFilters}
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
 
@@ -845,8 +1072,10 @@ export default function AdminProductsPage() {
 
             {loading ? (
               <ProductSkeleton />
-            ) : filteredProducts.length === 0 ? (
+            ) : products.length === 0 ? (
               <EmptyState canCreate={canCreate} onCreate={openCreateModal} />
+            ) : filteredProducts.length === 0 ? (
+              <NoResults onClear={clearFilters} />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[1080px] border-collapse text-[13px]">
@@ -982,7 +1211,11 @@ export default function AdminProductsPage() {
         </div>
 
         {confirmDeleteId ? (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          >
             <div className="w-[min(440px,94vw)] rounded-[24px] border border-[#26293a] bg-[#11121a] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.7)]">
               <div className="text-[11px] uppercase tracking-[0.22em] text-red-300">
                 Delete Product
@@ -1002,6 +1235,7 @@ export default function AdminProductsPage() {
                   type="button"
                   onClick={() => setConfirmDeleteId(null)}
                   className={secondaryBtnClass}
+                  disabled={deletingId === confirmDeleteId}
                 >
                   Cancel
                 </button>
@@ -1020,7 +1254,11 @@ export default function AdminProductsPage() {
         ) : null}
 
         {showModal ? (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          >
             <div className="flex max-h-[92vh] w-[min(860px,94vw)] flex-col overflow-hidden rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_24px_90px_rgba(0,0,0,0.7)]">
               <div className="flex items-start justify-between border-b border-[#26293a] px-5 py-5 sm:px-6">
                 <div>
@@ -1052,7 +1290,7 @@ export default function AdminProductsPage() {
                       name="productName"
                       title="Product name"
                       aria-label="Product name"
-                      className="h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
+                      className={inputClass}
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       required
@@ -1081,7 +1319,7 @@ export default function AdminProductsPage() {
                         aria-label="Product price"
                         type="number"
                         min={0}
-                        className="h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
+                        className={inputClass}
                         value={price}
                         onChange={(e) =>
                           setPrice(
@@ -1100,7 +1338,7 @@ export default function AdminProductsPage() {
                         aria-label="Product stock"
                         type="number"
                         min={0}
-                        className="h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
+                        className={inputClass}
                         value={stock}
                         onChange={(e) =>
                           setStock(
@@ -1119,7 +1357,7 @@ export default function AdminProductsPage() {
                         name="productStatus"
                         title="Product status"
                         aria-label="Product status"
-                        className="h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none focus:border-[#d6c7ff]"
+                        className={inputClass}
                         value={status}
                         onChange={(e) =>
                           setStatus(e.target.value as ProductStatus)
@@ -1136,7 +1374,7 @@ export default function AdminProductsPage() {
                         name="productGender"
                         title="Product gender"
                         aria-label="Product gender"
-                        className="h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none focus:border-[#d6c7ff]"
+                        className={inputClass}
                         value={gender}
                         onChange={(e) => setGender(e.target.value as Gender)}
                       >
@@ -1155,7 +1393,7 @@ export default function AdminProductsPage() {
                       name="productColors"
                       title="Product colors"
                       aria-label="Product colors"
-                      className="h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
+                      className={inputClass}
                       placeholder="#000000, #ffffff"
                       value={colors}
                       onChange={(e) => setColors(e.target.value)}
@@ -1205,7 +1443,7 @@ export default function AdminProductsPage() {
                       name="productCategory"
                       title="Product category"
                       aria-label="Product category"
-                      className="h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none focus:border-[#d6c7ff]"
+                      className={inputClass}
                       value={categoryId}
                       onChange={(e) => setCategoryId(e.target.value)}
                       required
@@ -1295,6 +1533,7 @@ export default function AdminProductsPage() {
                       type="button"
                       onClick={() => setShowModal(false)}
                       className={secondaryBtnClass}
+                      disabled={submitting}
                     >
                       Cancel
                     </button>
@@ -1317,18 +1556,7 @@ export default function AdminProductsPage() {
           </div>
         ) : null}
 
-        {toast ? (
-          <div
-            className={[
-              "fixed bottom-5 right-5 z-[1200] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)]",
-              toast.type === "success"
-                ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
-                : "border-red-400/20 bg-red-500/15 text-red-200",
-            ].join(" ")}
-          >
-            {toast.message}
-          </div>
-        ) : null}
+        {toast ? <Toast toast={toast} /> : null}
       </div>
     </AdminPageGuard>
   );
@@ -1480,7 +1708,7 @@ function EmptyState({
     <div className="px-6 py-14 text-center">
       <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/5">
         <Image
-          src="/images/admin/products.png"
+          src="/images/admin/product.png"
           alt="Products"
           width={26}
           height={26}
@@ -1504,6 +1732,49 @@ function EmptyState({
           Add Product
         </button>
       ) : null}
+    </div>
+  );
+}
+
+function NoResults({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/5 text-[22px]">
+        🔎
+      </div>
+
+      <div className="mt-4 text-[18px] font-semibold text-white">
+        No matching products
+      </div>
+
+      <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-7 text-[#a7aec4]">
+        Try changing the search keyword or status filter.
+      </p>
+
+      <button
+        type="button"
+        onClick={onClear}
+        className={`${secondaryBtnClass} mt-5`}
+      >
+        Clear Filter
+      </button>
+    </div>
+  );
+}
+
+function Toast({ toast }: { toast: Exclude<ToastState, null> }) {
+  return (
+    <div
+      className={[
+        "fixed bottom-5 right-5 z-[1200] max-w-[360px] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur",
+        toast.type === "success"
+          ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+          : toast.type === "error"
+          ? "border-red-400/20 bg-red-500/15 text-red-200"
+          : "border-[#8b5cf6]/30 bg-[#8b5cf6]/15 text-[#e9ddff]",
+      ].join(" ")}
+    >
+      {toast.message}
     </div>
   );
 }

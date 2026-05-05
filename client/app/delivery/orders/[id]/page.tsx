@@ -216,20 +216,17 @@ function LineItem({
 function getAllowedTransitions(currentStatus: string): DeliveryStatus[] {
   const s = safeStr(currentStatus).toLowerCase();
 
+  // Strict production flow:
+  // Assigned → Picked Up → Out for Delivery → OTP Verify → Delivered
   if (!s || s === "assigned") {
-    return [
-      "Assigned",
-      "Picked Up",
-      "Out for Delivery",
-      "Failed Delivery",
-      "Returned",
-    ];
+    return ["Assigned", "Picked Up", "Failed Delivery", "Returned"];
   }
 
   if (s === "picked up") {
     return ["Picked Up", "Out for Delivery", "Failed Delivery", "Returned"];
   }
 
+  // Delivered is not selectable here. Delivery must be completed by OTP verify.
   if (s === "out for delivery") {
     return ["Out for Delivery", "Failed Delivery", "Returned"];
   }
@@ -246,13 +243,7 @@ function getAllowedTransitions(currentStatus: string): DeliveryStatus[] {
     return ["Returned"];
   }
 
-  return [
-    "Assigned",
-    "Picked Up",
-    "Out for Delivery",
-    "Failed Delivery",
-    "Returned",
-  ];
+  return ["Assigned", "Picked Up", "Failed Delivery", "Returned"];
 }
 
 export default function DeliveryOrderDetailsPage() {
@@ -338,6 +329,21 @@ export default function DeliveryOrderDetailsPage() {
   const saveChanges = async () => {
     const orderId = pickId(order);
     if (!orderId) return;
+
+    const currentStatus = safeStr(order?.deliveryAssignment?.status) || "Assigned";
+    const originalDeliveryNote = safeStr(order?.deliveryAssignment?.note).trim();
+
+    const hasStatusChanges =
+      deliveryStatus !== currentStatus ||
+      deliveryNote.trim() !== originalDeliveryNote;
+
+    if (!hasStatusChanges) {
+      setToast({
+        type: "info",
+        message: "No delivery status changes to save.",
+      });
+      return;
+    }
 
     try {
       setSaving(true);
@@ -446,6 +452,15 @@ export default function DeliveryOrderDetailsPage() {
     const orderId = pickId(order);
     if (!orderId) return;
 
+    const cleanOtp = otpInput.trim();
+
+    if (!/^\d{4}$/.test(cleanOtp)) {
+      const message = "Please enter a valid 4 digit OTP.";
+      setOtpError(message);
+      setToast({ type: "error", message });
+      return;
+    }
+
     const confirmed = window.confirm(
       "Are you sure you want to verify OTP and mark this order as delivered?"
     );
@@ -464,7 +479,7 @@ export default function DeliveryOrderDetailsPage() {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ otp: otpInput.trim() }),
+          body: JSON.stringify({ otp: cleanOtp }),
         }
       );
 
@@ -555,6 +570,12 @@ export default function DeliveryOrderDetailsPage() {
   const currentStatus = safeStr(order?.deliveryAssignment?.status) || "Assigned";
   const allowedStatuses = getAllowedTransitions(currentStatus);
 
+  const originalDeliveryNote = safeStr(order?.deliveryAssignment?.note).trim();
+
+  const hasStatusChanges =
+    deliveryStatus !== currentStatus ||
+    deliveryNote.trim() !== originalDeliveryNote;
+
   const timeline: TimelineStep[] = [
     { label: "Order Placed", date: placedOn, status: "done" },
     {
@@ -640,7 +661,7 @@ export default function DeliveryOrderDetailsPage() {
   const isFinalState =
     currentStatus === "Delivered" || currentStatus === "Returned";
 
-  const canSendOtp = currentStatus === "Out for Delivery" && !isFinalState;
+  const canSendOtp = currentStatus === "Out for Delivery";
   const otpVerified = Boolean(order?.deliveryAssignment?.isOtpVerified);
   const otpExpiresAt = safeStr(order?.deliveryAssignment?.otpExpiresAt);
   const otpSentTo = safeStr(order?.deliveryAssignment?.otpSentTo);
@@ -1255,7 +1276,7 @@ export default function DeliveryOrderDetailsPage() {
                   <button
                     type="button"
                     onClick={saveChanges}
-                    disabled={saving || isFinalState}
+                    disabled={saving || isFinalState || !hasStatusChanges}
                     className={primaryBtnClass}
                   >
                     {saving ? (
@@ -1384,10 +1405,15 @@ export default function DeliveryOrderDetailsPage() {
                     <input
                       id="otp-input"
                       value={otpInput}
-                      onChange={(e) => setOtpInput(e.target.value)}
+                      onChange={(e) => {
+                        const onlyDigits = e.target.value
+                          .replace(/\D/g, "")
+                          .slice(0, 4);
+                        setOtpInput(onlyDigits);
+                      }}
                       placeholder="Enter 4 digit OTP"
                       inputMode="numeric"
-                      maxLength={6}
+                      maxLength={4}
                       disabled={isFinalState || otpVerifying}
                       className={inputClass}
                     />
@@ -1395,7 +1421,11 @@ export default function DeliveryOrderDetailsPage() {
                     <button
                       type="button"
                       onClick={verifyOtp}
-                      disabled={isFinalState || otpVerifying || !otpInput.trim()}
+                      disabled={
+                        isFinalState ||
+                        otpVerifying ||
+                        !/^\d{4}$/.test(otpInput.trim())
+                      }
                       className="inline-flex shrink-0 items-center justify-center rounded-full bg-emerald-500 px-6 py-3 text-[12px] font-bold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {otpVerifying ? (

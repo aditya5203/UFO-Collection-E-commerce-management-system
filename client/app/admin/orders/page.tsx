@@ -6,18 +6,13 @@ import Link from "next/link";
 import Image from "next/image";
 import { io, Socket } from "socket.io-client";
 import AdminPageGuard from "../_components/AdminPageGuard";
-import {
-  AdminPermissions,
-  AdminSettingsResponse,
-  hasPermission,
-  normalizeAdminPermissions,
-} from "../_components/adminPermissions";
 
 type PaymentStatus = "Paid" | "Pending" | "Failed";
 type OrderStatus =
   | "Delivered"
   | "Transit"
   | "Shipped"
+  | "Confirmed"
   | "Pending"
   | "Cancelled";
 
@@ -29,11 +24,20 @@ type PaymentMethod =
   | "BankTransfer"
   | "Other";
 
+type DeliveryAssignment = {
+  deliveryManId?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  vehicleType?: string;
+  status?: string;
+};
+
 type OrderRow = {
   id: string;
   orderCode?: string;
-  totalPaisa?: number;
-  total?: number;
+  totalPaisa: number;
+  totalRs?: number;
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
   createdAt: string;
@@ -51,7 +55,70 @@ type OrderRow = {
     gateway?: string;
   };
   paymentProvider?: string;
+  deliveryAssignment?: DeliveryAssignment | null;
 };
+
+type ApiOrder = {
+  _id?: string;
+  id?: string;
+  orderCode?: string;
+  totalPaisa?: number | string;
+  totalRs?: number | string;
+  total?: number | string;
+  paymentStatus?: string;
+  orderStatus?: string;
+  status?: string;
+  createdAt?: string;
+  customer?: {
+    _id?: string;
+    id?: string;
+    name?: string;
+    email?: string;
+  };
+  user?: {
+    _id?: string;
+    id?: string;
+    name?: string;
+    email?: string;
+  };
+  customerName?: string;
+  customerEmail?: string;
+  paymentMethod?: string;
+  payment?: {
+    method?: string;
+    provider?: string;
+    gateway?: string;
+  };
+  paymentProvider?: string;
+  deliveryAssignment?: DeliveryAssignment | null;
+};
+
+type OrderListResponse = {
+  success?: boolean;
+  message?: string;
+  data?:
+    | ApiOrder[]
+    | {
+        orders?: ApiOrder[];
+        items?: ApiOrder[];
+        docs?: ApiOrder[];
+        result?: ApiOrder[];
+        data?: ApiOrder[];
+      };
+  orders?: ApiOrder[];
+  items?: ApiOrder[];
+  docs?: ApiOrder[];
+  result?: ApiOrder[];
+};
+
+type ToastType = "success" | "error" | "info";
+
+type ToastState = {
+  type: ToastType;
+  message: string;
+} | null;
+
+type LoadMode = "initial" | "refresh" | "search" | "silent";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
@@ -61,32 +128,8 @@ const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
-
 const actionBtnClass =
   "rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
-
-function formatDateShort(iso?: string) {
-  if (!iso) return "-";
-  return String(iso).slice(0, 10);
-}
-
-function formatNPR(paisa: number) {
-  const safe = Number.isFinite(paisa) ? paisa : 0;
-  return `Rs. ${(safe / 100).toFixed(2)}`;
-}
-
-function normalizePaymentMethod(v?: string) {
-  const s = (v || "").toLowerCase().trim();
-  if (!s) return "—";
-  if (s.includes("esewa") || s === "e-sewa") return "eSewa";
-  if (s.includes("khalti")) return "Khalti";
-  if (s.includes("cod") || s.includes("cash")) return "Cash on Delivery";
-  if (s.includes("card") || s.includes("visa") || s.includes("master")) {
-    return "Card";
-  }
-  if (s.includes("bank") || s.includes("transfer")) return "Bank Transfer";
-  return "Other";
-}
 
 async function safeJson(res: Response) {
   const text = await res.text();
@@ -98,92 +141,239 @@ async function safeJson(res: Response) {
   }
 }
 
+function formatDateShort(iso?: string) {
+  if (!iso) return "-";
+
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+
+  return d.toISOString().slice(0, 10);
+}
+
+function formatNPR(paisa: number) {
+  const safe = Number.isFinite(paisa) ? paisa : 0;
+
+  return `Rs. ${(safe / 100).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function normalizePaymentStatus(status?: string): PaymentStatus {
+  const s = String(status || "").trim().toLowerCase();
+
+  if (s === "paid" || s === "success" || s === "completed") return "Paid";
+  if (s === "failed" || s === "cancelled" || s === "rejected") return "Failed";
+
+  return "Pending";
+}
+
+function normalizeOrderStatus(status?: string): OrderStatus {
+  const s = String(status || "").trim().toLowerCase();
+
+  if (s === "delivered") return "Delivered";
+  if (s === "transit" || s === "in transit" || s === "out for delivery") {
+    return "Transit";
+  }
+  if (s === "shipped") return "Shipped";
+  if (s === "confirmed") return "Confirmed";
+  if (s === "cancelled" || s === "canceled") return "Cancelled";
+
+  return "Pending";
+}
+
+function normalizePaymentMethod(v?: string) {
+  const s = (v || "").toLowerCase().trim();
+
+  if (!s) return "—";
+  if (s.includes("esewa") || s === "e-sewa") return "eSewa";
+  if (s.includes("khalti")) return "Khalti";
+  if (s.includes("cod") || s.includes("cash")) return "Cash on Delivery";
+  if (s.includes("card") || s.includes("visa") || s.includes("master")) {
+    return "Card";
+  }
+  if (s.includes("bank") || s.includes("transfer")) return "Bank Transfer";
+
+  return "Other";
+}
+
+function getOrderArray(body: OrderListResponse | ApiOrder[]): ApiOrder[] {
+  if (Array.isArray(body)) return body;
+
+  if (Array.isArray(body.data)) return body.data;
+  if (Array.isArray(body.orders)) return body.orders;
+  if (Array.isArray(body.items)) return body.items;
+  if (Array.isArray(body.docs)) return body.docs;
+  if (Array.isArray(body.result)) return body.result;
+
+  if (body.data && Array.isArray(body.data.orders)) return body.data.orders;
+  if (body.data && Array.isArray(body.data.items)) return body.data.items;
+  if (body.data && Array.isArray(body.data.docs)) return body.data.docs;
+  if (body.data && Array.isArray(body.data.result)) return body.data.result;
+  if (body.data && Array.isArray(body.data.data)) return body.data.data;
+
+  return [];
+}
+
+function getOrderTotalPaisa(order: ApiOrder) {
+  if (order.totalPaisa !== undefined && order.totalPaisa !== null) {
+    return Math.round(Number(order.totalPaisa) || 0);
+  }
+
+  if (order.totalRs !== undefined && order.totalRs !== null) {
+    return Math.round((Number(order.totalRs) || 0) * 100);
+  }
+
+  if (order.total !== undefined && order.total !== null) {
+    const value = Number(order.total) || 0;
+
+    if (value > 10000) return Math.round(value);
+    return Math.round(value * 100);
+  }
+
+  return 0;
+}
+
+function mapDeliveryAssignment(
+  deliveryAssignment?: DeliveryAssignment | null
+): DeliveryAssignment | null {
+  if (!deliveryAssignment) return null;
+
+  return {
+    deliveryManId: String(deliveryAssignment.deliveryManId || ""),
+    name: deliveryAssignment.name || "",
+    phone: deliveryAssignment.phone || "",
+    email: deliveryAssignment.email || "",
+    vehicleType: deliveryAssignment.vehicleType || "",
+    status: deliveryAssignment.status || "",
+  };
+}
+
+function mapOrder(order: ApiOrder): OrderRow {
+  const customer = order.customer || order.user;
+
+  return {
+    id: String(order._id || order.id || ""),
+    orderCode: order.orderCode,
+    totalPaisa: getOrderTotalPaisa(order),
+    totalRs:
+      order.totalRs !== undefined && order.totalRs !== null
+        ? Number(order.totalRs) || 0
+        : undefined,
+    paymentStatus: normalizePaymentStatus(order.paymentStatus),
+    orderStatus: normalizeOrderStatus(order.orderStatus || order.status),
+    createdAt: String(order.createdAt || ""),
+    customer: customer
+      ? {
+          id: String(customer._id || customer.id || ""),
+          name: customer.name,
+          email: customer.email,
+        }
+      : undefined,
+    customerName: order.customerName,
+    customerEmail: order.customerEmail,
+    paymentMethod: order.paymentMethod,
+    payment: order.payment,
+    paymentProvider: order.paymentProvider,
+    deliveryAssignment: mapDeliveryAssignment(order.deliveryAssignment),
+  };
+}
+
 export default function OrdersPage() {
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<OrderRow[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
+  const [searching, setSearching] = React.useState(false);
   const [error, setError] = React.useState("");
   const [downloadingId, setDownloadingId] = React.useState<string>("");
+  const [toast, setToast] = React.useState<ToastState>(null);
 
-  const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
-  const [permissions, setPermissions] =
-    React.useState<AdminPermissions | null>(null);
+  const didSearchMountRef = React.useRef(false);
 
-  // permission still loaded, but update button removed as requested
+  const showToast = React.useCallback(
+    (message: string, type: ToastType = "info") => {
+      setToast({ message, type });
+    },
+    []
+  );
+
   React.useEffect(() => {
-    let mounted = true;
+    if (!toast) return;
 
-    const loadAdminProfile = async () => {
+    const t = window.setTimeout(() => setToast(null), 2600);
+    return () => window.clearTimeout(t);
+  }, [toast]);
+
+  const load = React.useCallback(
+    async (search: string, mode: LoadMode = "initial") => {
+      if (mode === "initial") setLoading(true);
+      if (mode === "refresh") setRefreshing(true);
+      if (mode === "search") setSearching(true);
+
+      setError("");
+
       try {
-        const res = await fetch(`${API_BASE}/api/admin/settings`, {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        });
-
-        if (!res.ok) return;
-
-        const body = (await safeJson(res)) as AdminSettingsResponse;
-        const nextRole = (body?.profile?.role || "admin") as
-          | "admin"
-          | "superadmin";
-
-        const nextPermissions = normalizeAdminPermissions(
-          nextRole,
-          body?.profile?.permissions
+        const res = await fetch(
+          `${API_BASE}/api/admin/orders?search=${encodeURIComponent(search)}`,
+          {
+            credentials: "include",
+            cache: "no-store",
+          }
         );
 
-        if (!mounted) return;
+        const body = (await safeJson(res)) as OrderListResponse | ApiOrder[];
 
-        setRole(nextRole);
-        setPermissions(nextPermissions);
-      } catch {}
-    };
+        if (!res.ok) {
+          const message = Array.isArray(body)
+            ? "Failed to load orders"
+            : body?.message || "Failed to load orders";
 
-    loadAdminProfile();
+          setRows([]);
+          setError(message);
 
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const load = React.useCallback(async (search: string) => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/admin/orders?search=${encodeURIComponent(search)}`,
-        {
-          credentials: "include",
-          cache: "no-store",
+          if (mode === "refresh") showToast(message, "error");
+          return;
         }
-      );
 
-      const json = await safeJson(res);
+        const mapped = getOrderArray(body).map(mapOrder).filter((o) => o.id);
 
-      if (!res.ok) {
+        setRows(mapped);
+
+        if (mode === "refresh") {
+          showToast("Orders refreshed successfully.", "success");
+        }
+      } catch {
         setRows([]);
-        setError((json as any)?.message || "Failed to load orders");
-        return;
-      }
+        setError("Network error while loading orders");
 
-      setRows(Array.isArray((json as any)?.data) ? (json as any).data : []);
-    } catch {
-      setRows([]);
-      setError("Network error while loading orders");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        if (mode === "refresh") {
+          showToast("Network error while loading orders", "error");
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setSearching(false);
+      }
+    },
+    [showToast]
+  );
 
   React.useEffect(() => {
-    load("");
+    load("", "initial");
   }, [load]);
 
   React.useEffect(() => {
-    const t = setTimeout(() => load(q), 300);
-    return () => clearTimeout(t);
+    if (!didSearchMountRef.current) {
+      didSearchMountRef.current = true;
+      return;
+    }
+
+    const t = window.setTimeout(() => {
+      load(q, "search");
+    }, 350);
+
+    return () => window.clearTimeout(t);
   }, [q, load]);
 
   React.useEffect(() => {
@@ -193,7 +383,7 @@ export default function OrdersPage() {
     });
 
     socket.on("order:updated", () => {
-      load(q);
+      load(q, "silent");
     });
 
     return () => {
@@ -214,8 +404,10 @@ export default function OrdersPage() {
       });
 
       if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Error(text || "Failed to download invoice");
+        const body = await safeJson(res);
+        throw new Error(
+          (body as any)?.message || "Failed to download invoice"
+        );
       }
 
       const blob = await res.blob();
@@ -223,16 +415,21 @@ export default function OrdersPage() {
 
       const fileBase = (orderCode || orderId || "invoice").replace("#", "");
       const a = document.createElement("a");
+
       a.href = url;
       a.download = `invoice-${fileBase}.pdf`;
+
       document.body.appendChild(a);
       a.click();
       a.remove();
 
       window.URL.revokeObjectURL(url);
-    } catch (e: any) {
-      console.error(e);
-      alert(e?.message || "Failed to download invoice");
+      showToast("Invoice downloaded successfully.", "success");
+    } catch (e: unknown) {
+      const message =
+        e instanceof Error ? e.message : "Failed to download invoice";
+
+      showToast(message, "error");
     } finally {
       setDownloadingId("");
     }
@@ -241,13 +438,11 @@ export default function OrdersPage() {
   const paidCount = rows.filter((o) => o.paymentStatus === "Paid").length;
   const pendingCount = rows.filter((o) => o.orderStatus === "Pending").length;
 
-  const totalRevenue = rows.reduce((sum, o) => {
-    const paisa = Number.isFinite(o.totalPaisa as number)
-      ? (o.totalPaisa as number)
-      : Math.round(Number(o.total || 0) * 100);
-
-    return sum + paisa;
+  const totalOrderValue = rows.reduce((sum, o) => {
+    return sum + Number(o.totalPaisa || 0);
   }, 0);
+
+  const hasSearch = q.trim().length > 0;
 
   return (
     <AdminPageGuard permission="orderView">
@@ -274,10 +469,11 @@ export default function OrdersPage() {
 
               <button
                 type="button"
-                onClick={() => load(q)}
+                onClick={() => load(q, "refresh")}
+                disabled={refreshing}
                 className={secondaryBtnClass}
               >
-                Refresh
+                {refreshing ? "Refreshing..." : "Refresh"}
               </button>
             </div>
           </section>
@@ -303,7 +499,7 @@ export default function OrdersPage() {
 
             <MetricCard
               label="Total Value"
-              value={formatNPR(totalRevenue)}
+              value={formatNPR(totalOrderValue)}
               iconSrc="/images/admin/revenue.png"
             />
           </section>
@@ -324,6 +520,12 @@ export default function OrdersPage() {
                 <div className="mt-1 text-[20px] font-semibold text-white">
                   Customer Orders
                 </div>
+
+                {searching ? (
+                  <div className="mt-1 text-[12px] text-[#7f879f]">
+                    Searching...
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex h-[46px] min-w-[280px] items-center rounded-full border border-white/10 bg-white/5 px-4">
@@ -348,7 +550,7 @@ export default function OrdersPage() {
               <OrderSkeleton />
             ) : rows.length ? (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1220px] border-collapse text-[13px]">
+                <table className="w-full min-w-[1360px] border-collapse text-[13px]">
                   <thead>
                     <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
                       <th className="px-5 py-4 font-medium">Order ID</th>
@@ -357,6 +559,7 @@ export default function OrdersPage() {
                       <th className="px-5 py-4 font-medium">Payment Method</th>
                       <th className="px-5 py-4 font-medium">Payment Status</th>
                       <th className="px-5 py-4 font-medium">Order Status</th>
+                      <th className="px-5 py-4 font-medium">Delivery Status</th>
                       <th className="px-5 py-4 font-medium">Created</th>
                       <th className="px-5 py-4 text-right font-medium">
                         Actions
@@ -369,10 +572,6 @@ export default function OrdersPage() {
                       const code = o.orderCode || o.id;
                       const cname = o.customer?.name || o.customerName || "-";
                       const cemail = o.customer?.email || o.customerEmail || "-";
-
-                      const paisa = Number.isFinite(o.totalPaisa as number)
-                        ? (o.totalPaisa as number)
-                        : Math.round(Number(o.total || 0) * 100);
 
                       const methodRaw =
                         (o.paymentMethod as string) ||
@@ -407,7 +606,7 @@ export default function OrdersPage() {
                           </td>
 
                           <td className="px-5 py-4 font-semibold text-[#d6c7ff]">
-                            {formatNPR(paisa)}
+                            {formatNPR(o.totalPaisa)}
                           </td>
 
                           <td className="px-5 py-4">
@@ -424,6 +623,18 @@ export default function OrdersPage() {
                             <OrderBadge status={o.orderStatus}>
                               {o.orderStatus}
                             </OrderBadge>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <DeliveryBadge status={o.deliveryAssignment?.status}>
+                              {o.deliveryAssignment?.status || "Not Assigned"}
+                            </DeliveryBadge>
+
+                            {o.deliveryAssignment?.name ? (
+                              <div className="mt-1 max-w-[160px] truncate text-[11px] text-[#7f879f]">
+                                {o.deliveryAssignment.name}
+                              </div>
+                            ) : null}
                           </td>
 
                           <td className="px-5 py-4 text-[#a7aec4]">
@@ -457,11 +668,15 @@ export default function OrdersPage() {
                   </tbody>
                 </table>
               </div>
+            ) : hasSearch ? (
+              <NoSearchResults />
             ) : (
               <EmptyState />
             )}
           </section>
         </div>
+
+        {toast ? <Toast toast={toast} /> : null}
       </div>
     </AdminPageGuard>
   );
@@ -541,6 +756,7 @@ function OrderBadge({
     Delivered: "border-emerald-400/20 bg-emerald-500/15 text-emerald-300",
     Transit: "border-violet-400/20 bg-violet-500/15 text-violet-300",
     Shipped: "border-blue-400/20 bg-blue-500/15 text-blue-300",
+    Confirmed: "border-cyan-400/20 bg-cyan-500/15 text-cyan-300",
     Pending: "border-amber-400/20 bg-amber-500/15 text-amber-300",
     Cancelled: "border-red-400/20 bg-red-500/15 text-red-300",
   };
@@ -550,6 +766,40 @@ function OrderBadge({
       className={[
         "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
         styles[status] || styles.Pending,
+      ].join(" ")}
+    >
+      {children}
+    </span>
+  );
+}
+
+function DeliveryBadge({
+  status,
+  children,
+}: {
+  status?: string;
+  children: React.ReactNode;
+}) {
+  const s = String(status || "").trim().toLowerCase();
+
+  const tone =
+    s === "delivered"
+      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
+      : s === "out for delivery"
+      ? "border-violet-400/20 bg-violet-500/15 text-violet-300"
+      : s === "picked up"
+      ? "border-blue-400/20 bg-blue-500/15 text-blue-300"
+      : s === "assigned"
+      ? "border-cyan-400/20 bg-cyan-500/15 text-cyan-300"
+      : s === "failed delivery" || s === "returned"
+      ? "border-red-400/20 bg-red-500/15 text-red-300"
+      : "border-white/10 bg-white/5 text-[#a7aec4]";
+
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
+        tone,
       ].join(" ")}
     >
       {children}
@@ -589,6 +839,41 @@ function EmptyState() {
       <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-7 text-[#a7aec4]">
         New customer orders will appear here automatically.
       </p>
+    </div>
+  );
+}
+
+function NoSearchResults() {
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/5 text-[22px]">
+        🔎
+      </div>
+
+      <div className="mt-4 text-[18px] font-semibold text-white">
+        No matching orders
+      </div>
+
+      <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-7 text-[#a7aec4]">
+        Try searching by order code, customer name, or customer email.
+      </p>
+    </div>
+  );
+}
+
+function Toast({ toast }: { toast: Exclude<ToastState, null> }) {
+  return (
+    <div
+      className={[
+        "fixed bottom-5 right-5 z-[1200] max-w-[360px] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur",
+        toast.type === "success"
+          ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+          : toast.type === "error"
+          ? "border-red-400/20 bg-red-500/15 text-red-200"
+          : "border-[#8b5cf6]/30 bg-[#8b5cf6]/15 text-[#e9ddff]",
+      ].join(" ")}
+    >
+      {toast.message}
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { io, Socket } from "socket.io-client";
 import AdminPageGuard from "../_components/AdminPageGuard";
 import {
   AdminPermissions,
@@ -63,28 +64,31 @@ type RiderOption = {
 };
 
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
 const softPanelClass =
   "rounded-[20px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)]";
-const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
 
-function safeStr(v: any) {
+const secondaryBtnClass =
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+
+function safeStr(v: unknown) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
 function formatDateShort(iso?: string) {
   if (!iso) return "-";
-  try {
-    return new Date(iso).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return "-";
-  }
+
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function formatNPR(paisa?: number, total?: number) {
@@ -92,21 +96,36 @@ function formatNPR(paisa?: number, total?: number) {
     ? Number(paisa)
     : Math.round(Number(total || 0) * 100);
 
-  return `Rs. ${(finalPaisa / 100).toFixed(2)}`;
+  return `Rs. ${(finalPaisa / 100).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function getStatusTone(status?: string) {
   const s = safeStr(status).toLowerCase();
 
-  if (s === "assigned" || s === "picked up" || s === "out for delivery") {
-    return "border-blue-400/20 bg-blue-500/15 text-blue-300";
+  if (s === "assigned") {
+    return "border-slate-400/20 bg-slate-500/15 text-slate-300";
+  }
+
+  if (s === "picked up") {
+    return "border-indigo-400/20 bg-indigo-500/15 text-indigo-300";
+  }
+
+  if (s === "out for delivery") {
+    return "border-cyan-400/20 bg-cyan-500/15 text-cyan-300";
   }
 
   if (s === "delivered") {
     return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
   }
 
-  if (s === "failed delivery" || s === "returned") {
+  if (s === "failed delivery") {
+    return "border-orange-400/20 bg-orange-500/15 text-orange-300";
+  }
+
+  if (s === "returned") {
     return "border-red-400/20 bg-red-500/15 text-red-300";
   }
 
@@ -120,6 +139,7 @@ function StatusPill({ children }: { children: React.ReactNode }) {
     <span
       className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
     >
+      <span className="mr-2 h-1.5 w-1.5 rounded-full bg-current" />
       {children}
     </span>
   );
@@ -189,6 +209,7 @@ function Select({
 
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -200,6 +221,7 @@ export default function AdminDeliveryPage() {
   const [q, setQ] = React.useState("");
   const [rows, setRows] = React.useState<DeliveryRow[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState("");
 
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
@@ -241,7 +263,7 @@ export default function AdminDeliveryPage() {
         setRole(nextRole);
         setPermissions(nextPermissions);
       } catch {
-        // ignore
+        // AdminPageGuard handles unauthorized access.
       }
     };
 
@@ -252,45 +274,93 @@ export default function AdminDeliveryPage() {
     };
   }, []);
 
-  const load = React.useCallback(async (search: string) => {
-    setLoading(true);
-    setError("");
+  const load = React.useCallback(
+    async (search: string, mode: "initial" | "refresh" | "silent" = "initial") => {
+      if (mode === "initial") setLoading(true);
+      if (mode === "refresh") setRefreshing(true);
 
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/admin/orders?search=${encodeURIComponent(search)}`,
-        {
-          credentials: "include",
-          cache: "no-store",
+      setError("");
+
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/admin/orders?search=${encodeURIComponent(search)}`,
+          {
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
+
+        const json = await safeJson(res);
+
+        if (!res.ok) {
+          setRows([]);
+          setError((json as any)?.message || "Failed to load delivery orders");
+          return;
         }
-      );
 
-      const json = await safeJson(res);
+        const data = Array.isArray((json as any)?.data) ? (json as any).data : [];
 
-      if (!res.ok) {
+        const normalized: DeliveryRow[] = data
+          .map((item: any) => ({
+            id: safeStr(item?.id || item?._id),
+            orderCode: safeStr(item?.orderCode),
+            createdAt: safeStr(item?.createdAt),
+            totalPaisa:
+              item?.totalPaisa !== undefined ? Number(item.totalPaisa) : undefined,
+            total: item?.total !== undefined ? Number(item.total) : undefined,
+            paymentMethod: safeStr(item?.paymentMethod),
+            customer: item?.customer
+              ? {
+                  id: safeStr(item.customer.id || item.customer._id),
+                  name: safeStr(item.customer.name),
+                  email: safeStr(item.customer.email),
+                  phone: safeStr(item.customer.phone),
+                }
+              : undefined,
+            address: item?.address || null,
+            deliveryAssignment: item?.deliveryAssignment || null,
+          }))
+          .filter((item: DeliveryRow) => item.id);
+
+        setRows(normalized);
+      } catch {
         setRows([]);
-        setError((json as any)?.message || "Failed to load delivery orders");
-        return;
+        setError("Network error while loading delivery orders");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      const data = Array.isArray((json as any)?.data) ? (json as any).data : [];
-      setRows(data);
-    } catch {
-      setRows([]);
-      setError("Network error while loading delivery orders");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    []
+  );
 
   React.useEffect(() => {
-    load("");
+    load("", "initial");
   }, [load]);
 
   React.useEffect(() => {
-    const t = setTimeout(() => load(q), 300);
-    return () => clearTimeout(t);
+    const t = window.setTimeout(() => {
+      load(q, "silent");
+    }, 300);
+
+    return () => window.clearTimeout(t);
   }, [q, load]);
+
+  React.useEffect(() => {
+    const socket: Socket = io(API_BASE, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
+
+    socket.on("order:updated", () => {
+      load(q, "silent");
+    });
+
+    return () => {
+      socket.off("order:updated");
+      socket.disconnect();
+    };
+  }, [load, q]);
 
   const deliveryRows = React.useMemo(() => {
     let filtered = rows.filter((item) => item.deliveryAssignment);
@@ -378,6 +448,13 @@ export default function AdminDeliveryPage() {
     return s === "failed delivery" || s === "returned";
   }).length;
 
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setRiderFilter("all");
+    setDateFilter("all");
+    setQ("");
+  };
+
   return (
     <AdminPageGuard permission="deliveryView">
       <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
@@ -434,6 +511,7 @@ export default function AdminDeliveryPage() {
                     onChange={setRiderFilter}
                   >
                     <option value="all">All Riders</option>
+
                     {riderOptions.map((rider) => (
                       <option key={rider.id} value={rider.id}>
                         {rider.name}
@@ -452,6 +530,30 @@ export default function AdminDeliveryPage() {
                     <option value="30days">Last 30 Days</option>
                   </Select>
                 </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    onClick={() => load(q, "refresh")}
+                    disabled={refreshing}
+                    className={secondaryBtnClass}
+                  >
+                    {refreshing ? "Refreshing..." : "Refresh"}
+                  </button>
+
+                  {(q ||
+                    statusFilter !== "all" ||
+                    riderFilter !== "all" ||
+                    dateFilter !== "all") && (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className={secondaryBtnClass}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </section>
@@ -463,18 +565,21 @@ export default function AdminDeliveryPage() {
               helper="Orders with rider assigned"
               iconSrc="/images/admin/orders.png"
             />
+
             <StatCard
               label="Out for Delivery"
               value={String(outForDelivery)}
               helper="Currently on the way"
               iconSrc="/images/admin/delivery.png"
             />
+
             <StatCard
               label="Delivered"
               value={String(delivered)}
               helper="Completed deliveries"
               iconSrc="/images/admin/active.png"
             />
+
             <StatCard
               label="Failed / Returned"
               value={String(failed)}
@@ -567,6 +672,8 @@ export default function AdminDeliveryPage() {
                         safeStr(o.address?.district) ||
                         "-";
 
+                      const street = safeStr(o.address?.street);
+
                       const city =
                         safeStr(o.address?.cityOrMunicipality) ||
                         safeStr(o.address?.city) ||
@@ -583,6 +690,10 @@ export default function AdminDeliveryPage() {
 
                       const status =
                         safeStr(o.deliveryAssignment?.status) || "Unassigned";
+
+                      const deliveryManId = safeStr(
+                        o.deliveryAssignment?.deliveryManId
+                      );
 
                       return (
                         <tr
@@ -608,6 +719,7 @@ export default function AdminDeliveryPage() {
                           <td className="px-5 py-4">
                             <div className="max-w-[260px] line-clamp-1 text-white">
                               {area}
+                              {street ? `, ${street}` : ""}
                             </div>
 
                             <div className="mt-1 text-[12px] text-[#7f879f]">
@@ -643,11 +755,9 @@ export default function AdminDeliveryPage() {
 
                           <td className="px-5 py-4 text-right">
                             <div className="inline-flex items-center gap-3">
-                              {safeStr(o.deliveryAssignment?.deliveryManId) ? (
+                              {deliveryManId ? (
                                 <Link
-                                  href={`/admin/delivery/staff/${safeStr(
-                                    o.deliveryAssignment?.deliveryManId
-                                  )}`}
+                                  href={`/admin/delivery/staff/${deliveryManId}`}
                                   className="font-semibold text-[#d6c7ff] transition hover:text-white"
                                 >
                                   Rider

@@ -39,6 +39,7 @@ const buttonBase =
 
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -63,6 +64,7 @@ function Field({
       >
         {label}
       </label>
+
       {children}
     </div>
   );
@@ -70,6 +72,7 @@ function Field({
 
 function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   const { className = "", ...rest } = props;
+
   return <input {...rest} className={`${inputClass} ${className}`} />;
 }
 
@@ -166,16 +169,17 @@ function Modal({
           <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[#26293a] px-6 py-5">
             <div>
               <h2 className="text-xl font-semibold text-white">{title}</h2>
+
               {subtitle ? (
                 <p className="mt-1 text-[13px] text-[#a7aec4]">{subtitle}</p>
               ) : null}
             </div>
 
             <button
-              className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
+              type="button"
               onClick={onClose}
               aria-label="Close"
-              type="button"
+              className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
             >
               ✕
             </button>
@@ -215,6 +219,7 @@ function PermissionCheckbox({
         onChange={onChange}
         className="h-4 w-4 shrink-0 accent-[#8b5cf6]"
       />
+
       <span className="leading-5">{label}</span>
     </label>
   );
@@ -234,9 +239,11 @@ function StatBox({
       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
         {label}
       </div>
+
       <div className="mt-3 text-[26px] font-semibold tracking-[-0.03em] text-white">
         {value}
       </div>
+
       {hint ? <div className="mt-2 text-[12px] text-[#7f879f]">{hint}</div> : null}
     </div>
   );
@@ -497,6 +504,7 @@ export default function AdminSettingsPage() {
       });
 
       const j = await safeJson(res);
+
       if (!res.ok) {
         setCreateErr(j?.message || "Failed to send admin invitation");
         return;
@@ -540,6 +548,7 @@ export default function AdminSettingsPage() {
       });
 
       const j = await safeJson(res);
+
       if (!res.ok) {
         setEditErr(j?.message || "Failed to update admin");
         return;
@@ -580,6 +589,7 @@ export default function AdminSettingsPage() {
       });
 
       const j = await safeJson(res);
+
       if (!res.ok) {
         alert(j?.message || "Failed to update status");
         return;
@@ -608,6 +618,7 @@ export default function AdminSettingsPage() {
     const ok = window.confirm(
       `Are you sure you want to delete ${admin.name} (${admin.email})? This will permanently delete the account from the database.`
     );
+
     if (!ok) return;
 
     try {
@@ -619,6 +630,7 @@ export default function AdminSettingsPage() {
       });
 
       const j = await safeJson(res);
+
       if (!res.ok) {
         alert(j?.message || "Failed to delete admin");
         return;
@@ -637,9 +649,11 @@ export default function AdminSettingsPage() {
     setPassErr("");
 
     if (!oldPass) return setPassErr("Old password is required");
+
     if (newPass.length < 8) {
       return setPassErr("New password must be at least 8 characters");
     }
+
     if (newPass !== confirmPass) {
       return setPassErr("New password and confirm password do not match");
     }
@@ -655,6 +669,7 @@ export default function AdminSettingsPage() {
       });
 
       const j = await safeJson(res);
+
       if (!res.ok) {
         setPassErr(j?.message || "Failed to change password");
         return;
@@ -678,7 +693,9 @@ export default function AdminSettingsPage() {
     <AdminPageGuard permission="settingsView">
       <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
         <div className="space-y-6">
-          <section className={`${shellCard} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}>
+          <section
+            className={`${shellCard} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
+          >
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4] sm:text-[12px]">
@@ -717,13 +734,16 @@ export default function AdminSettingsPage() {
                   <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                     Account
                   </div>
+
                   <h2 className="mt-1 text-[20px] font-semibold text-white">
                     Profile
                   </h2>
+
                   <p className="mt-1 text-[13px] text-[#a7aec4]">
                     Update your admin account information.
                   </p>
                 </div>
+
                 <Pill tone="green">Account</Pill>
               </div>
 
@@ -731,6 +751,8 @@ export default function AdminSettingsPage() {
                 <Field label="Name" htmlFor="profileName">
                   <Input
                     id="profileName"
+                    name="profileName"
+                    title="Profile name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Your name"
@@ -740,6 +762,8 @@ export default function AdminSettingsPage() {
                 <Field label="Email" htmlFor="profileEmail">
                   <Input
                     id="profileEmail"
+                    name="profileEmail"
+                    title="Profile email"
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -749,8 +773,12 @@ export default function AdminSettingsPage() {
               </div>
 
               <div className="mt-6 flex flex-wrap gap-3 border-t border-[#26293a] pt-5">
-                <Button onClick={onSaveProfile}>Save Profile</Button>
+                <Button type="button" onClick={onSaveProfile}>
+                  Save Profile
+                </Button>
+
                 <Button
+                  type="button"
                   variant="ghost"
                   onClick={() => {
                     setPassErr("");
@@ -768,13 +796,16 @@ export default function AdminSettingsPage() {
                   <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                     Store
                   </div>
+
                   <h2 className="mt-1 text-[20px] font-semibold text-white">
                     General
                   </h2>
+
                   <p className="mt-1 text-[13px] text-[#a7aec4]">
                     Configure store information used across the admin system.
                   </p>
                 </div>
+
                 <Pill tone="blue">Store</Pill>
               </div>
 
@@ -782,6 +813,8 @@ export default function AdminSettingsPage() {
                 <Field label="Store Name" htmlFor="storeName">
                   <Input
                     id="storeName"
+                    name="storeName"
+                    title="Store name"
                     value={storeName}
                     onChange={(e) => setStoreName(e.target.value)}
                     placeholder="UFO Collection"
@@ -791,6 +824,8 @@ export default function AdminSettingsPage() {
                 <Field label="Currency" htmlFor="currency">
                   <Input
                     id="currency"
+                    name="currency"
+                    title="Currency"
                     value={currency}
                     onChange={(e) => setCurrency(e.target.value)}
                     placeholder="NPR"
@@ -800,6 +835,8 @@ export default function AdminSettingsPage() {
                 <Field label="Support Email" htmlFor="supportEmail">
                   <Input
                     id="supportEmail"
+                    name="supportEmail"
+                    title="Support email"
                     type="email"
                     value={supportEmail}
                     onChange={(e) => setSupportEmail(e.target.value)}
@@ -810,6 +847,8 @@ export default function AdminSettingsPage() {
                 <Field label="Support Phone" htmlFor="supportPhone">
                   <Input
                     id="supportPhone"
+                    name="supportPhone"
+                    title="Support phone"
                     value={supportPhone}
                     onChange={(e) => setSupportPhone(e.target.value)}
                     placeholder="+977 98XXXXXXXX"
@@ -818,7 +857,9 @@ export default function AdminSettingsPage() {
               </div>
 
               <div className="mt-6 border-t border-[#26293a] pt-5">
-                <Button onClick={onSaveGeneral}>Save General</Button>
+                <Button type="button" onClick={onSaveGeneral}>
+                  Save General
+                </Button>
               </div>
             </div>
           </section>
@@ -831,9 +872,11 @@ export default function AdminSettingsPage() {
                     <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                       Admins
                     </div>
+
                     <h2 className="mt-1 text-[20px] font-semibold text-white">
                       Admin Management
                     </h2>
+
                     <p className="mt-1 text-[13px] text-[#a7aec4]">
                       Invite admins, update permissions, control account status,
                       and remove accounts from the database.
@@ -842,6 +885,7 @@ export default function AdminSettingsPage() {
 
                   {canCreateAdmins ? (
                     <Button
+                      type="button"
                       onClick={() => {
                         resetCreateForm();
                         setOpenCreate(true);
@@ -858,16 +902,19 @@ export default function AdminSettingsPage() {
                     value={adminStats.total}
                     hint="All admin accounts"
                   />
+
                   <StatBox
                     label="Active"
                     value={adminStats.active}
                     hint="Can access panel"
                   />
+
                   <StatBox
                     label="Invited"
                     value={adminStats.invited}
                     hint="Waiting acceptance"
                   />
+
                   <StatBox
                     label="Inactive"
                     value={adminStats.inactive}
@@ -916,7 +963,6 @@ export default function AdminSettingsPage() {
                         const canEdit = canEditAdmins && a.role !== "superadmin";
                         const canStatus =
                           canToggleAdminsStatus && a.role !== "superadmin";
-
                         const status = a.status || "active";
 
                         return (
@@ -929,10 +975,12 @@ export default function AdminSettingsPage() {
                                 <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/10 bg-white/5 text-[12px] font-semibold text-white">
                                   {(a.name || "A").slice(0, 2).toUpperCase()}
                                 </div>
+
                                 <div>
                                   <div className="font-semibold text-white">
                                     {a.name}
                                   </div>
+
                                   <div className="mt-1 text-[12px] text-[#7f879f]">
                                     {a.mustChangePassword
                                       ? "Password change required"
@@ -974,6 +1022,7 @@ export default function AdminSettingsPage() {
                               <div className="inline-flex flex-wrap items-center justify-end gap-2">
                                 {canEdit ? (
                                   <Button
+                                    type="button"
                                     variant="ghost"
                                     onClick={() => openEditModal(a)}
                                     className="h-9 px-3 text-[11px]"
@@ -984,6 +1033,7 @@ export default function AdminSettingsPage() {
 
                                 {canStatus ? (
                                   <Button
+                                    type="button"
                                     variant="ghost"
                                     disabled={statusLoadingId === a._id}
                                     onClick={() => onToggleAdminStatus(a)}
@@ -999,6 +1049,7 @@ export default function AdminSettingsPage() {
 
                                 {canDelete ? (
                                   <Button
+                                    type="button"
                                     variant="danger"
                                     disabled={deletingId === a._id}
                                     onClick={() => onDeleteAdmin(a)}
@@ -1045,6 +1096,8 @@ export default function AdminSettingsPage() {
                 <Field label="Full Name" htmlFor="createAdminName">
                   <Input
                     id="createAdminName"
+                    name="createAdminName"
+                    title="Admin name"
                     value={aName}
                     onChange={(e) => setAName(e.target.value)}
                     placeholder="Admin name"
@@ -1054,6 +1107,8 @@ export default function AdminSettingsPage() {
                 <Field label="Email" htmlFor="createAdminEmail">
                   <Input
                     id="createAdminEmail"
+                    name="createAdminEmail"
+                    title="Admin email"
                     type="email"
                     value={aEmail}
                     onChange={(e) => setAEmail(e.target.value)}
@@ -1088,13 +1143,15 @@ export default function AdminSettingsPage() {
 
               <div className="sticky bottom-0 flex justify-end gap-3 border-t border-[#26293a] bg-[#11121a] pt-5">
                 <Button
+                  type="button"
                   variant="ghost"
                   onClick={() => setOpenCreate(false)}
                   disabled={creating}
                 >
                   Cancel
                 </Button>
-                <Button onClick={onInviteAdmin} disabled={creating}>
+
+                <Button type="button" onClick={onInviteAdmin} disabled={creating}>
                   {creating ? "Sending..." : "Send Invite"}
                 </Button>
               </div>
@@ -1114,6 +1171,8 @@ export default function AdminSettingsPage() {
                 <Field label="Full Name" htmlFor="editAdminName">
                   <Input
                     id="editAdminName"
+                    name="editAdminName"
+                    title="Edit admin name"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     placeholder="Admin name"
@@ -1123,6 +1182,8 @@ export default function AdminSettingsPage() {
                 <Field label="Email" htmlFor="editAdminEmail">
                   <Input
                     id="editAdminEmail"
+                    name="editAdminEmail"
+                    title="Edit admin email"
                     type="email"
                     value={editEmail}
                     onChange={(e) => setEditEmail(e.target.value)}
@@ -1132,28 +1193,32 @@ export default function AdminSettingsPage() {
               </div>
 
               <Field label="Status" htmlFor="editAdminStatus">
-  <select
-    id="editAdminStatus"
-    aria-label="Admin status"
-    value={editStatus}
-    onChange={(e) =>
-      setEditStatus(
-        e.target.value as "active" | "inactive" | "invited"
-      )
-    }
-    className={inputClass}
-  >
-    <option value="active" className="bg-[#11121a]">
-      Active
-    </option>
-    <option value="inactive" className="bg-[#11121a]">
-      Inactive
-    </option>
-    <option value="invited" className="bg-[#11121a]">
-      Invited
-    </option>
-  </select>
-</Field>
+                <select
+                  id="editAdminStatus"
+                  name="editAdminStatus"
+                  title="Admin status"
+                  aria-label="Admin status"
+                  value={editStatus}
+                  onChange={(e) =>
+                    setEditStatus(
+                      e.target.value as "active" | "inactive" | "invited"
+                    )
+                  }
+                  className={inputClass}
+                >
+                  <option value="active" className="bg-[#11121a]">
+                    Active
+                  </option>
+
+                  <option value="inactive" className="bg-[#11121a]">
+                    Inactive
+                  </option>
+
+                  <option value="invited" className="bg-[#11121a]">
+                    Invited
+                  </option>
+                </select>
+              </Field>
 
               <div className="space-y-4">
                 {ADMIN_PERMISSION_GROUPS.map((group) => (
@@ -1181,13 +1246,15 @@ export default function AdminSettingsPage() {
 
               <div className="sticky bottom-0 flex justify-end gap-3 border-t border-[#26293a] bg-[#11121a] pt-5">
                 <Button
+                  type="button"
                   variant="ghost"
                   onClick={() => setOpenEdit(false)}
                   disabled={updating}
                 >
                   Cancel
                 </Button>
-                <Button onClick={onUpdateAdmin} disabled={updating}>
+
+                <Button type="button" onClick={onUpdateAdmin} disabled={updating}>
                   {updating ? "Updating..." : "Update Admin"}
                 </Button>
               </div>
@@ -1206,6 +1273,8 @@ export default function AdminSettingsPage() {
               <Field label="Old Password" htmlFor="oldPassword">
                 <Input
                   id="oldPassword"
+                  name="oldPassword"
+                  title="Old password"
                   type="password"
                   value={oldPass}
                   onChange={(e) => setOldPass(e.target.value)}
@@ -1216,6 +1285,8 @@ export default function AdminSettingsPage() {
               <Field label="New Password" htmlFor="newPassword">
                 <Input
                   id="newPassword"
+                  name="newPassword"
+                  title="New password"
                   type="password"
                   value={newPass}
                   onChange={(e) => setNewPass(e.target.value)}
@@ -1226,6 +1297,8 @@ export default function AdminSettingsPage() {
               <Field label="Confirm New Password" htmlFor="confirmNewPassword">
                 <Input
                   id="confirmNewPassword"
+                  name="confirmNewPassword"
+                  title="Confirm new password"
                   type="password"
                   value={confirmPass}
                   onChange={(e) => setConfirmPass(e.target.value)}
@@ -1235,13 +1308,19 @@ export default function AdminSettingsPage() {
 
               <div className="flex justify-end gap-3 border-t border-[#26293a] pt-5">
                 <Button
+                  type="button"
                   variant="ghost"
                   onClick={() => setOpenPass(false)}
                   disabled={changing}
                 >
                   Cancel
                 </Button>
-                <Button onClick={onChangePassword} disabled={changing}>
+
+                <Button
+                  type="button"
+                  onClick={onChangePassword}
+                  disabled={changing}
+                >
                   {changing ? "Changing..." : "Change Password"}
                 </Button>
               </div>

@@ -1,9 +1,18 @@
 import { Request, Response, NextFunction } from "express";
 import { ticketService } from "../services/ticket.service";
 import { notificationService } from "../../notifications/services/notification.service";
+import { getIO } from "../../../socket";
 
 function getUser(req: Request) {
   return (req as any).user || null;
+}
+
+function emitSafe(fn: () => void) {
+  try {
+    fn();
+  } catch (e: any) {
+    console.log("Ticket socket emit failed (ignored):", e?.message);
+  }
 }
 
 export const ticketController = {
@@ -43,7 +52,7 @@ export const ticketController = {
       const user = getUser(req);
       const customerId = user?.userId ? String(user.userId) : null;
 
-      const doc = await ticketService.createTicket({
+      const doc: any = await ticketService.createTicket({
         customerId,
         issueType: String(issueType).trim(),
         subject: String(subject).trim(),
@@ -63,9 +72,9 @@ export const ticketController = {
           title: "New support ticket",
           message: `${String(name).trim()} submitted ticket ${doc.ticketCode}.`,
           type: "ticket",
-          link: `/admin/tickets/${String((doc as any)._id)}`,
+          link: `/admin/customer-tickets/${String(doc._id)}`,
           meta: {
-            ticketId: String((doc as any)._id),
+            ticketId: String(doc._id),
             ticketCode: doc.ticketCode,
             customerId: customerId || "",
             customerName: String(name).trim(),
@@ -78,10 +87,30 @@ export const ticketController = {
         console.log("Public ticket notification failed (ignored):", e?.message);
       }
 
+      emitSafe(() => {
+        const io = getIO();
+
+        io.to("admins").emit("admin:ticket:new", {
+          ticketId: String(doc._id),
+          ticketCode: doc.ticketCode,
+          status: doc.status,
+          customerName: String(name).trim(),
+          customerEmail: String(email).trim(),
+          subject: doc.subject,
+          issueType: doc.issueType,
+          productName: doc.productName || null,
+          orderId: doc.orderId || null,
+          size: doc.size || null,
+          color: doc.color || null,
+          submittedAt: doc.createdAt,
+          updatedAt: new Date().toISOString(),
+        });
+      });
+
       res.status(201).json({
         success: true,
         item: {
-          id: doc._id,
+          id: String(doc._id),
           ticketCode: doc.ticketCode,
           status: doc.status,
           orderId: doc.orderId || null,

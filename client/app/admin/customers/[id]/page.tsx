@@ -20,6 +20,8 @@ import {
 
 type TabKey = "overview" | "orders" | "tickets" | "addresses";
 
+type CustomerStatus = "active" | "blocked" | "deleted";
+
 type CustomerRow = {
   id: string;
   name: string;
@@ -28,14 +30,21 @@ type CustomerRow = {
   createdAt: string;
   lastLogin?: string;
   numberOfOrders?: number;
-  status?: "active" | "blocked" | "deleted";
+  status?: CustomerStatus;
   isBlocked?: boolean;
   isDeleted?: boolean;
   deletedAt?: string;
 };
 
 type PaymentStatus = "Paid" | "Pending" | "Failed";
-type OrderStatus = "Delivered" | "Shipped" | "Pending" | "Cancelled";
+
+type OrderStatus =
+  | "Pending"
+  | "Confirmed"
+  | "Shipped"
+  | "Transit"
+  | "Delivered"
+  | "Cancelled";
 
 type OrderRow = {
   id: string;
@@ -87,7 +96,11 @@ const secondaryBtnClass =
 
 function formatDateShort(iso?: string) {
   if (!iso) return "-";
-  return String(iso).slice(0, 10);
+
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+
+  return d.toISOString().slice(0, 10);
 }
 
 function formatNPR(paisa: number) {
@@ -99,6 +112,7 @@ function nameFromAddress(a: Address) {
   const fn = (a.firstName || "").trim();
   const ln = (a.lastName || "").trim();
   const full = `${fn} ${ln}`.trim();
+
   return full || a.email || "—";
 }
 
@@ -143,8 +157,15 @@ function getGoogleMapsUrl(a: Address) {
   return `https://www.google.com/maps?q=${a.lat},${a.lng}`;
 }
 
+function getCustomerStatus(customer: CustomerRow): CustomerStatus {
+  if (customer.status === "deleted" || customer.isDeleted) return "deleted";
+  if (customer.status === "blocked" || customer.isBlocked) return "blocked";
+  return "active";
+}
+
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -202,6 +223,7 @@ export default function CustomerDetailsPage() {
         const nextRole = (body?.profile?.role || "admin") as
           | "admin"
           | "superadmin";
+
         const nextPermissions = normalizeAdminPermissions(
           nextRole,
           body?.profile?.permissions
@@ -224,7 +246,7 @@ export default function CustomerDetailsPage() {
   const canViewOrders = hasPermission(role, permissions, "orderView");
   const canViewTickets = hasPermission(role, permissions, "ticketView");
 
-  const loadCustomer = async (id: string) => {
+  const loadCustomer = React.useCallback(async (id: string) => {
     setLoading(true);
     setError("");
 
@@ -250,7 +272,7 @@ export default function CustomerDetailsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const loadOrders = React.useCallback(async (id: string) => {
     setOrdersLoading(true);
@@ -321,7 +343,7 @@ export default function CustomerDetailsPage() {
   React.useEffect(() => {
     if (!customerId) return;
     loadCustomer(customerId);
-  }, [customerId]);
+  }, [customerId, loadCustomer]);
 
   React.useEffect(() => {
     if (!customerId) return;
@@ -346,6 +368,7 @@ export default function CustomerDetailsPage() {
     if (tab !== "addresses") return;
 
     const total = shipping.length + billing.length;
+
     if (total === 0 && !addrLoading && !addrError) {
       loadAddresses(customerId);
     }
@@ -359,6 +382,7 @@ export default function CustomerDetailsPage() {
     addrError,
   ]);
 
+  const customerStatus = customer ? getCustomerStatus(customer) : "active";
   const ordersCount = customer?.numberOfOrders ?? 0;
   const ticketsCount = 0;
   const addressesCount = shipping.length + billing.length;
@@ -410,6 +434,7 @@ export default function CustomerDetailsPage() {
                   </h1>
 
                   <Badge text={customer.role || "customer"} />
+                  <CustomerStatusPill status={customerStatus} />
                 </div>
 
                 <p className="mt-2 max-w-[680px] text-[13px] leading-7 text-[#a7aec4]">
@@ -417,9 +442,19 @@ export default function CustomerDetailsPage() {
                 </p>
               </div>
 
-              <Link href="/admin/customers" className={secondaryBtnClass}>
-                Back
-              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => customerId && loadCustomer(customerId)}
+                  className={primaryBtnClass}
+                >
+                  Refresh
+                </button>
+
+                <Link href="/admin/customers" className={secondaryBtnClass}>
+                  Back
+                </Link>
+              </div>
             </div>
           </section>
 
@@ -504,11 +539,7 @@ export default function CustomerDetailsPage() {
                 <InfoBlock
                   label="Status"
                   value={
-                    customer.isDeleted || customer.status === "deleted"
-                      ? "Deleted"
-                      : customer.isBlocked || customer.status === "blocked"
-                      ? "Blocked"
-                      : "Active"
+                    <CustomerStatusPill status={customerStatus} />
                   }
                 />
                 <InfoBlock
@@ -519,12 +550,31 @@ export default function CustomerDetailsPage() {
                   label="Last Login"
                   value={formatDateShort(customer.lastLogin)}
                 />
+
+                {customerStatus === "deleted" ? (
+                  <InfoBlock
+                    label="Deleted At"
+                    value={formatDateShort(customer.deletedAt)}
+                  />
+                ) : null}
               </div>
             </section>
           ) : null}
 
           {tab === "orders" && canViewOrders ? (
-            <TableShell title="Orders" right={<span>{ordersCount} total</span>}>
+            <TableShell
+              title="Orders"
+              right={
+                <button
+                  type="button"
+                  onClick={() => customerId && loadOrders(customerId)}
+                  className={secondaryBtnClass}
+                  disabled={ordersLoading}
+                >
+                  {ordersLoading ? "Refreshing..." : "Refresh"}
+                </button>
+              }
+            >
               {ordersError ? (
                 <div className="px-5 py-4">
                   <div className="rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-[13px] text-red-200">
@@ -542,7 +592,9 @@ export default function CustomerDetailsPage() {
                       <th className="px-5 py-4 font-medium">Payment</th>
                       <th className="px-5 py-4 font-medium">Status</th>
                       <th className="px-5 py-4 font-medium">Created</th>
-                      <th className="px-5 py-4 text-right font-medium">Action</th>
+                      <th className="px-5 py-4 text-right font-medium">
+                        Action
+                      </th>
                     </tr>
                   </thead>
 
@@ -577,11 +629,15 @@ export default function CustomerDetailsPage() {
                             </td>
 
                             <td className="px-5 py-4">
-                              <Pill>{o.paymentStatus}</Pill>
+                              <PaymentPill status={o.paymentStatus}>
+                                {o.paymentStatus}
+                              </PaymentPill>
                             </td>
 
                             <td className="px-5 py-4">
-                              <Pill>{o.orderStatus}</Pill>
+                              <OrderStatusPill status={o.orderStatus}>
+                                {o.orderStatus}
+                              </OrderStatusPill>
                             </td>
 
                             <td className="px-5 py-4 text-[#a7aec4]">
@@ -676,10 +732,86 @@ function Badge({ text }: { text: string }) {
   );
 }
 
+function PaymentPill({
+  status,
+  children,
+}: {
+  status: PaymentStatus;
+  children: React.ReactNode;
+}) {
+  const tone =
+    status === "Paid"
+      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
+      : status === "Failed"
+      ? "border-red-400/20 bg-red-500/15 text-red-300"
+      : "border-amber-400/20 bg-amber-500/15 text-amber-300";
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function OrderStatusPill({
+  status,
+  children,
+}: {
+  status: OrderStatus;
+  children: React.ReactNode;
+}) {
+  const tone =
+    status === "Delivered"
+      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
+      : status === "Transit"
+      ? "border-violet-400/20 bg-violet-500/15 text-violet-300"
+      : status === "Shipped"
+      ? "border-blue-400/20 bg-blue-500/15 text-blue-300"
+      : status === "Confirmed"
+      ? "border-cyan-400/20 bg-cyan-500/15 text-cyan-300"
+      : status === "Cancelled"
+      ? "border-red-400/20 bg-red-500/15 text-red-300"
+      : "border-amber-400/20 bg-amber-500/15 text-amber-300";
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
+    >
+      {children}
+    </span>
+  );
+}
+
 function Pill({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
       {children}
+    </span>
+  );
+}
+
+function CustomerStatusPill({ status }: { status: CustomerStatus }) {
+  const styles =
+    status === "blocked"
+      ? "border-amber-400/20 bg-amber-500/15 text-amber-300"
+      : status === "deleted"
+      ? "border-red-400/20 bg-red-500/15 text-red-300"
+      : "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
+        styles,
+      ].join(" ")}
+    >
+      {status === "blocked"
+        ? "Blocked"
+        : status === "deleted"
+        ? "Deleted"
+        : "Active"}
     </span>
   );
 }
@@ -749,7 +881,7 @@ function StatCard({
   iconSrc: string;
 }) {
   return (
-    <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)]">
+    <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">

@@ -54,30 +54,28 @@ function validateDeliveryStatusTransition(
   const next = String(nextStatus || "").trim();
 
   const allowedMap: Record<string, string[]> = {
-    Assigned: [
-      "Assigned",
-      "Picked Up",
-      "Out for Delivery",
-      "Failed Delivery",
-      "Returned",
-    ],
+    Assigned: ["Assigned", "Picked Up", "Failed Delivery", "Returned"],
+
     "Picked Up": [
       "Picked Up",
       "Out for Delivery",
       "Failed Delivery",
       "Returned",
     ],
+
     "Out for Delivery": [
       "Out for Delivery",
       "Failed Delivery",
       "Returned",
     ],
+
     Delivered: ["Delivered"],
     "Failed Delivery": ["Failed Delivery", "Returned"],
     Returned: ["Returned"],
   };
 
   const allowed = allowedMap[current] || [];
+
   if (!allowed.includes(next)) {
     throw new AppError(
       `Invalid delivery status transition from "${current}" to "${next}"`,
@@ -98,14 +96,18 @@ function generateDeliveryOtp() {
 function maskEmail(email: string) {
   const safe = String(email || "").trim();
   const [name, domain] = safe.split("@");
+
   if (!name || !domain) return safe;
   if (name.length <= 2) return `${name[0] || "*"}*@${domain}`;
+
   return `${name.slice(0, 2)}***@${domain}`;
 }
 
 function maskPhone(phone: string) {
   const safe = String(phone || "").trim();
+
   if (safe.length <= 4) return safe;
+
   return `${"*".repeat(Math.max(0, safe.length - 4))}${safe.slice(-4)}`;
 }
 
@@ -395,6 +397,7 @@ export const deliveryStaffService = {
     };
 
     const safeSearch = String(search || "").trim();
+
     if (safeSearch) {
       query.$or = [
         { name: { $regex: safeSearch, $options: "i" } },
@@ -530,7 +533,9 @@ export const deliveryStaffService = {
     const email = String(data?.email ?? user.email).trim().toLowerCase();
     const name = String(data?.name ?? user.name).trim();
     const phone = String(data?.phone ?? user.phone ?? "").trim();
-    const vehicleType = String(data?.vehicleType ?? user.vehicleType ?? "").trim();
+    const vehicleType = String(
+      data?.vehicleType ?? user.vehicleType ?? ""
+    ).trim();
     const vehicleNumber = String(
       data?.vehicleNumber ?? user.vehicleNumber ?? ""
     ).trim();
@@ -799,6 +804,7 @@ export const deliveryStaffService = {
       !nextDeliveryAssignment.outForDeliveryAt
     ) {
       nextDeliveryAssignment.outForDeliveryAt = now;
+
       if (!nextDeliveryAssignment.pickedUpAt) {
         nextDeliveryAssignment.pickedUpAt = now;
       }
@@ -835,8 +841,9 @@ export const deliveryStaffService = {
       throw new AppError("Failed to update delivery order", 500);
     }
 
-    const customerId =
-      String((updated as any)?.customer?._id || order.customer || "").trim();
+    const customerId = String(
+      (updated as any)?.customer?._id || order.customer || ""
+    ).trim();
     const riderName = String((rider as any)?.name || "Delivery rider").trim();
 
     await notifyDeliveryStatus(updated, customerId, riderName, userId, nextStatus);
@@ -879,6 +886,7 @@ export const deliveryStaffService = {
     }
 
     const currentStatus = String(order?.deliveryAssignment?.status || "").trim();
+
     if (currentStatus !== "Out for Delivery") {
       throw new AppError(
         "OTP can only be sent when order status is Out for Delivery",
@@ -935,6 +943,7 @@ export const deliveryStaffService = {
     const customerName = String(
       updated?.address?.fullName || updated?.customer?.name || "Customer"
     ).trim();
+
     const maskedTarget =
       channel === "phone" ? maskPhone(targetPhone) : maskEmail(targetEmail);
 
@@ -990,7 +999,10 @@ export const deliveryStaffService = {
       console.log("Customer OTP notification failed:", e?.message);
     }
 
-    await emitOrderUpdated(updated, String((updated as any)?.customer?._id || ""));
+    await emitOrderUpdated(
+      updated,
+      String((updated as any)?.customer?._id || "")
+    );
 
     return {
       orderId: String(updated._id),
@@ -1011,8 +1023,14 @@ export const deliveryStaffService = {
       throw new AppError("Invalid order id", 400);
     }
 
-    if (!otp) {
+    const cleanOtp = String(otp || "").trim();
+
+    if (!cleanOtp) {
       throw new AppError("OTP is required", 400);
+    }
+
+    if (!/^\d{4}$/.test(cleanOtp)) {
+      throw new AppError("Please enter a valid 4 digit OTP", 400);
     }
 
     const rider = await User.findOne({
@@ -1054,11 +1072,15 @@ export const deliveryStaffService = {
       throw new AppError("No OTP has been sent for this order", 400);
     }
 
+    if (!/^\d{4}$/.test(savedOtp)) {
+      throw new AppError("Saved OTP is invalid. Please send a new OTP.", 400);
+    }
+
     if (!otpExpiresAt || otpExpiresAt.getTime() < Date.now()) {
       throw new AppError("OTP has expired. Please send a new OTP.", 400);
     }
 
-    if (savedOtp !== String(otp).trim()) {
+    if (savedOtp !== cleanOtp) {
       throw new AppError("Invalid OTP", 400);
     }
 
@@ -1097,13 +1119,23 @@ export const deliveryStaffService = {
       throw new AppError("Failed to verify OTP and complete delivery", 500);
     }
 
-    const customerId =
-      String((updated as any)?.customer?._id || order.customer || "").trim();
+    const customerId = String(
+      (updated as any)?.customer?._id || order.customer || ""
+    ).trim();
     const riderName = String((rider as any)?.name || "Delivery rider").trim();
 
-    await notifyDeliveryStatus(updated, customerId, riderName, userId, "Delivered");
+    await notifyDeliveryStatus(
+      updated,
+      customerId,
+      riderName,
+      userId,
+      "Delivered"
+    );
+
     await emitOrderUpdated(updated, customerId);
 
     return orderService.mapOrder(updated);
   },
 };
+
+export default deliveryStaffService;

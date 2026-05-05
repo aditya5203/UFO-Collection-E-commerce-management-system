@@ -1,4 +1,3 @@
-// client/app/admin/category/page.tsx
 "use client";
 
 import * as React from "react";
@@ -19,6 +18,37 @@ type Category = {
   createdAt?: string;
 };
 
+type ToastType = "success" | "error" | "info";
+
+type ToastState = {
+  type: ToastType;
+  message: string;
+} | null;
+
+type ApiCategory = {
+  _id?: string;
+  id?: string;
+  name?: string;
+  slug?: string;
+  description?: string;
+  isActive?: boolean;
+  createdAt?: string;
+};
+
+type CategoryListResponse = {
+  success?: boolean;
+  message?: string;
+  data?: ApiCategory[] | { categories?: ApiCategory[] };
+  categories?: ApiCategory[];
+};
+
+type CategorySaveResponse = {
+  success?: boolean;
+  message?: string;
+  data?: ApiCategory;
+  category?: ApiCategory;
+};
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
@@ -28,10 +58,13 @@ const panelClass =
 const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+const inputClass =
+  "h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]";
 
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -39,25 +72,62 @@ async function safeJson(res: Response) {
   }
 }
 
+function mapCategory(c: ApiCategory): Category {
+  return {
+    id: String(c._id || c.id || ""),
+    name: String(c.name || "Untitled Category"),
+    slug: String(c.slug || "-"),
+    description: c.description || "",
+    isActive: Boolean(c.isActive),
+    createdAt: c.createdAt,
+  };
+}
+
+function getCategoryArray(body: CategoryListResponse): ApiCategory[] {
+  if (Array.isArray(body.data)) return body.data;
+  if (Array.isArray(body.categories)) return body.categories;
+  if (body.data && Array.isArray(body.data.categories)) {
+    return body.data.categories;
+  }
+
+  return [];
+}
+
+function formatDate(date?: string) {
+  if (!date) return "--";
+
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "--";
+
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export default function AdminCategoryPage() {
   const [categories, setCategories] = React.useState<Category[]>([]);
-  const [loadingList, setLoadingList] = React.useState(false);
+  const [loadingList, setLoadingList] = React.useState(true);
+  const [refreshing, setRefreshing] = React.useState(false);
 
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [isActive, setIsActive] = React.useState(true);
 
   const [submitting, setSubmitting] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [showModal, setShowModal] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(
     null
   );
-  const [toast, setToast] = React.useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
+  const [toast, setToast] = React.useState<ToastState>(null);
+  const [search, setSearch] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState<
+    "all" | "active" | "inactive"
+  >("all");
 
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
   const [permissions, setPermissions] =
@@ -67,10 +137,63 @@ export default function AdminCategoryPage() {
   const canEdit = hasPermission(role, permissions, "categoryEdit");
   const canDelete = hasPermission(role, permissions, "categoryDelete");
 
+  const showToast = React.useCallback(
+    (message: string, type: ToastType = "info") => {
+      setToast({ message, type });
+    },
+    []
+  );
+
+  const loadCategories = React.useCallback(
+    async (mode: "initial" | "refresh" = "initial") => {
+      try {
+        if (mode === "initial") setLoadingList(true);
+        if (mode === "refresh") setRefreshing(true);
+
+        setError(null);
+
+        const res = await fetch(`${API_BASE_URL}/api/admin/categories`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const body = (await safeJson(res)) as CategoryListResponse;
+
+        if (!res.ok) {
+          throw new Error(body?.message || "Failed to load categories");
+        }
+
+        const mapped = getCategoryArray(body)
+          .map(mapCategory)
+          .filter((c) => c.id);
+
+        setCategories(mapped);
+
+        if (mode === "refresh") {
+          showToast("Categories refreshed successfully.", "success");
+        }
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Failed to load categories";
+
+        setError(message);
+
+        if (mode === "refresh") {
+          showToast(message, "error");
+        }
+      } finally {
+        setLoadingList(false);
+        setRefreshing(false);
+      }
+    },
+    [showToast]
+  );
+
   React.useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(t);
+
+    const t = window.setTimeout(() => setToast(null), 3000);
+    return () => window.clearTimeout(t);
   }, [toast]);
 
   React.useEffect(() => {
@@ -95,9 +218,12 @@ export default function AdminCategoryPage() {
         );
 
         if (!mounted) return;
+
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {}
+      } catch {
+        // AdminPageGuard already protects this page.
+      }
     };
 
     loadAdminProfile();
@@ -108,48 +234,46 @@ export default function AdminCategoryPage() {
   }, []);
 
   React.useEffect(() => {
-    let mounted = true;
+    loadCategories("initial");
+  }, [loadCategories]);
 
-    const load = async () => {
-      setLoadingList(true);
-      setError(null);
-
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/admin/categories`, {
-          credentials: "include",
-          cache: "no-store",
-        });
-
-        const body = await safeJson(res);
-
-        if (!res.ok) {
-          throw new Error(body?.message || "Failed to load categories");
-        }
-
-        const data = (body.data ?? body) as any[];
-        const mapped: Category[] = data.map((c: any) => ({
-          id: c._id || c.id,
-          name: c.name,
-          slug: c.slug,
-          description: c.description,
-          isActive: c.isActive,
-          createdAt: c.createdAt,
-        }));
-
-        if (mounted) setCategories(mapped);
-      } catch (err: any) {
-        if (mounted) setError(err.message || "Failed to load categories");
-      } finally {
-        if (mounted) setLoadingList(false);
+  React.useEffect(() => {
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowModal(false);
+        setConfirmDeleteId(null);
       }
     };
 
-    load();
-
-    return () => {
-      mounted = false;
-    };
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
   }, []);
+
+  const filteredCategories = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return categories.filter((c) => {
+      const matchesSearch =
+        !q ||
+        c.name.toLowerCase().includes(q) ||
+        c.slug.toLowerCase().includes(q) ||
+        String(c.description || "").toLowerCase().includes(q);
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" && c.isActive) ||
+        (statusFilter === "inactive" && !c.isActive);
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [categories, search, statusFilter]);
+
+  const activeCount = React.useMemo(
+    () => categories.filter((c) => c.isActive).length,
+    [categories]
+  );
+
+  const inactiveCount = categories.length - activeCount;
 
   function resetForm() {
     setName("");
@@ -161,10 +285,7 @@ export default function AdminCategoryPage() {
 
   function openCreateModal() {
     if (!canCreate) {
-      setToast({
-        type: "error",
-        message: "You do not have permission to create category",
-      });
+      showToast("You do not have permission to create category.", "error");
       return;
     }
 
@@ -174,10 +295,7 @@ export default function AdminCategoryPage() {
 
   function openEditModal(c: Category) {
     if (!canEdit) {
-      setToast({
-        type: "error",
-        message: "You do not have permission to edit category",
-      });
+      showToast("You do not have permission to edit category.", "error");
       return;
     }
 
@@ -191,10 +309,7 @@ export default function AdminCategoryPage() {
 
   function requestDelete(id: string) {
     if (!canDelete) {
-      setToast({
-        type: "error",
-        message: "You do not have permission to delete category",
-      });
+      showToast("You do not have permission to delete category.", "error");
       return;
     }
 
@@ -244,55 +359,45 @@ export default function AdminCategoryPage() {
         body: JSON.stringify(payload),
       });
 
-      const body = await safeJson(res);
+      const body = (await safeJson(res)) as CategorySaveResponse;
 
       if (!res.ok) {
         throw new Error(body?.message || "Failed to save category");
       }
 
-      const created = body.data ?? body;
-      const categoryId = created._id || created.id;
+      const saved = body.data || body.category;
+
+      if (!saved) {
+        throw new Error("Category saved, but server returned invalid data.");
+      }
+
+      const mapped = mapCategory(saved);
+
+      if (!mapped.id) {
+        throw new Error("Category saved, but category id was missing.");
+      }
 
       setCategories((prev) => {
         if (isEditing && editingId) {
-          return prev.map((c) =>
-            c.id === editingId
-              ? {
-                  ...c,
-                  name: created.name,
-                  slug: created.slug,
-                  description: created.description,
-                  isActive: created.isActive,
-                }
-              : c
-          );
+          return prev.map((c) => (c.id === editingId ? mapped : c));
         }
 
-        return [
-          {
-            id: categoryId,
-            name: created.name,
-            slug: created.slug,
-            description: created.description,
-            isActive: created.isActive,
-            createdAt: created.createdAt,
-          },
-          ...prev,
-        ];
+        return [mapped, ...prev];
       });
 
       resetForm();
       setShowModal(false);
-      setToast({
-        type: "success",
-        message: isEditing ? "Category updated" : "Category created",
-      });
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
-      setToast({
-        type: "error",
-        message: err.message || "Something went wrong",
-      });
+
+      showToast(
+        isEditing ? "Category updated successfully." : "Category created.",
+        "success"
+      );
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Something went wrong";
+
+      setError(message);
+      showToast(message, "error");
     } finally {
       setSubmitting(false);
     }
@@ -305,33 +410,34 @@ export default function AdminCategoryPage() {
     }
 
     if (!canDelete) {
-      setToast({
-        type: "error",
-        message: "You do not have permission to delete category",
-      });
+      showToast("You do not have permission to delete category.", "error");
       setConfirmDeleteId(null);
       return;
     }
 
     try {
+      setDeleting(true);
+
       const res = await fetch(`${API_BASE_URL}/api/admin/categories/${id}`, {
         method: "DELETE",
         credentials: "include",
       });
 
+      const body = await safeJson(res);
+
       if (!res.ok) {
-        const body = await safeJson(res);
         throw new Error(body?.message || "Failed to delete category");
       }
 
       setCategories((prev) => prev.filter((c) => c.id !== id));
-      setToast({ type: "success", message: "Category deleted" });
-    } catch (err: any) {
-      setToast({
-        type: "error",
-        message: err.message || "Failed to delete category",
-      });
+      showToast("Category deleted successfully.", "success");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to delete category";
+
+      showToast(message, "error");
     } finally {
+      setDeleting(false);
       setConfirmDeleteId(null);
     }
   }
@@ -348,25 +454,44 @@ export default function AdminCategoryPage() {
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4] sm:text-[12px]">
                   Admin Catalog
                 </div>
+
                 <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
                   Categories
                 </h1>
+
                 <p className="mt-2 max-w-[620px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
                   Manage product categories, visibility status, slugs, and
                   catalog organization from one clean admin panel.
                 </p>
               </div>
 
-              {canCreate ? (
+              <div className="flex flex-wrap gap-3">
                 <button
                   type="button"
-                  onClick={openCreateModal}
-                  className={primaryBtnClass}
+                  onClick={() => loadCategories("refresh")}
+                  disabled={refreshing}
+                  className={secondaryBtnClass}
                 >
-                  Add Category
+                  {refreshing ? "Refreshing..." : "Refresh"}
                 </button>
-              ) : null}
+
+                {canCreate ? (
+                  <button
+                    type="button"
+                    onClick={openCreateModal}
+                    className={primaryBtnClass}
+                  >
+                    Add Category
+                  </button>
+                ) : null}
+              </div>
             </div>
+          </section>
+
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <MiniStat label="Total Categories" value={categories.length} />
+            <MiniStat label="Active" value={activeCount} tone="success" />
+            <MiniStat label="Inactive" value={inactiveCount} tone="danger" />
           </section>
 
           {error ? (
@@ -376,7 +501,7 @@ export default function AdminCategoryPage() {
           ) : null}
 
           <section className={`${panelClass} overflow-hidden`}>
-            <div className="flex flex-col gap-3 border-b border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="flex flex-col gap-4 border-b border-[#26293a] px-5 py-4 sm:px-6 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                   Category List
@@ -386,8 +511,33 @@ export default function AdminCategoryPage() {
                 </div>
               </div>
 
-              <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[12px] font-semibold text-[#d6c7ff]">
-                {categories.length} total
+              <div className="grid gap-3 sm:grid-cols-[minmax(220px,320px)_160px_auto]">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search category..."
+                  className={inputClass}
+                />
+
+                <select
+                 aria-label="Filter categories by status"
+                title="Filter categories by status"
+                value={statusFilter}
+                onChange={(e) =>
+                setStatusFilter(
+                e.target.value as "all" | "active" | "inactive"
+                 )
+                }
+                className={inputClass}
+                >
+                  <option value="all">All Status</option>
+                  <option value="active">Active Only</option>
+                  <option value="inactive">Inactive Only</option>
+                </select>
+
+                <div className="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-center text-[12px] font-semibold text-[#d6c7ff]">
+                  {filteredCategories.length} shown
+                </div>
               </div>
             </div>
 
@@ -395,6 +545,11 @@ export default function AdminCategoryPage() {
               <CategorySkeleton />
             ) : categories.length === 0 ? (
               <EmptyState canCreate={canCreate} onCreate={openCreateModal} />
+            ) : filteredCategories.length === 0 ? (
+              <NoResults onClear={() => {
+                setSearch("");
+                setStatusFilter("all");
+              }} />
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[780px] border-collapse text-[13px]">
@@ -411,13 +566,16 @@ export default function AdminCategoryPage() {
                   </thead>
 
                   <tbody>
-                    {categories.map((c) => (
+                    {filteredCategories.map((c) => (
                       <tr
                         key={c.id}
                         className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
                       >
                         <td className="px-5 py-4">
-                          <div className="font-semibold text-white">{c.name}</div>
+                          <div className="font-semibold text-white">
+                            {c.name}
+                          </div>
+
                           {c.description ? (
                             <div className="mt-1 line-clamp-1 max-w-[320px] text-[12px] text-[#7f879f]">
                               {c.description}
@@ -440,9 +598,7 @@ export default function AdminCategoryPage() {
                         </td>
 
                         <td className="px-5 py-4 text-[#a7aec4]">
-                          {c.createdAt
-                            ? new Date(c.createdAt).toLocaleDateString()
-                            : "--"}
+                          {formatDate(c.createdAt)}
                         </td>
 
                         {canEdit || canDelete ? (
@@ -479,8 +635,12 @@ export default function AdminCategoryPage() {
           </section>
         </div>
 
-        {showModal && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+        {showModal ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          >
             <div className="w-[min(720px,94vw)] overflow-hidden rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_24px_90px_rgba(0,0,0,0.7)]">
               <div className="flex items-start justify-between border-b border-[#26293a] px-5 py-5 sm:px-6">
                 <div>
@@ -503,11 +663,17 @@ export default function AdminCategoryPage() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-5 p-5 sm:p-6">
+                {error ? (
+                  <div className="rounded-[16px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-[13px] text-red-200">
+                    {error}
+                  </div>
+                ) : null}
+
                 <Field label="Category Name *">
                   <input
                     id="name"
                     name="name"
-                    className="h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
+                    className={inputClass}
                     placeholder="e.g. Hoodie, Sneakers"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -554,6 +720,7 @@ export default function AdminCategoryPage() {
                     type="button"
                     onClick={() => setShowModal(false)}
                     className={secondaryBtnClass}
+                    disabled={submitting}
                   >
                     Cancel
                   </button>
@@ -569,17 +736,23 @@ export default function AdminCategoryPage() {
               </form>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {confirmDeleteId && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+        {confirmDeleteId ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          >
             <div className="w-[min(440px,94vw)] rounded-[24px] border border-[#26293a] bg-[#11121a] p-5 shadow-[0_24px_90px_rgba(0,0,0,0.7)]">
               <div className="text-[11px] uppercase tracking-[0.22em] text-red-300">
                 Delete Category
               </div>
+
               <div className="mt-2 text-[22px] font-semibold text-white">
                 Are you sure?
               </div>
+
               <div className="mt-2 text-[13px] leading-6 text-[#a7aec4]">
                 This action cannot be undone. The selected category will be
                 permanently removed from your database.
@@ -590,34 +763,25 @@ export default function AdminCategoryPage() {
                   type="button"
                   onClick={() => setConfirmDeleteId(null)}
                   className={secondaryBtnClass}
+                  disabled={deleting}
                 >
                   Cancel
                 </button>
 
                 <button
                   type="button"
+                  disabled={deleting}
                   onClick={() => handleDeleteConfirmed(confirmDeleteId)}
-                  className="rounded-full bg-red-500 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-red-400"
+                  className="rounded-full bg-red-500 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Delete
+                  {deleting ? "Deleting..." : "Delete"}
                 </button>
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {toast && (
-          <div
-            className={[
-              "fixed bottom-5 right-5 z-[1200] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)]",
-              toast.type === "success"
-                ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
-                : "border-red-400/20 bg-red-500/15 text-red-200",
-            ].join(" ")}
-          >
-            {toast.message}
-          </div>
-        )}
+        {toast ? <Toast toast={toast} /> : null}
       </div>
     </AdminPageGuard>
   );
@@ -655,6 +819,37 @@ function StatusBadge({ active }: { active: boolean }) {
   );
 }
 
+function MiniStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "success" | "danger";
+}) {
+  return (
+    <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)]">
+      <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+        {label}
+      </div>
+
+      <div
+        className={[
+          "mt-3 text-[28px] font-semibold tracking-[-0.04em]",
+          tone === "success"
+            ? "text-emerald-300"
+            : tone === "danger"
+            ? "text-red-300"
+            : "text-white",
+        ].join(" ")}
+      >
+        {value.toLocaleString("en-US")}
+      </div>
+    </div>
+  );
+}
+
 function CategorySkeleton() {
   return (
     <div className="space-y-3 p-5 sm:p-6">
@@ -680,19 +875,68 @@ function EmptyState({
       <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/5 text-[22px]">
         🗂️
       </div>
+
       <div className="mt-4 text-[18px] font-semibold text-white">
         No categories yet
       </div>
+
       <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-7 text-[#a7aec4]">
         Start by creating your first product category for organizing items in
         the store catalog.
       </p>
 
       {canCreate ? (
-        <button type="button" onClick={onCreate} className={`${primaryBtnClass} mt-5`}>
+        <button
+          type="button"
+          onClick={onCreate}
+          className={`${primaryBtnClass} mt-5`}
+        >
           Add Category
         </button>
       ) : null}
+    </div>
+  );
+}
+
+function NoResults({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="px-6 py-14 text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border border-white/10 bg-white/5 text-[22px]">
+        🔎
+      </div>
+
+      <div className="mt-4 text-[18px] font-semibold text-white">
+        No matching categories
+      </div>
+
+      <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-7 text-[#a7aec4]">
+        Try changing the search keyword or status filter.
+      </p>
+
+      <button
+        type="button"
+        onClick={onClear}
+        className={`${secondaryBtnClass} mt-5`}
+      >
+        Clear Filter
+      </button>
+    </div>
+  );
+}
+
+function Toast({ toast }: { toast: Exclude<ToastState, null> }) {
+  return (
+    <div
+      className={[
+        "fixed bottom-5 right-5 z-[1200] max-w-[360px] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur",
+        toast.type === "success"
+          ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+          : toast.type === "error"
+          ? "border-red-400/20 bg-red-500/15 text-red-200"
+          : "border-[#8b5cf6]/30 bg-[#8b5cf6]/15 text-[#e9ddff]",
+      ].join(" ")}
+    >
+      {toast.message}
     </div>
   );
 }

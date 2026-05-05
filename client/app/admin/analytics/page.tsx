@@ -2,6 +2,7 @@
 "use client";
 
 import * as React from "react";
+import AdminPageGuard from "../_components/AdminPageGuard";
 
 type RangeKey = "today" | "7days" | "30days";
 
@@ -38,8 +39,9 @@ type PaymentMethodItem = {
 };
 
 type AnalyticsResponse = {
-  success: boolean;
-  data: {
+  success?: boolean;
+  message?: string;
+  data?: {
     range: RangeKey;
     summaryCards: {
       salesTrendAmount: string;
@@ -67,6 +69,17 @@ type AnalyticsResponse = {
   };
 };
 
+const RAW_API_BASE =
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  "http://localhost:8080/api";
+
+const CLEAN_API_BASE = RAW_API_BASE.replace(/\/+$/, "");
+
+const API_BASE = CLEAN_API_BASE.endsWith("/api")
+  ? CLEAN_API_BASE
+  : `${CLEAN_API_BASE}/api`;
+
 const rangeTabs: { key: RangeKey; label: string }[] = [
   { key: "today", label: "Today" },
   { key: "7days", label: "Last 7 days" },
@@ -75,12 +88,14 @@ const rangeTabs: { key: RangeKey; label: string }[] = [
 
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
 const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
 
-const fallbackData: AnalyticsResponse["data"] = {
+const fallbackData: NonNullable<AnalyticsResponse["data"]> = {
   range: "7days",
   summaryCards: {
     salesTrendAmount: "Rs. 0",
@@ -142,6 +157,16 @@ const fallbackData: AnalyticsResponse["data"] = {
   },
 };
 
+async function safeJson<T = unknown>(res: Response): Promise<T> {
+  const text = await res.text();
+
+  try {
+    return text ? (JSON.parse(text) as T) : ({} as T);
+  } catch {
+    return {} as T;
+  }
+}
+
 function buildLinePath(
   values: number[],
   width: number,
@@ -152,24 +177,24 @@ function buildLinePath(
 
   const max = Math.max(...values);
   const min = Math.min(...values);
+  const allSame = max === min;
   const range = Math.max(max - min, 1);
   const stepX = (width - padding * 2) / Math.max(values.length - 1, 1);
 
   return values
     .map((value, index) => {
       const x = padding + index * stepX;
-      const y = padding + ((max - value) / range) * (height - padding * 2);
+      const y = allSame
+        ? height / 2
+        : padding + ((max - value) / range) * (height - padding * 2);
+
       return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
     })
     .join(" ");
 }
 
-function getApiBase() {
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
-}
-
 function isPositiveChange(value?: string) {
-  return !value?.trim().startsWith("-");
+  return !String(value || "").trim().startsWith("-");
 }
 
 function getRangeText(range: RangeKey) {
@@ -223,16 +248,87 @@ function getHeightClass(value: number) {
   return "h-full";
 }
 
+function normalizeAnalyticsData(
+  data?: AnalyticsResponse["data"]
+): NonNullable<AnalyticsResponse["data"]> {
+  if (!data) return fallbackData;
+
+  return {
+    range: data.range || fallbackData.range,
+    summaryCards: {
+      ...fallbackData.summaryCards,
+      ...(data.summaryCards || {}),
+    },
+    metrics: Array.isArray(data.metrics) && data.metrics.length
+      ? data.metrics
+      : fallbackData.metrics,
+    salesTrendData:
+      Array.isArray(data.salesTrendData) && data.salesTrendData.length
+        ? data.salesTrendData.map((v) => Number(v || 0))
+        : fallbackData.salesTrendData,
+    salesTrendLabels:
+      Array.isArray(data.salesTrendLabels) && data.salesTrendLabels.length
+        ? data.salesTrendLabels
+        : fallbackData.salesTrendLabels,
+    revenueCategoryData: Array.isArray(data.revenueCategoryData)
+      ? data.revenueCategoryData
+      : [],
+    customerBehaviorCards:
+      Array.isArray(data.customerBehaviorCards) &&
+      data.customerBehaviorCards.length
+        ? data.customerBehaviorCards
+        : fallbackData.customerBehaviorCards,
+    customerAcquisitionData:
+      Array.isArray(data.customerAcquisitionData) &&
+      data.customerAcquisitionData.length
+        ? data.customerAcquisitionData.map((v) => Number(v || 0))
+        : fallbackData.customerAcquisitionData,
+    customerAcquisitionLabels:
+      Array.isArray(data.customerAcquisitionLabels) &&
+      data.customerAcquisitionLabels.length
+        ? data.customerAcquisitionLabels
+        : fallbackData.customerAcquisitionLabels,
+    productPerformanceCards:
+      Array.isArray(data.productPerformanceCards) &&
+      data.productPerformanceCards.length
+        ? data.productPerformanceCards
+        : fallbackData.productPerformanceCards,
+    paymentMethodUsage: {
+      mostUsedMethod:
+        data.paymentMethodUsage?.mostUsedMethod ||
+        fallbackData.paymentMethodUsage.mostUsedMethod,
+      mostUsedCount:
+        Number(data.paymentMethodUsage?.mostUsedCount || 0) ||
+        fallbackData.paymentMethodUsage.mostUsedCount,
+      paymentMethodData:
+        Array.isArray(data.paymentMethodUsage?.paymentMethodData) &&
+        data.paymentMethodUsage.paymentMethodData.length
+          ? data.paymentMethodUsage.paymentMethodData
+          : fallbackData.paymentMethodUsage.paymentMethodData,
+    },
+  };
+}
+
 export default function AdminAnalyticsPage() {
+  return (
+    <AdminPageGuard permission="analyticsView">
+      <AdminAnalyticsInner />
+    </AdminPageGuard>
+  );
+}
+
+function AdminAnalyticsInner() {
   const [range, setRange] = React.useState<RangeKey>("7days");
   const [analytics, setAnalytics] =
-    React.useState<AnalyticsResponse["data"]>(fallbackData);
+    React.useState<NonNullable<AnalyticsResponse["data"]>>(fallbackData);
+
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
   const [error, setError] = React.useState("");
 
   const [showExportModal, setShowExportModal] = React.useState(false);
+
   const today = React.useMemo(() => new Date(), []);
   const defaultTo = toInputDateValue(today);
   const defaultFrom = toInputDateValue(
@@ -252,7 +348,7 @@ export default function AdminAnalyticsPage() {
         setError("");
 
         const res = await fetch(
-          `${getApiBase()}/admin/analytics?range=${selectedRange}`,
+          `${API_BASE}/admin/analytics?range=${selectedRange}`,
           {
             method: "GET",
             credentials: "include",
@@ -261,14 +357,20 @@ export default function AdminAnalyticsPage() {
           }
         );
 
-        const json: AnalyticsResponse = await res.json();
-
-        if (!res.ok || !json?.success) {
-          throw new Error("Failed to fetch analytics");
+        if (res.status === 401 || res.status === 403) {
+          window.location.href = "/admin/adminlogin";
+          return;
         }
 
-        setAnalytics(json.data);
+        const json = await safeJson<AnalyticsResponse>(res);
+
+        if (!res.ok || !json?.success) {
+          throw new Error(json?.message || "Failed to fetch analytics");
+        }
+
+        setAnalytics(normalizeAnalyticsData(json.data));
       } catch (err: any) {
+        setAnalytics((prev) => prev || fallbackData);
         setError(err?.message || "Failed to load analytics data");
       } finally {
         setLoading(false);
@@ -294,6 +396,10 @@ export default function AdminAnalyticsPage() {
       const fromDate = new Date(exportFrom);
       const toDate = new Date(exportTo);
 
+      if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
+        throw new Error("Invalid date selected");
+      }
+
       if (fromDate > toDate) {
         throw new Error("'From' date cannot be greater than 'To' date");
       }
@@ -307,7 +413,7 @@ export default function AdminAnalyticsPage() {
       }
 
       const res = await fetch(
-        `${getApiBase()}/admin/analytics?from=${encodeURIComponent(
+        `${API_BASE}/admin/analytics?from=${encodeURIComponent(
           exportFrom
         )}&to=${encodeURIComponent(exportTo)}`,
         {
@@ -318,13 +424,18 @@ export default function AdminAnalyticsPage() {
         }
       );
 
-      const json: AnalyticsResponse = await res.json();
-
-      if (!res.ok || !json?.success) {
-        throw new Error("Failed to export analytics");
+      if (res.status === 401 || res.status === 403) {
+        window.location.href = "/admin/adminlogin";
+        return;
       }
 
-      const exportData = json.data;
+      const json = await safeJson<AnalyticsResponse>(res);
+
+      if (!res.ok || !json?.success) {
+        throw new Error(json?.message || "Failed to export analytics");
+      }
+
+      const exportData = normalizeAnalyticsData(json.data);
 
       const rows: string[][] = [
         ["Analytics Export"],
@@ -389,21 +500,26 @@ export default function AdminAnalyticsPage() {
 
       const csvContent = rows
         .map((row) =>
-          row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")
+          row
+            .map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`)
+            .join(",")
         )
         .join("\n");
 
       const blob = new Blob([csvContent], {
         type: "text/csv;charset=utf-8;",
       });
+
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
 
       link.href = url;
       link.download = `analytics-${exportFrom}-to-${exportTo}.csv`;
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+
       window.URL.revokeObjectURL(url);
 
       setShowExportModal(false);
@@ -443,9 +559,11 @@ export default function AdminAnalyticsPage() {
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
                   Admin / Analytics
                 </div>
+
                 <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
                   Analytics Dashboard
                 </h1>
+
                 <p className="mt-2 max-w-[760px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
                   Track sales performance, customer behavior, product insights,
                   and payment method usage with real-time store data.
@@ -465,7 +583,7 @@ export default function AdminAnalyticsPage() {
                 <button
                   type="button"
                   onClick={() => fetchAnalytics(range, true)}
-                  disabled={refreshing}
+                  disabled={refreshing || loading}
                   className={primaryBtnClass}
                 >
                   {refreshing ? "Refreshing..." : "Refresh"}
@@ -475,9 +593,7 @@ export default function AdminAnalyticsPage() {
           </section>
 
           {error ? (
-            <div className="rounded-[20px] border border-red-400/20 bg-red-500/15 px-4 py-3 text-[13px] text-red-200">
-              {error}
-            </div>
+            <AlertBox message={error} onClose={() => setError("")} />
           ) : null}
 
           <section className={`${panelClass} p-2`}>
@@ -506,11 +622,7 @@ export default function AdminAnalyticsPage() {
           </section>
 
           {loading ? (
-            <div
-              className={`${panelClass} px-5 py-12 text-center text-[14px] text-[#a7aec4]`}
-            >
-              Loading analytics...
-            </div>
+            <AnalyticsSkeleton />
           ) : (
             <>
               <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -566,6 +678,7 @@ export default function AdminAnalyticsPage() {
                             <span className="text-[13px] font-medium text-white">
                               {item.label}
                             </span>
+
                             <span className="text-[12px] text-[#a7aec4]">
                               Rs.{" "}
                               {Number(item.revenueRs || 0).toLocaleString(
@@ -585,9 +698,7 @@ export default function AdminAnalyticsPage() {
                         </div>
                       ))
                     ) : (
-                      <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-6 text-center text-[13px] text-[#a7aec4]">
-                        No category revenue data found.
-                      </div>
+                      <EmptyMini text="No category revenue data found." />
                     )}
                   </div>
                 </ChartPanel>
@@ -684,6 +795,7 @@ export default function AdminAnalyticsPage() {
                           <div className="mt-4 text-center text-[14px] font-semibold text-white">
                             {item.label}
                           </div>
+
                           <div className="mt-1 text-center text-[12px] text-[#a7aec4]">
                             {item.count} orders
                           </div>
@@ -708,9 +820,12 @@ export default function AdminAnalyticsPage() {
 
               <button
                 type="button"
-                onClick={() => setShowExportModal(false)}
+                onClick={() => {
+                  if (!exporting) setShowExportModal(false);
+                }}
+                disabled={exporting}
                 aria-label="Close export modal"
-                className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-[20px] text-[#a7aec4] hover:text-white"
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-[20px] text-[#a7aec4] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
               >
                 ×
               </button>
@@ -727,6 +842,7 @@ export default function AdminAnalyticsPage() {
                 value={exportFrom}
                 max={exportTo || defaultTo}
                 onChange={(nextFrom) => {
+                  setExportError("");
                   setExportFrom(nextFrom);
 
                   if (
@@ -748,7 +864,10 @@ export default function AdminAnalyticsPage() {
                     ? addMonthsSafe(exportFrom, 3)
                     : defaultTo
                 }
-                onChange={setExportTo}
+                onChange={(value) => {
+                  setExportError("");
+                  setExportTo(value);
+                }}
               />
 
               {exportError ? (
@@ -761,6 +880,7 @@ export default function AdminAnalyticsPage() {
                 <button
                   type="button"
                   onClick={() => setShowExportModal(false)}
+                  disabled={exporting}
                   className={secondaryBtnClass}
                 >
                   Cancel
@@ -780,6 +900,63 @@ export default function AdminAnalyticsPage() {
         </div>
       ) : null}
     </>
+  );
+}
+
+function AlertBox({
+  message,
+  onClose,
+}: {
+  message: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-3 rounded-[20px] border border-red-400/20 bg-red-500/15 px-4 py-3 text-[13px] text-red-200">
+      <p className="leading-6">{message}</p>
+
+      <button
+        type="button"
+        onClick={onClose}
+        className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-white"
+        aria-label="Dismiss error"
+        title="Dismiss error"
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+function AnalyticsSkeleton() {
+  return (
+    <div className="space-y-6">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-[150px] animate-pulse rounded-[22px] border border-white/5 bg-white/[0.03]"
+          />
+        ))}
+      </section>
+
+      <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-[380px] animate-pulse rounded-[24px] border border-white/5 bg-white/[0.03]"
+          />
+        ))}
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-[130px] animate-pulse rounded-[22px] border border-white/5 bg-white/[0.03]"
+          />
+        ))}
+      </section>
+    </div>
   );
 }
 
@@ -804,9 +981,11 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) 
       <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
         Analytics
       </div>
+
       <h2 className="mt-1 text-[22px] font-semibold tracking-[-0.03em] text-white">
         {title}
       </h2>
+
       <p className="mt-1 text-[13px] leading-6 text-[#a7aec4]">{subtitle}</p>
     </div>
   );
@@ -830,9 +1009,11 @@ function StatCard({
           <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
             {label}
           </div>
+
           <div className="mt-3 text-[24px] font-semibold tracking-[-0.04em] text-white">
             {value}
           </div>
+
           <div
             className={[
               "mt-3 text-[13px] font-semibold",
@@ -873,9 +1054,11 @@ function ChartPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-[18px] font-semibold text-white">{title}</h3>
+
           <div className="mt-2 text-[24px] font-semibold tracking-[-0.04em] text-white">
             {value}
           </div>
+
           <div className="mt-1 text-[13px] text-[#a7aec4]">
             {getRangeText(range)}{" "}
             <span
@@ -914,9 +1097,11 @@ function InfoCard({
   return (
     <div className="rounded-[22px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)]">
       <div className="text-[13px] font-medium text-white">{title}</div>
+
       <div className="mt-3 text-[22px] font-semibold tracking-[-0.03em] text-white">
         {value}
       </div>
+
       <div
         className={[
           "mt-3 text-[13px] font-semibold",
@@ -943,9 +1128,11 @@ function ProductCard({
   return (
     <div className="rounded-[22px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)]">
       <div className="text-[13px] font-medium text-white">{title}</div>
+
       <div className="mt-3 text-[22px] font-semibold tracking-[-0.03em] text-white">
         {value}
       </div>
+
       <div
         className={[
           "mt-3 text-[13px] font-semibold",
@@ -954,6 +1141,14 @@ function ProductCard({
       >
         {change}
       </div>
+    </div>
+  );
+}
+
+function EmptyMini({ text }: { text: string }) {
+  return (
+    <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-6 text-center text-[13px] text-[#a7aec4]">
+      {text}
     </div>
   );
 }

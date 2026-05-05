@@ -20,8 +20,13 @@ function norm(s: string) {
     .replace(/\s+/g, " ");
 }
 
+function isValidObjectId(id: string) {
+  return Types.ObjectId.isValid(String(id || ""));
+}
+
 function wantsHumanAgent(text: string) {
   const t = norm(text);
+
   const keywords = [
     "talk to agent",
     "talk to human",
@@ -37,30 +42,86 @@ function wantsHumanAgent(text: string) {
   return keywords.some((k) => t === k || t.includes(k));
 }
 
-function emitChatMessage(conversationId: string, message: any) {
+function buildConversationPayload(conversationId: string, conversation: any) {
+  return {
+    conversationId,
+    conversation,
+    status: conversation?.status,
+    lastMessage: conversation?.lastMessage || "",
+    lastMessageAt: conversation?.lastMessageAt || conversation?.updatedAt || null,
+    updatedAt: conversation?.updatedAt || new Date().toISOString(),
+    userId: conversation?.userId || null,
+    adminId: conversation?.adminId || null,
+    orderId: conversation?.orderId || null,
+  };
+}
+
+function buildMessagePayload(
+  conversationId: string,
+  message: any,
+  conversation?: any
+) {
+  return {
+    conversationId,
+    message,
+    status: conversation?.status,
+    lastMessage: conversation?.lastMessage || message?.text || "",
+    lastMessageAt:
+      conversation?.lastMessageAt || message?.createdAt || new Date(),
+    updatedAt: conversation?.updatedAt || new Date().toISOString(),
+    userId: conversation?.userId || null,
+    adminId: conversation?.adminId || null,
+    orderId: conversation?.orderId || null,
+  };
+}
+
+function emitChatMessage(
+  conversationId: string,
+  message: any,
+  conversation?: any
+) {
   try {
-    getIO().to(`chat:${conversationId}`).emit("chat:message", {
-      conversationId,
-      message,
-    });
+    const io = getIO();
+    const payload = buildMessagePayload(conversationId, message, conversation);
+
+    // Old event name support
+    io.to(`chat:${conversationId}`).emit("chat:message", payload);
+
+    // New event names used by updated frontend
+    io.to(`chat:${conversationId}`).emit("chat:new_message", payload);
+    io.to("admins").emit("admin:chat:new_message", payload);
+    io.to("admins").emit("admin:chat:conversation:updated", payload);
   } catch (e: any) {
-    console.log("Socket chat:message emit failed:", e?.message);
+    console.log("Socket chat message emit failed:", e?.message);
   }
 }
 
 function emitChatUpdated(conversationId: string, conversation: any) {
   try {
-    getIO().to(`chat:${conversationId}`).emit("chat:updated", {
-      conversationId,
-      conversation,
-    });
+    const io = getIO();
+    const payload = buildConversationPayload(conversationId, conversation);
+
+    // Old event name support
+    io.to(`chat:${conversationId}`).emit("chat:updated", payload);
+
+    // New event names used by updated frontend
+    io.to(`chat:${conversationId}`).emit("chat:conversation:updated", payload);
+    io.to("admins").emit("admin:chat:conversation:updated", payload);
   } catch (e: any) {
-    console.log("Socket chat:updated emit failed:", e?.message);
+    console.log("Socket chat update emit failed:", e?.message);
   }
+}
+
+async function getCustomerMini(userId: string) {
+  if (!isValidObjectId(userId)) return null;
+
+  return User.findById(userId).select("name email").lean();
 }
 
 export const chatService = {
   async openForCustomer(userId: string, orderId?: string, forceNew = false) {
+    if (!isValidObjectId(userId)) throw new Error("Invalid user");
+
     const uid = new Types.ObjectId(userId);
 
     if (!forceNew) {
@@ -99,12 +160,16 @@ export const chatService = {
       isReadByAdmin: false,
     });
 
-    emitChatMessage(String(created._id), systemMsg.toObject());
+    created.lastMessage = systemMsg.text;
+    created.lastMessageAt = new Date();
+    await created.save();
+
+    const convObj = created.toObject();
+    emitChatMessage(String(created._id), systemMsg.toObject(), convObj);
+    emitChatUpdated(String(created._id), convObj);
 
     try {
-      const customer: any = await User.findById(userId)
-        .select("name email")
-        .lean();
+      const customer: any = await getCustomerMini(userId);
 
       await notificationService.createAdminForAll({
         title: "New live chat opened",
@@ -112,7 +177,7 @@ export const chatService = {
           customer?.name || customer?.email || "Customer"
         } opened a new chat.`,
         type: "chat",
-        link: `/admin/chat`,
+        link: `/admin/chat/${String(created._id)}`,
         meta: {
           conversationId: String(created._id),
           customerId: String(userId),
@@ -125,10 +190,12 @@ export const chatService = {
       console.log("Chat open notification failed (ignored):", e?.message);
     }
 
-    return created.toObject();
+    return convObj;
   },
 
   async listCustomerConversations(userId: string) {
+    if (!isValidObjectId(userId)) throw new Error("Invalid user");
+
     return ConversationModel.find({
       userId: new Types.ObjectId(userId),
     })
@@ -137,10 +204,18 @@ export const chatService = {
   },
 
   async listAdminConversations() {
-    return ConversationModel.find().sort({ updatedAt: -1 }).lean();
+    return ConversationModel.find()
+      .populate("userId", "name email")
+      .populate("adminId", "name email")
+      .sort({ updatedAt: -1 })
+      .lean();
   },
 
   async getMessages(conversationId: string, limit = 50) {
+    if (!isValidObjectId(conversationId)) {
+      throw new Error("Invalid conversation id");
+    }
+
     return MessageModel.find({
       conversationId: new Types.ObjectId(conversationId),
     })
@@ -149,15 +224,49 @@ export const chatService = {
       .lean();
   },
 
+  async getConversationWithMessages(conversationId: string, limit = 50) {
+    if (!isValidObjectId(conversationId)) {
+      throw new Error("Invalid conversation id");
+    }
+
+    const conversation = await ConversationModel.findById(conversationId)
+      .populate("userId", "name email")
+      .populate("adminId", "name email")
+      .lean();
+
+    if (!conversation) {
+      throw new Error("Conversation not found");
+    }
+
+    const messages = await MessageModel.find({
+      conversationId: new Types.ObjectId(conversationId),
+    })
+      .sort({ createdAt: 1 })
+      .limit(Math.max(1, Math.min(200, limit)))
+      .lean();
+
+    return {
+      conversation,
+      messages,
+    };
+  },
+
   async customerSend(
     userId: string,
     conversationId: string,
     dto: SendMessageDTO
   ) {
+    if (!isValidObjectId(userId)) throw new Error("Invalid user");
+    if (!isValidObjectId(conversationId)) {
+      throw new Error("Invalid conversation id");
+    }
+
     const text = cleanText(dto.text);
+
     if (!text) throw new Error("Message is empty");
 
     const conv = await ConversationModel.findById(conversationId);
+
     if (!conv) throw new Error("Conversation not found");
     if (String(conv.userId) !== String(userId)) throw new Error("Forbidden");
     if (conv.status !== "OPEN") throw new Error("Chat ended");
@@ -175,12 +284,11 @@ export const chatService = {
     conv.lastMessageAt = new Date();
     await conv.save();
 
-    emitChatMessage(String(conv._id), userMsg.toObject());
+    emitChatMessage(String(conv._id), userMsg.toObject(), conv.toObject());
+    emitChatUpdated(String(conv._id), conv.toObject());
 
     try {
-      const customer: any = await User.findById(userId)
-        .select("name email")
-        .lean();
+      const customer: any = await getCustomerMini(userId);
 
       await notificationService.createAdminForAll({
         title: "New chat message",
@@ -189,7 +297,7 @@ export const chatService = {
           60
         )}${text.length > 60 ? "..." : ""}"`,
         type: "chat",
-        link: `/admin/chat`,
+        link: `/admin/chat/${String(conv._id)}`,
         meta: {
           conversationId: String(conv._id),
           messageId: String(userMsg._id),
@@ -217,13 +325,15 @@ export const chatService = {
         isReadByAdmin: false,
       });
 
-      emitChatMessage(String(conv._id), systemMsg.toObject());
+      conv.lastMessage = systemMsg.text;
+      conv.lastMessageAt = new Date();
+      await conv.save();
+
+      emitChatMessage(String(conv._id), systemMsg.toObject(), conv.toObject());
       emitChatUpdated(String(conv._id), conv.toObject());
 
       try {
-        const customer: any = await User.findById(userId)
-          .select("name email")
-          .lean();
+        const customer: any = await getCustomerMini(userId);
 
         await notificationService.createAdminForAll({
           title: "Human agent requested",
@@ -231,7 +341,7 @@ export const chatService = {
             customer?.name || customer?.email || "Customer"
           } requested a human agent.`,
           type: "chat",
-          link: `/admin/chat`,
+          link: `/admin/chat/${String(conv._id)}`,
           meta: {
             conversationId: String(conv._id),
             customerId: String(userId),
@@ -240,7 +350,10 @@ export const chatService = {
           },
         });
       } catch (e: any) {
-        console.log("Human agent request notification failed (ignored):", e?.message);
+        console.log(
+          "Human agent request notification failed (ignored):",
+          e?.message
+        );
       }
 
       return userMsg.toObject();
@@ -298,7 +411,7 @@ export const chatService = {
       conv.lastMessageAt = new Date();
       await conv.save();
 
-      emitChatMessage(String(conv._id), botMsg.toObject());
+      emitChatMessage(String(conv._id), botMsg.toObject(), conv.toObject());
       emitChatUpdated(String(conv._id), conv.toObject());
     }
 
@@ -310,10 +423,17 @@ export const chatService = {
     conversationId: string,
     dto: SendMessageDTO
   ) {
+    if (!isValidObjectId(adminId)) throw new Error("Invalid admin");
+    if (!isValidObjectId(conversationId)) {
+      throw new Error("Invalid conversation id");
+    }
+
     const text = cleanText(dto.text);
+
     if (!text) throw new Error("Message is empty");
 
     const conv = await ConversationModel.findById(conversationId);
+
     if (!conv) throw new Error("Conversation not found");
     if (conv.status !== "OPEN") throw new Error("Chat ended");
 
@@ -332,7 +452,11 @@ export const chatService = {
         isReadByAdmin: true,
       });
 
-      emitChatMessage(String(conv._id), systemMsg.toObject());
+      conv.lastMessage = systemMsg.text;
+      conv.lastMessageAt = new Date();
+      await conv.save();
+
+      emitChatMessage(String(conv._id), systemMsg.toObject(), conv.toObject());
     }
 
     const msg = await MessageModel.create({
@@ -348,7 +472,7 @@ export const chatService = {
     conv.lastMessageAt = new Date();
     await conv.save();
 
-    emitChatMessage(String(conv._id), msg.toObject());
+    emitChatMessage(String(conv._id), msg.toObject(), conv.toObject());
     emitChatUpdated(String(conv._id), conv.toObject());
 
     try {
@@ -369,14 +493,23 @@ export const chatService = {
         });
       }
     } catch (e: any) {
-      console.log("Customer live chat notification failed (ignored):", e?.message);
+      console.log(
+        "Customer live chat notification failed (ignored):",
+        e?.message
+      );
     }
 
     return msg.toObject();
   },
 
   async customerEnd(userId: string, conversationId: string) {
+    if (!isValidObjectId(userId)) throw new Error("Invalid user");
+    if (!isValidObjectId(conversationId)) {
+      throw new Error("Invalid conversation id");
+    }
+
     const conv = await ConversationModel.findById(conversationId);
+
     if (!conv) throw new Error("Conversation not found");
     if (String(conv.userId) !== String(userId)) throw new Error("Forbidden");
 
@@ -393,14 +526,24 @@ export const chatService = {
       isReadByAdmin: true,
     });
 
-    emitChatMessage(String(conv._id), systemMsg.toObject());
+    conv.lastMessage = systemMsg.text;
+    conv.lastMessageAt = new Date();
+    await conv.save();
+
+    emitChatMessage(String(conv._id), systemMsg.toObject(), conv.toObject());
     emitChatUpdated(String(conv._id), conv.toObject());
 
     return conv.toObject();
   },
 
   async adminEnd(adminId: string, conversationId: string) {
+    if (!isValidObjectId(adminId)) throw new Error("Invalid admin");
+    if (!isValidObjectId(conversationId)) {
+      throw new Error("Invalid conversation id");
+    }
+
     const conv = await ConversationModel.findById(conversationId);
+
     if (!conv) throw new Error("Conversation not found");
 
     if (!conv.adminId) {
@@ -420,7 +563,11 @@ export const chatService = {
       isReadByAdmin: true,
     });
 
-    emitChatMessage(String(conv._id), systemMsg.toObject());
+    conv.lastMessage = systemMsg.text;
+    conv.lastMessageAt = new Date();
+    await conv.save();
+
+    emitChatMessage(String(conv._id), systemMsg.toObject(), conv.toObject());
     emitChatUpdated(String(conv._id), conv.toObject());
 
     return conv.toObject();

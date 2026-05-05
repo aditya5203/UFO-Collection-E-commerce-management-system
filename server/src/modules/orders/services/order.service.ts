@@ -177,6 +177,19 @@ async function emitOrderUpdated(updated: any, fallbackCustomerId?: string) {
   }
 }
 
+function buildOrderCreatedPayload(doc: any, userId: string) {
+  return {
+    orderId: String(doc._id),
+    orderCode: String(doc.orderCode || ""),
+    orderStatus: String(doc.orderStatus || "Confirmed"),
+    paymentStatus: String(doc.paymentStatus || "Pending"),
+    totalPaisa: Number(doc.totalPaisa || 0),
+    customerId: userId,
+    updatedAt: new Date().toISOString(),
+    source: "customer-create",
+  };
+}
+
 export const orderService = {
   async createOrder(userId: string, body: CreateOrderBody) {
     if (!mongoose.Types.ObjectId.isValid(userId)) {
@@ -201,6 +214,17 @@ export const orderService = {
           id: String((existing as any)._id),
           orderCode: (existing as any).orderCode,
           totalPaisa: Number((existing as any).totalPaisa || 0),
+          discountPaisa: Number((existing as any).discountPaisa || 0),
+          coupon: (existing as any).coupon || null,
+          paymentStatus: (existing as any).paymentStatus,
+          orderStatus: (existing as any).orderStatus,
+          shipping: {
+            method:
+              (existing as any).shipping?.method || "Standard Shipping",
+            estimatedDelivery:
+              (existing as any).shipping?.estimatedDelivery ||
+              computeEstimatedDeliveryRange(),
+          },
         };
       }
     }
@@ -469,6 +493,8 @@ export const orderService = {
             ? "Failed"
             : "Pending";
 
+    const now = new Date();
+
     const payload: any = {
       orderCode,
       customer: new mongoose.Types.ObjectId(userId),
@@ -480,7 +506,10 @@ export const orderService = {
       totalPaisa,
       paymentMethod: body.paymentMethod,
       paymentStatus: initialPaymentStatus,
-      orderStatus: "Pending",
+
+      // New orders are confirmed automatically after checkout.
+      orderStatus: "Confirmed",
+
       paymentRef: body.paymentRef || null,
       address: orderAddress,
       shipping: {
@@ -488,7 +517,10 @@ export const orderService = {
         estimatedDelivery,
       },
       deliveryAssignment: null,
-      confirmedAt: null,
+
+      // Timeline starts from Confirmed immediately.
+      confirmedAt: now,
+
       shippedAt: null,
       inTransitAt: null,
       deliveredAt: null,
@@ -500,8 +532,8 @@ export const orderService = {
 
     try {
       await notificationService.createAdminForAll({
-        title: "New order received",
-        message: `A new order ${orderCode} has been placed.`,
+        title: "New order confirmed",
+        message: `A new order ${orderCode} has been placed and confirmed.`,
         type: "order",
         link: `/admin/orders/${String(doc._id)}`,
         meta: {
@@ -509,6 +541,7 @@ export const orderService = {
           orderCode,
           customerId: userId,
           totalPaisa,
+          orderStatus: doc.orderStatus,
         },
       });
     } catch (e: any) {
@@ -516,15 +549,24 @@ export const orderService = {
     }
 
     try {
+      const io = getIO();
+
+      io.to("admins").emit("order:updated", buildOrderCreatedPayload(doc, userId));
+    } catch (e: any) {
+      console.log("New order socket emit failed (ignored):", e?.message);
+    }
+
+    try {
       await notificationService.createCustomer({
         userId,
-        title: "Order placed successfully",
-        message: `Your order ${orderCode} has been placed successfully.`,
+        title: "Order confirmed",
+        message: `Your order ${orderCode} has been placed and confirmed successfully.`,
         type: "order",
         link: orderDetailsLink(orderCode),
         meta: {
           orderId: String(doc._id),
           orderCode,
+          orderStatus: doc.orderStatus,
         },
       });
     } catch (e: any) {
@@ -548,6 +590,7 @@ export const orderService = {
       discountPaisa: Number(doc.discountPaisa || 0),
       coupon: doc.coupon || null,
       paymentStatus: doc.paymentStatus,
+      orderStatus: doc.orderStatus,
       shipping: {
         method: doc.shipping?.method || "Standard Shipping",
         estimatedDelivery:
@@ -645,7 +688,7 @@ export const orderService = {
         id: String(o._id),
         orderCode: String(o.orderCode || ""),
         createdAt: o.createdAt,
-        orderStatus: String(o.orderStatus || "Pending"),
+        orderStatus: String(o.orderStatus || "Confirmed"),
         totalPaisa: Number(o.totalPaisa || 0),
         total: Math.round(Number(o.totalPaisa || 0) / 100),
         itemsCount: items.length,
@@ -1233,7 +1276,7 @@ export const orderService = {
     const discount = Math.round(Number(o.discountPaisa || 0) / 100);
     const total = Math.round(Number(o.totalPaisa || 0) / 100);
 
-    const status = (o.orderStatus || "Pending") as any;
+    const status = (o.orderStatus || "Confirmed") as any;
 
     const shipMethod = o.shipping?.method || "Standard Shipping";
     const estDelivery =

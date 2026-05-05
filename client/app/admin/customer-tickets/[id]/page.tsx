@@ -1,3 +1,4 @@
+// client/app/admin/customer-tickets/[id]/page.tsx
 "use client";
 
 import * as React from "react";
@@ -13,6 +14,7 @@ import {
 } from "../../_components/adminPermissions";
 
 type TicketStatus = "Open" | "Pending" | "In Progress" | "Resolved" | "Closed";
+type NormalizedTicketStatus = "Open" | "In Progress" | "Resolved" | "Closed";
 
 type TicketDetail = {
   id: string;
@@ -48,34 +50,58 @@ type AdminTicketSocketPayload = {
   };
 };
 
-const API_BASE =
+type ToastState = {
+  type: "success" | "error" | "info";
+  message: string;
+};
+
+const RAW_API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
-const API = `${API_BASE}/api`;
-const SOCKET_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
-  "http://localhost:8080";
+
+const CLEAN_API_BASE = RAW_API_BASE.replace(/\/+$/, "");
+
+const API = CLEAN_API_BASE.endsWith("/api")
+  ? CLEAN_API_BASE
+  : `${CLEAN_API_BASE}/api`;
+
+const SOCKET_BASE = CLEAN_API_BASE.replace(/\/api$/, "");
+
+const MAX_REPLY_LENGTH = 2000;
 
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
 const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
 
-function displayStatus(status: TicketStatus) {
-  if (status === "Pending") return "In Progress";
-  return status;
+function optionClass() {
+  return "bg-[#11121a] text-white";
 }
 
-function statusTone(s: TicketStatus) {
-  const status = displayStatus(s);
+function normalizeStatus(status?: string): NormalizedTicketStatus {
+  if (status === "Pending") return "In Progress";
+  if (status === "Open") return "Open";
+  if (status === "In Progress") return "In Progress";
+  if (status === "Resolved") return "Resolved";
+  if (status === "Closed") return "Closed";
+  return "Open";
+}
+
+function statusTone(s: TicketStatus | NormalizedTicketStatus) {
+  const status = normalizeStatus(s);
 
   if (status === "Open") return "border-sky-400/20 bg-sky-500/15 text-sky-300";
-  if (status === "In Progress")
+  if (status === "In Progress") {
     return "border-amber-400/20 bg-amber-500/15 text-amber-300";
-  if (status === "Resolved")
+  }
+  if (status === "Resolved") {
     return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+  }
 
   return "border-slate-400/20 bg-slate-500/15 text-slate-300";
 }
@@ -84,6 +110,7 @@ function formatDateShort(iso?: string) {
   if (!iso) return "-";
 
   const d = new Date(iso);
+
   if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
 
   return d.toLocaleDateString("en-US", {
@@ -97,6 +124,7 @@ function formatDateTime(value?: string) {
   if (!value) return "-";
 
   const d = new Date(value);
+
   if (Number.isNaN(d.getTime())) return String(value).slice(0, 19);
 
   return d.toLocaleString("en-US", {
@@ -108,8 +136,70 @@ function formatDateTime(value?: string) {
   });
 }
 
+function normalizeTicketDetail(item: any): TicketDetail | null {
+  if (!item) return null;
+
+  return {
+    id: String(item?.id || item?._id || ""),
+    ticketCode: String(item?.ticketCode || item?.ticketId || "-"),
+    status: normalizeStatus(item?.status),
+    submittedAt: String(item?.submittedAt || item?.createdAt || ""),
+    customer: {
+      name: String(item?.customer?.name || item?.customerName || "Customer"),
+      email: String(item?.customer?.email || item?.customerEmail || "-"),
+    },
+    product: {
+      name: String(item?.product?.name || item?.productName || "-"),
+      id: item?.product?.id ? String(item.product.id) : item?.productId ? String(item.productId) : null,
+    },
+    orderId: item?.orderId ? String(item.orderId) : null,
+    size: item?.size ? String(item.size) : null,
+    color: item?.color ? String(item.color) : null,
+    issueType: String(item?.issueType || "-"),
+    subject: String(item?.subject || "-"),
+    message: String(item?.message || "-"),
+    imageUrl: item?.imageUrl ? String(item.imageUrl) : null,
+    replies: Array.isArray(item?.replies)
+      ? item.replies.map((r: any, index: number) => ({
+          id: String(r?.id || r?._id || `reply-${index}`),
+          sender: r?.sender === "admin" ? "admin" : "customer",
+          text: String(r?.text || ""),
+          createdAt: String(r?.createdAt || new Date().toISOString()),
+        }))
+      : [],
+  };
+}
+
+function replyAlreadyExists(
+  replies: TicketDetail["replies"],
+  incoming: NonNullable<AdminTicketSocketPayload["reply"]>
+) {
+  const replyId = String(incoming.id || "");
+  const incomingText = String(incoming.text || "").trim();
+  const incomingSender = incoming.sender || "customer";
+  const incomingTime = incoming.createdAt
+    ? new Date(incoming.createdAt).getTime()
+    : 0;
+
+  if (replyId && replies.some((r) => String(r.id) === replyId)) return true;
+
+  return replies.some((r) => {
+    if (r.sender !== incomingSender) return false;
+    if (String(r.text || "").trim() !== incomingText) return false;
+
+    const existingTime = new Date(r.createdAt).getTime();
+
+    if (!Number.isFinite(existingTime) || !Number.isFinite(incomingTime)) {
+      return false;
+    }
+
+    return Math.abs(existingTime - incomingTime) < 3000;
+  });
+}
+
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -125,23 +215,30 @@ export default function AdminTicketDetailsPage() {
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [err, setErr] = React.useState("");
-  const [ok, setOk] = React.useState("");
+  const [toast, setToast] = React.useState<ToastState | null>(null);
 
   const [ticket, setTicket] = React.useState<TicketDetail | null>(null);
-  const [status, setStatus] = React.useState<TicketStatus>("Open");
+  const [status, setStatus] = React.useState<NormalizedTicketStatus>("Open");
   const [reply, setReply] = React.useState("");
-  const [attachmentPreview, setAttachmentPreview] = React.useState<
-    string | null
-  >(null);
+  const [attachmentPreview, setAttachmentPreview] = React.useState<string | null>(
+    null
+  );
 
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
-  const [permissions, setPermissions] =
-    React.useState<AdminPermissions | null>(null);
+  const [permissions, setPermissions] = React.useState<AdminPermissions | null>(
+    null
+  );
 
   const socketRef = React.useRef<Socket | null>(null);
+  const loadRef = React.useRef<(() => Promise<void>) | null>(null);
 
   const canReply = hasPermission(role, permissions, "ticketReply");
   const canClose = hasPermission(role, permissions, "ticketClose");
+
+  function showToast(nextToast: ToastState) {
+    setToast(nextToast);
+    window.setTimeout(() => setToast(null), 3500);
+  }
 
   React.useEffect(() => {
     let mounted = true;
@@ -157,18 +254,24 @@ export default function AdminTicketDetailsPage() {
         if (!res.ok) return;
 
         const body = (await safeJson(res)) as AdminSettingsResponse;
+
         const nextRole = (body?.profile?.role || "admin") as
           | "admin"
           | "superadmin";
+
         const nextPermissions = normalizeAdminPermissions(
           nextRole,
           body?.profile?.permissions
         );
 
         if (!mounted) return;
+
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {}
+      } catch {
+        if (!mounted) return;
+        setPermissions(null);
+      }
     };
 
     loadAdminProfile();
@@ -201,7 +304,6 @@ export default function AdminTicketDetailsPage() {
 
     setLoading(true);
     setErr("");
-    setOk("");
 
     try {
       const res = await fetch(`${API}/admin/tickets/${id}`, {
@@ -215,18 +317,10 @@ export default function AdminTicketDetailsPage() {
         throw new Error((data as any)?.message || "Failed to load ticket");
       }
 
-      const item = (data as any).item || null;
+      const item = normalizeTicketDetail((data as any).item || null);
 
-      setTicket(
-        item
-          ? {
-              ...item,
-              replies: Array.isArray(item.replies) ? item.replies : [],
-            }
-          : null
-      );
-
-      setStatus(item?.status || "Open");
+      setTicket(item);
+      setStatus(normalizeStatus(item?.status));
     } catch (e: any) {
       setErr(e?.message || "Something went wrong.");
       setTicket(null);
@@ -234,6 +328,10 @@ export default function AdminTicketDetailsPage() {
       setLoading(false);
     }
   }, [id]);
+
+  React.useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
 
   React.useEffect(() => {
     load();
@@ -253,19 +351,24 @@ export default function AdminTicketDetailsPage() {
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      load();
+      loadRef.current?.();
+    });
+
+    socket.on("connect_error", () => {
+      showToast({
+        type: "info",
+        message: "Live ticket updates are reconnecting.",
+      });
     });
 
     socket.on("admin:ticket:updated", (payload: AdminTicketSocketPayload) => {
       const payloadId = String(payload?.ticketId || "");
-      const nextStatus = payload?.status;
+      const nextStatus = normalizeStatus(payload?.status);
 
-      if (payloadId !== id || !nextStatus) return;
+      if (payloadId !== id) return;
 
       setStatus(nextStatus);
-      setTicket((prev) =>
-        prev ? { ...prev, status: nextStatus } : prev
-      );
+      setTicket((prev) => (prev ? { ...prev, status: nextStatus } : prev));
     });
 
     socket.on("admin:ticket:reply:new", (payload: AdminTicketSocketPayload) => {
@@ -277,49 +380,54 @@ export default function AdminTicketDetailsPage() {
       setTicket((prev) => {
         if (!prev) return prev;
 
-        const replyId = String(incoming.id || "");
-        const exists =
-          replyId && prev.replies.some((r) => String(r.id) === replyId);
+        const nextStatus = payload.status
+          ? normalizeStatus(payload.status)
+          : normalizeStatus(prev.status);
 
-        if (exists) {
-          return payload.status ? { ...prev, status: payload.status } : prev;
+        if (replyAlreadyExists(prev.replies, incoming)) {
+          return { ...prev, status: nextStatus };
         }
 
         return {
           ...prev,
-          status: payload.status || prev.status,
+          status: nextStatus,
           replies: [
             ...prev.replies,
             {
-              id: replyId || `socket-${Date.now()}`,
-              sender: incoming.sender || "customer",
-              text: incoming.text || "",
-              createdAt: incoming.createdAt || new Date().toISOString(),
+              id: String(incoming.id || `socket-${Date.now()}`),
+              sender: incoming.sender === "admin" ? "admin" : "customer",
+              text: String(incoming.text || ""),
+              createdAt: String(incoming.createdAt || new Date().toISOString()),
             },
           ],
         };
       });
 
       if (payload.status) {
-        setStatus(payload.status);
+        setStatus(normalizeStatus(payload.status));
       }
     });
 
     return () => {
+      socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [SOCKET_BASE, id, load]);
+  }, [id]);
 
-  const saveStatus = async (nextStatus: TicketStatus) => {
+  const saveStatus = async (nextStatus: NormalizedTicketStatus) => {
     if (!canClose) {
       setErr("You do not have permission to update ticket status.");
       return;
     }
 
+    if (!id) {
+      setErr("Invalid ticket id.");
+      return;
+    }
+
     setSaving(true);
     setErr("");
-    setOk("");
 
     try {
       const res = await fetch(`${API}/admin/tickets/${id}/status`, {
@@ -336,10 +444,13 @@ export default function AdminTicketDetailsPage() {
       }
 
       setStatus(nextStatus);
-      setTicket((prev) =>
-        prev ? { ...prev, status: nextStatus } : prev
-      );
-      setOk("Status updated successfully.");
+      setTicket((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+
+      showToast({
+        type: "success",
+        message: "Status updated successfully.",
+      });
+
       await load();
     } catch (e: any) {
       setErr(e?.message || "Failed to update status.");
@@ -354,6 +465,11 @@ export default function AdminTicketDetailsPage() {
       return;
     }
 
+    if (!id) {
+      setErr("Invalid ticket id.");
+      return;
+    }
+
     const text = reply.trim();
 
     if (!text) {
@@ -361,9 +477,13 @@ export default function AdminTicketDetailsPage() {
       return;
     }
 
+    if (text.length > MAX_REPLY_LENGTH) {
+      setErr(`Reply must be under ${MAX_REPLY_LENGTH} characters.`);
+      return;
+    }
+
     setSaving(true);
     setErr("");
-    setOk("");
 
     try {
       const res = await fetch(`${API}/admin/tickets/${id}/reply`, {
@@ -380,7 +500,12 @@ export default function AdminTicketDetailsPage() {
       }
 
       setReply("");
-      setOk("Reply sent successfully.");
+
+      showToast({
+        type: "success",
+        message: "Reply sent successfully.",
+      });
+
       await load();
     } catch (e: any) {
       setErr(e?.message || "Failed to send reply.");
@@ -392,6 +517,8 @@ export default function AdminTicketDetailsPage() {
   return (
     <AdminPageGuard permission="ticketView">
       <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+        {toast ? <Toast toast={toast} onClose={() => setToast(null)} /> : null}
+
         <div className="space-y-6">
           <section
             className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
@@ -429,15 +556,7 @@ export default function AdminTicketDetailsPage() {
           </section>
 
           {err ? (
-            <div className="rounded-[20px] border border-red-400/20 bg-red-500/10 px-5 py-4 text-[13px] text-red-200">
-              {err}
-            </div>
-          ) : null}
-
-          {ok ? (
-            <div className="rounded-[20px] border border-emerald-400/20 bg-emerald-500/15 px-5 py-4 text-[13px] text-emerald-200">
-              {ok}
-            </div>
+            <AlertBox type="error" message={err} onClose={() => setErr("")} />
           ) : null}
 
           {loading ? (
@@ -484,21 +603,23 @@ export default function AdminTicketDetailsPage() {
                         id="ticket-status"
                         value={status}
                         onChange={(e) =>
-                          saveStatus(e.target.value as TicketStatus)
+                          saveStatus(e.target.value as NormalizedTicketStatus)
                         }
                         disabled={saving}
                         className="h-[48px] rounded-full border border-white/10 bg-white/5 px-4 text-[13px] text-white outline-none transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60"
+                        title="Update ticket status"
+                        aria-label="Update ticket status"
                       >
-                        <option value="Open" className="bg-[#11121a]">
+                        <option value="Open" className={optionClass()}>
                           Open
                         </option>
-                        <option value="In Progress" className="bg-[#11121a]">
+                        <option value="In Progress" className={optionClass()}>
                           In Progress
                         </option>
-                        <option value="Resolved" className="bg-[#11121a]">
+                        <option value="Resolved" className={optionClass()}>
                           Resolved
                         </option>
-                        <option value="Closed" className="bg-[#11121a]">
+                        <option value="Closed" className={optionClass()}>
                           Closed
                         </option>
                       </select>
@@ -587,6 +708,8 @@ export default function AdminTicketDetailsPage() {
                             setAttachmentPreview(ticket.imageUrl || null)
                           }
                           className="relative aspect-[16/9] w-full overflow-hidden rounded-[16px] border border-white/10"
+                          aria-label="Open attachment preview"
+                          title="Open attachment preview"
                         >
                           <img
                             src={ticket.imageUrl}
@@ -629,7 +752,7 @@ export default function AdminTicketDetailsPage() {
                               </div>
                             </div>
 
-                            <div className="mt-2 text-[13px] leading-6 text-[#d8dcef]">
+                            <div className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-[#d8dcef]">
                               {r.text}
                             </div>
                           </div>
@@ -644,18 +767,32 @@ export default function AdminTicketDetailsPage() {
 
                   {canReply ? (
                     <div className="mt-8">
-                      <label
-                        htmlFor="ticket-reply"
-                        className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a7aec4]"
-                      >
-                        Reply as Admin
-                      </label>
+                      <div className="flex items-center justify-between gap-3">
+                        <label
+                          htmlFor="ticket-reply"
+                          className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a7aec4]"
+                        >
+                          Reply as Admin
+                        </label>
+
+                        <span
+                          className={[
+                            "text-[11px]",
+                            reply.length > MAX_REPLY_LENGTH
+                              ? "text-red-300"
+                              : "text-[#7f879f]",
+                          ].join(" ")}
+                        >
+                          {reply.length}/{MAX_REPLY_LENGTH}
+                        </span>
+                      </div>
 
                       <textarea
                         id="ticket-reply"
                         value={reply}
                         onChange={(e) => setReply(e.target.value)}
                         rows={4}
+                        maxLength={MAX_REPLY_LENGTH + 100}
                         placeholder="Write a reply..."
                         className="mt-3 w-full resize-none rounded-[18px] border border-white/10 bg-[#0d0f17] px-4 py-3 text-[13px] leading-7 text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]"
                       />
@@ -673,7 +810,11 @@ export default function AdminTicketDetailsPage() {
                         <button
                           type="button"
                           onClick={sendReply}
-                          disabled={saving || !reply.trim()}
+                          disabled={
+                            saving ||
+                            !reply.trim() ||
+                            reply.trim().length > MAX_REPLY_LENGTH
+                          }
                           className={primaryBtnClass}
                         >
                           {saving ? "Sending..." : "Send Reply"}
@@ -696,6 +837,7 @@ export default function AdminTicketDetailsPage() {
                 <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
                   Attachment Preview
                 </div>
+
                 <div className="mt-1 text-[18px] font-semibold text-white">
                   Support Ticket Image
                 </div>
@@ -725,7 +867,87 @@ export default function AdminTicketDetailsPage() {
   );
 }
 
-function StatusPill({ status }: { status: TicketStatus }) {
+function Toast({
+  toast,
+  onClose,
+}: {
+  toast: ToastState;
+  onClose: () => void;
+}) {
+  const tone =
+    toast.type === "success"
+      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-100"
+      : toast.type === "error"
+      ? "border-red-400/20 bg-red-500/15 text-red-100"
+      : "border-blue-400/20 bg-blue-500/15 text-blue-100";
+
+  return (
+    <div className="fixed right-4 top-4 z-[70] w-[calc(100vw-2rem)] max-w-[420px]">
+      <div
+        className={[
+          "flex items-start justify-between gap-3 rounded-[20px] border px-4 py-3 shadow-2xl backdrop-blur",
+          tone,
+        ].join(" ")}
+      >
+        <p className="text-[13px] font-medium leading-6">{toast.message}</p>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[11px] font-bold text-white"
+          aria-label="Close toast"
+          title="Close toast"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AlertBox({
+  type,
+  message,
+  onClose,
+}: {
+  type: "error" | "info";
+  message: string;
+  onClose?: () => void;
+}) {
+  const tone =
+    type === "error"
+      ? "border-red-400/20 bg-red-500/10 text-red-200"
+      : "border-blue-400/20 bg-blue-500/10 text-blue-200";
+
+  return (
+    <div
+      className={[
+        "flex items-start justify-between gap-3 rounded-[20px] border px-5 py-4 text-[13px]",
+        tone,
+      ].join(" ")}
+    >
+      <p className="leading-6">{message}</p>
+
+      {onClose ? (
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-white"
+          aria-label="Dismiss"
+          title="Dismiss"
+        >
+          ✕
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function StatusPill({
+  status,
+}: {
+  status: TicketStatus | NormalizedTicketStatus;
+}) {
   return (
     <span
       className={[
@@ -733,7 +955,7 @@ function StatusPill({ status }: { status: TicketStatus }) {
         statusTone(status),
       ].join(" ")}
     >
-      {displayStatus(status)}
+      {normalizeStatus(status)}
     </span>
   );
 }
@@ -750,17 +972,25 @@ function InfoSection({
       <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
         {title}
       </div>
+
       <div className="space-y-3">{children}</div>
     </div>
   );
 }
 
-function InfoBlock({ label, value }: { label: string; value: React.ReactNode }) {
+function InfoBlock({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
         {label}
       </div>
+
       <div className="mt-2 break-words text-[13px] font-medium text-white">
         {value}
       </div>

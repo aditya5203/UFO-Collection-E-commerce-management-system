@@ -32,7 +32,10 @@ export const chatController = {
         forceNew
       );
 
-      res.json({ success: true, conversation: conv });
+      res.json({
+        success: true,
+        conversation: conv,
+      });
       return;
     } catch (e) {
       next(e);
@@ -58,7 +61,10 @@ export const chatController = {
 
       const list = await chatService.listCustomerConversations(String(userId));
 
-      res.json({ success: true, conversations: list });
+      res.json({
+        success: true,
+        conversations: list,
+      });
       return;
     } catch (e) {
       next(e);
@@ -75,9 +81,16 @@ export const chatController = {
       const { conversationId } = req.params;
       const limit = Number(req.query.limit || 50);
 
-      const msgs = await chatService.getMessages(conversationId, limit);
+      const result = await chatService.getConversationWithMessages(
+        conversationId,
+        limit
+      );
 
-      res.json({ success: true, messages: msgs });
+      res.json({
+        success: true,
+        conversation: result.conversation,
+        messages: result.messages,
+      });
       return;
     } catch (e) {
       next(e);
@@ -109,7 +122,10 @@ export const chatController = {
         req.body
       );
 
-      res.json({ success: true, message: msg });
+      res.json({
+        success: true,
+        message: msg,
+      });
       return;
     } catch (e) {
       next(e);
@@ -140,7 +156,10 @@ export const chatController = {
         conversationId
       );
 
-      res.json({ success: true, conversation: ended });
+      res.json({
+        success: true,
+        conversation: ended,
+      });
       return;
     } catch (e) {
       next(e);
@@ -156,7 +175,10 @@ export const chatController = {
     try {
       const list = await chatService.listAdminConversations();
 
-      res.json({ success: true, conversations: list });
+      res.json({
+        success: true,
+        conversations: list,
+      });
       return;
     } catch (e) {
       next(e);
@@ -188,7 +210,10 @@ export const chatController = {
         req.body
       );
 
-      res.json({ success: true, message: msg });
+      res.json({
+        success: true,
+        message: msg,
+      });
       return;
     } catch (e) {
       next(e);
@@ -219,7 +244,10 @@ export const chatController = {
         conversationId
       );
 
-      res.json({ success: true, conversation: ended });
+      res.json({
+        success: true,
+        conversation: ended,
+      });
       return;
     } catch (e) {
       next(e);
