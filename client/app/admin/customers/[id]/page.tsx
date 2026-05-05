@@ -1,4 +1,3 @@
-// client/app/admin/customers/[id]/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -56,6 +55,24 @@ type OrderRow = {
   createdAt: string;
 };
 
+type TicketStatus = "Open" | "Pending" | "In Progress" | "Resolved" | "Closed";
+
+type TicketRow = {
+  id: string;
+  ticketId?: string;
+  ticketCode?: string;
+  customerName?: string;
+  customerEmail?: string;
+  subject?: string;
+  issueType?: string;
+  productName?: string;
+  orderId?: string | null;
+  size?: string | null;
+  color?: string | null;
+  submittedAt?: string;
+  status: TicketStatus;
+};
+
 type AddressType = "Shipping" | "Billing";
 type AddressLabel = "Home" | "Work" | "Other";
 
@@ -83,16 +100,19 @@ type Address = {
   updatedAt?: string;
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API_BASE = (
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
+).replace(/\/+$/, "");
 
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 const primaryBtnClass =
-  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
+  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+const actionBtnClass =
+  "rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
 
 function formatDateShort(iso?: string) {
   if (!iso) return "-";
@@ -173,6 +193,36 @@ async function safeJson(res: Response) {
   }
 }
 
+function normalizeTicketStatus(status?: string): TicketStatus {
+  if (status === "Pending") return "Pending";
+  if (status === "In Progress") return "In Progress";
+  if (status === "Resolved") return "Resolved";
+  if (status === "Closed") return "Closed";
+  return "Open";
+}
+
+function normalizeTicketRow(row: any): TicketRow {
+  return {
+    id: String(row?.id || row?._id || ""),
+    ticketId: row?.ticketId ? String(row.ticketId) : undefined,
+    ticketCode: row?.ticketCode ? String(row.ticketCode) : undefined,
+    customerName: row?.customerName ? String(row.customerName) : undefined,
+    customerEmail: row?.customerEmail ? String(row.customerEmail) : undefined,
+    subject: row?.subject ? String(row.subject) : undefined,
+    issueType: row?.issueType ? String(row.issueType) : undefined,
+    productName: row?.productName ? String(row.productName) : undefined,
+    orderId: row?.orderId ? String(row.orderId) : null,
+    size: row?.size ? String(row.size) : null,
+    color: row?.color ? String(row.color) : null,
+    submittedAt: row?.submittedAt
+      ? String(row.submittedAt)
+      : row?.createdAt
+        ? String(row.createdAt)
+        : undefined,
+    status: normalizeTicketStatus(row?.status),
+  };
+}
+
 export default function CustomerDetailsPage() {
   const params = useParams<{ id: string }>();
   const customerId = params?.id;
@@ -196,6 +246,10 @@ export default function CustomerDetailsPage() {
   const [orders, setOrders] = React.useState<OrderRow[]>([]);
   const [ordersLoading, setOrdersLoading] = React.useState(false);
   const [ordersError, setOrdersError] = React.useState("");
+
+  const [tickets, setTickets] = React.useState<TicketRow[]>([]);
+  const [ticketsLoading, setTicketsLoading] = React.useState(false);
+  const [ticketsError, setTicketsError] = React.useState("");
 
   const [addrLoading, setAddrLoading] = React.useState(false);
   const [addrError, setAddrError] = React.useState("");
@@ -304,6 +358,51 @@ export default function CustomerDetailsPage() {
     }
   }, []);
 
+  const loadTickets = React.useCallback(
+    async (id: string) => {
+      setTicketsLoading(true);
+      setTicketsError("");
+
+      try {
+        const params = new URLSearchParams();
+        params.set("customerId", id);
+
+        if (customer?.email) {
+          params.set("customerEmail", customer.email);
+        }
+
+        const res = await fetch(`${API_BASE}/api/admin/tickets?${params.toString()}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        const json = await safeJson(res);
+
+        if (!res.ok) {
+          setTickets([]);
+          setTicketsError(json?.message || "Failed to load tickets");
+          return;
+        }
+
+        const rawItems = Array.isArray(json?.items)
+          ? json.items
+          : Array.isArray(json?.data)
+            ? json.data
+            : [];
+
+        setTickets(
+          rawItems.map(normalizeTicketRow).filter((t: TicketRow) => t.id)
+        );
+      } catch {
+        setTickets([]);
+        setTicketsError("Network error while loading tickets");
+      } finally {
+        setTicketsLoading(false);
+      }
+    },
+    [customer?.email]
+  );
+
   const loadAddresses = React.useCallback(async (id: string) => {
     setAddrLoading(true);
     setAddrError("");
@@ -365,6 +464,14 @@ export default function CustomerDetailsPage() {
 
   React.useEffect(() => {
     if (!customerId) return;
+    if (tab !== "tickets") return;
+    if (!canViewTickets) return;
+
+    loadTickets(customerId);
+  }, [tab, customerId, canViewTickets, customer?.email, loadTickets]);
+
+  React.useEffect(() => {
+    if (!customerId) return;
     if (tab !== "addresses") return;
 
     const total = shipping.length + billing.length;
@@ -384,7 +491,7 @@ export default function CustomerDetailsPage() {
 
   const customerStatus = customer ? getCustomerStatus(customer) : "active";
   const ordersCount = customer?.numberOfOrders ?? 0;
-  const ticketsCount = 0;
+  const ticketsCount = tickets.length;
   const addressesCount = shipping.length + billing.length;
 
   if (loading) {
@@ -538,9 +645,7 @@ export default function CustomerDetailsPage() {
                 <InfoBlock label="Role" value={customer.role || "customer"} />
                 <InfoBlock
                   label="Status"
-                  value={
-                    <CustomerStatusPill status={customerStatus} />
-                  }
+                  value={<CustomerStatusPill status={customerStatus} />}
                 />
                 <InfoBlock
                   label="Created At"
@@ -672,9 +777,121 @@ export default function CustomerDetailsPage() {
           ) : null}
 
           {tab === "tickets" && canViewTickets ? (
-            <TableShell title="Customer Tickets" right={<span>0 total</span>}>
-              <div className="px-5 py-10 text-[13px] text-[#a7aec4]">
-                Tickets module not connected yet.
+            <TableShell
+              title="Customer Tickets"
+              right={
+                <button
+                  type="button"
+                  onClick={() => customerId && loadTickets(customerId)}
+                  className={secondaryBtnClass}
+                  disabled={ticketsLoading}
+                >
+                  {ticketsLoading ? "Refreshing..." : `${tickets.length} total`}
+                </button>
+              }
+            >
+              {ticketsError ? (
+                <div className="px-5 py-4">
+                  <div className="rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-[13px] text-red-200">
+                    {ticketsError}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1080px] border-collapse text-[13px]">
+                  <thead>
+                    <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
+                      <th className="px-5 py-4 font-medium">Ticket</th>
+                      <th className="px-5 py-4 font-medium">Subject</th>
+                      <th className="px-5 py-4 font-medium">Issue Type</th>
+                      <th className="px-5 py-4 font-medium">Product</th>
+                      <th className="px-5 py-4 font-medium">Order</th>
+                      <th className="px-5 py-4 font-medium">Status</th>
+                      <th className="px-5 py-4 font-medium">Submitted</th>
+                      <th className="px-5 py-4 text-right font-medium">
+                        Action
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {ticketsLoading ? (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-5 py-10 text-center text-[#a7aec4]"
+                        >
+                          Loading tickets...
+                        </td>
+                      </tr>
+                    ) : tickets.length ? (
+                      tickets.map((ticket) => (
+                        <tr
+                          key={ticket.id}
+                          className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                        >
+                          <td className="px-5 py-4 font-semibold text-white">
+                            {ticket.ticketCode || ticket.ticketId || ticket.id}
+                          </td>
+
+                          <td className="px-5 py-4 text-white">
+                            <div className="max-w-[260px] truncate">
+                              {ticket.subject || "-"}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
+                            {ticket.issueType || "-"}
+                          </td>
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
+                            <div className="max-w-[240px] truncate">
+                              {ticket.productName || "-"}
+                            </div>
+
+                            <div className="mt-1 text-[11px] text-[#7f879f]">
+                              Size: {ticket.size || "-"} • Color:{" "}
+                              {ticket.color || "-"}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
+                            {ticket.orderId || "-"}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <TicketStatusPill status={ticket.status}>
+                              {ticket.status}
+                            </TicketStatusPill>
+                          </td>
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
+                            {formatDateShort(ticket.submittedAt)}
+                          </td>
+
+                          <td className="px-5 py-4 text-right">
+                            <Link
+                              href={`/admin/customer-tickets/${ticket.id}`}
+                              className={actionBtnClass}
+                            >
+                              View
+                            </Link>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan={8}
+                          className="px-5 py-10 text-center text-[#a7aec4]"
+                        >
+                          No tickets found for this customer.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </TableShell>
           ) : null}
@@ -721,9 +938,6 @@ export default function CustomerDetailsPage() {
   );
 }
 
-const actionBtnClass =
-  "rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
-
 function Badge({ text }: { text: string }) {
   return (
     <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
@@ -743,8 +957,8 @@ function PaymentPill({
     status === "Paid"
       ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
       : status === "Failed"
-      ? "border-red-400/20 bg-red-500/15 text-red-300"
-      : "border-amber-400/20 bg-amber-500/15 text-amber-300";
+        ? "border-red-400/20 bg-red-500/15 text-red-300"
+        : "border-amber-400/20 bg-amber-500/15 text-amber-300";
 
   return (
     <span
@@ -766,14 +980,41 @@ function OrderStatusPill({
     status === "Delivered"
       ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
       : status === "Transit"
-      ? "border-violet-400/20 bg-violet-500/15 text-violet-300"
-      : status === "Shipped"
-      ? "border-blue-400/20 bg-blue-500/15 text-blue-300"
-      : status === "Confirmed"
-      ? "border-cyan-400/20 bg-cyan-500/15 text-cyan-300"
-      : status === "Cancelled"
-      ? "border-red-400/20 bg-red-500/15 text-red-300"
-      : "border-amber-400/20 bg-amber-500/15 text-amber-300";
+        ? "border-violet-400/20 bg-violet-500/15 text-violet-300"
+        : status === "Shipped"
+          ? "border-blue-400/20 bg-blue-500/15 text-blue-300"
+          : status === "Confirmed"
+            ? "border-cyan-400/20 bg-cyan-500/15 text-cyan-300"
+            : status === "Cancelled"
+              ? "border-red-400/20 bg-red-500/15 text-red-300"
+              : "border-amber-400/20 bg-amber-500/15 text-amber-300";
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function TicketStatusPill({
+  status,
+  children,
+}: {
+  status: TicketStatus;
+  children: React.ReactNode;
+}) {
+  const tone =
+    status === "Resolved"
+      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
+      : status === "Closed"
+        ? "border-slate-400/20 bg-slate-500/15 text-slate-300"
+        : status === "In Progress"
+          ? "border-blue-400/20 bg-blue-500/15 text-blue-300"
+          : status === "Pending"
+            ? "border-amber-400/20 bg-amber-500/15 text-amber-300"
+            : "border-sky-400/20 bg-sky-500/15 text-sky-300";
 
   return (
     <span
@@ -797,8 +1038,8 @@ function CustomerStatusPill({ status }: { status: CustomerStatus }) {
     status === "blocked"
       ? "border-amber-400/20 bg-amber-500/15 text-amber-300"
       : status === "deleted"
-      ? "border-red-400/20 bg-red-500/15 text-red-300"
-      : "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+        ? "border-red-400/20 bg-red-500/15 text-red-300"
+        : "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
 
   return (
     <span
@@ -810,8 +1051,8 @@ function CustomerStatusPill({ status }: { status: CustomerStatus }) {
       {status === "blocked"
         ? "Blocked"
         : status === "deleted"
-        ? "Deleted"
-        : "Active"}
+          ? "Deleted"
+          : "Active"}
     </span>
   );
 }

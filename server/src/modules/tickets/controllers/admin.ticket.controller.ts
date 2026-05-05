@@ -33,7 +33,14 @@ export const adminTicketController = {
   ): Promise<void> => {
     try {
       const q = String(req.query.q || "");
-      const items = await ticketService.listAdminTickets(q);
+      const customerId = String(req.query.customerId || "");
+      const customerEmail = String(req.query.customerEmail || "");
+
+      const items = await ticketService.listAdminTickets(
+        q,
+        customerId,
+        customerEmail
+      );
 
       const productIds = items
         .map((t: any) => String(t.productId || ""))
@@ -54,8 +61,11 @@ export const adminTicketController = {
         items: items.map((t: any) => ({
           id: String(t._id),
           ticketId: t.ticketCode,
+          ticketCode: t.ticketCode,
           customerName: t.customerName,
           customerEmail: t.customerEmail,
+          subject: t.subject,
+          message: t.message,
           productName:
             t.productName ||
             (t.productId

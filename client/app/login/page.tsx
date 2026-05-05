@@ -8,8 +8,10 @@ import { AnimatePresence, motion } from "framer-motion";
 import CollectionHeader from "@/components/layout/InfoHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API_BASE = (
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
+).replace(/\/+$/, "");
+
 const API = `${API_BASE}/api`;
 
 const shellClass =
@@ -48,10 +50,24 @@ export default function LoginPage() {
   const [loading, setLoading] = React.useState(false);
   const [toast, setToast] = React.useState<Toast | null>(null);
 
+  const toastTimerRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
   const showToast = React.useCallback((type: Toast["type"], message: string) => {
     setToast({ type, message });
 
-    window.setTimeout(() => {
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+
+    toastTimerRef.current = window.setTimeout(() => {
       setToast(null);
     }, 3200);
   }, []);
@@ -86,13 +102,21 @@ export default function LoginPage() {
 
       if (!res.ok) {
         showToast("error", data?.message || "Login failed. Please try again.");
+        setLoading(false);
         return;
       }
 
       showToast("success", "Login successful. Redirecting...");
 
+      const storedRedirect =
+        typeof window !== "undefined"
+          ? localStorage.getItem("ufo_redirect_after_login")
+          : null;
+
       const redirectPath =
-        localStorage.getItem("ufo_redirect_after_login") || "/collection";
+        storedRedirect && storedRedirect.startsWith("/")
+          ? storedRedirect
+          : "/collection";
 
       localStorage.removeItem("ufo_redirect_after_login");
 
@@ -102,8 +126,10 @@ export default function LoginPage() {
       }, 500);
     } catch (err) {
       console.error("Login error:", err);
-      showToast("error", "Network error. Please check your connection and try again.");
-    } finally {
+      showToast(
+        "error",
+        "Network error. Please check your connection and try again."
+      );
       setLoading(false);
     }
   };
@@ -146,7 +172,7 @@ export default function LoginPage() {
             initial="hidden"
             animate="show"
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+            className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
           >
             <div>
               <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
@@ -163,9 +189,19 @@ export default function LoginPage() {
               </p>
             </div>
 
-            <Link href="/signup" className={secondaryBtnClass}>
-              Create Account
-            </Link>
+            <div className="flex flex-wrap gap-3">
+              <Link href="/signup" className={secondaryBtnClass}>
+                Create Account
+              </Link>
+
+              <Link href="/admin/adminlogin" className={secondaryBtnClass}>
+                Admin Panel
+              </Link>
+
+              <Link href="/delivery/login" className={secondaryBtnClass}>
+                Delivery Panel
+              </Link>
+            </div>
           </motion.div>
 
           <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_460px] lg:items-start">
@@ -360,6 +396,42 @@ export default function LoginPage() {
                   className="font-semibold text-[#d6c7ff] transition hover:text-white"
                 >
                   Create an account
+                </Link>
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <Link
+                  href="/admin/adminlogin"
+                  className="rounded-[18px] border border-[#d6c7ff]/25 bg-[#d6c7ff]/10 p-4 transition hover:-translate-y-0.5 hover:border-[#d6c7ff]/45 hover:bg-[#d6c7ff]/15"
+                >
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#d6c7ff]">
+                    Admin
+                  </div>
+
+                  <div className="mt-1 text-[15px] font-semibold text-white">
+                    Admin Panel
+                  </div>
+
+                  <div className="mt-1 text-[12px] leading-5 text-[#a7aec4]">
+                    Manage products, orders, users, ads and analytics.
+                  </div>
+                </Link>
+
+                <Link
+                  href="/delivery/login"
+                  className="rounded-[18px] border border-emerald-300/20 bg-emerald-400/10 p-4 transition hover:-translate-y-0.5 hover:border-emerald-300/40 hover:bg-emerald-400/15"
+                >
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-200">
+                    Delivery
+                  </div>
+
+                  <div className="mt-1 text-[15px] font-semibold text-white">
+                    Delivery Panel
+                  </div>
+
+                  <div className="mt-1 text-[12px] leading-5 text-[#a7aec4]">
+                    View assigned orders, OTP delivery and status updates.
+                  </div>
                 </Link>
               </div>
 

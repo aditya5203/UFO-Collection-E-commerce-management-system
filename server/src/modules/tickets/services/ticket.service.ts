@@ -6,6 +6,10 @@ function makeTicketCode() {
   return `#${n}`;
 }
 
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export type TicketStatus =
   | "Open"
   | "Pending"
@@ -65,12 +69,40 @@ export const ticketService = {
     });
   },
 
-  async listAdminTickets(q?: string) {
+  async listAdminTickets(
+    q?: string,
+    customerId?: string,
+    customerEmail?: string
+  ) {
     const s = (q || "").trim();
     const filter: any = {};
 
+    const customerFilters: any[] = [];
+
+    if (customerId && mongoose.Types.ObjectId.isValid(customerId)) {
+      customerFilters.push({
+        customer: new mongoose.Types.ObjectId(customerId),
+      });
+    }
+
+    const email = String(customerEmail || "").trim();
+
+    if (email) {
+      customerFilters.push({
+        customerEmail: new RegExp(`^${escapeRegex(email)}$`, "i"),
+      });
+    }
+
+    if (customerFilters.length === 1) {
+      Object.assign(filter, customerFilters[0]);
+    }
+
+    if (customerFilters.length > 1) {
+      filter.$or = customerFilters;
+    }
+
     if (s) {
-      filter.$or = [
+      const searchOr = [
         { ticketCode: new RegExp(s, "i") },
         { customerName: new RegExp(s, "i") },
         { customerEmail: new RegExp(s, "i") },
@@ -80,6 +112,13 @@ export const ticketService = {
         { productName: new RegExp(s, "i") },
         { orderId: new RegExp(s, "i") },
       ];
+
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
+        delete filter.$or;
+      } else {
+        filter.$or = searchOr;
+      }
     }
 
     return Ticket.find(filter).sort({ createdAt: -1 }).lean();
