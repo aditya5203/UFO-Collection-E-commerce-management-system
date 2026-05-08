@@ -171,11 +171,11 @@ function SummaryCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05, duration: 0.4, ease: "easeOut" }}
-      className={`${softPanelClass} relative overflow-hidden p-5 transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]`}
+      className={`${softPanelClass} relative min-w-0 overflow-hidden p-5 transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]`}
     >
       <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-[#8b5cf6]/10 blur-2xl" />
 
-      <div className="relative">
+      <div className="relative min-w-0">
         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
           {label}
         </div>
@@ -216,8 +216,6 @@ function LineItem({
 function getAllowedTransitions(currentStatus: string): DeliveryStatus[] {
   const s = safeStr(currentStatus).toLowerCase();
 
-  // Strict production flow:
-  // Assigned → Picked Up → Out for Delivery → OTP Verify → Delivered
   if (!s || s === "assigned") {
     return ["Assigned", "Picked Up", "Failed Delivery", "Returned"];
   }
@@ -226,7 +224,6 @@ function getAllowedTransitions(currentStatus: string): DeliveryStatus[] {
     return ["Picked Up", "Out for Delivery", "Failed Delivery", "Returned"];
   }
 
-  // Delivered is not selectable here. Delivery must be completed by OTP verify.
   if (s === "out for delivery") {
     return ["Out for Delivery", "Failed Delivery", "Returned"];
   }
@@ -330,7 +327,8 @@ export default function DeliveryOrderDetailsPage() {
     const orderId = pickId(order);
     if (!orderId) return;
 
-    const currentStatus = safeStr(order?.deliveryAssignment?.status) || "Assigned";
+    const currentStatus =
+      safeStr(order?.deliveryAssignment?.status) || "Assigned";
     const originalDeliveryNote = safeStr(order?.deliveryAssignment?.note).trim();
 
     const hasStatusChanges =
@@ -518,19 +516,19 @@ export default function DeliveryOrderDetailsPage() {
 
   if (loading) {
     return (
-      <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+      <div className="-m-6 min-h-screen overflow-x-hidden bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
         <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.14),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(96,165,250,0.08),transparent_30%)]" />
 
-        <div className="relative space-y-5">
+        <div className="relative max-w-full space-y-5 overflow-x-hidden">
           <SkeletonHero />
 
-          <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
-            <div className="space-y-5">
+          <div className="grid min-w-0 max-w-full gap-5 2xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
+            <div className="min-w-0 space-y-5">
               <SkeletonPanel rows={6} />
               <SkeletonPanel rows={5} />
             </div>
 
-            <div className="space-y-5">
+            <div className="min-w-0 space-y-5">
               <SkeletonPanel rows={4} />
               <SkeletonPanel rows={5} />
               <SkeletonPanel rows={4} />
@@ -543,7 +541,7 @@ export default function DeliveryOrderDetailsPage() {
 
   if (!order) {
     return (
-      <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+      <div className="-m-6 min-h-screen overflow-x-hidden bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
         <div className="space-y-4">
           <div className={`${panelClass} p-8`}>
             <div className="text-[11px] uppercase tracking-[0.24em] text-[#fca5a5]">
@@ -567,7 +565,8 @@ export default function DeliveryOrderDetailsPage() {
   const placedOn = formatDateLong(order.createdAt);
   const assignedAt = formatDateLong(order?.deliveryAssignment?.assignedAt);
 
-  const currentStatus = safeStr(order?.deliveryAssignment?.status) || "Assigned";
+  const currentStatus =
+    safeStr(order?.deliveryAssignment?.status) || "Assigned";
   const allowedStatuses = getAllowedTransitions(currentStatus);
 
   const originalDeliveryNote = safeStr(order?.deliveryAssignment?.note).trim();
@@ -585,8 +584,8 @@ export default function DeliveryOrderDetailsPage() {
         currentStatus === "Assigned"
           ? "current"
           : assignedAt !== "-"
-          ? "done"
-          : "upcoming",
+            ? "done"
+            : "upcoming",
     },
     {
       label: "Picked Up",
@@ -597,13 +596,13 @@ export default function DeliveryOrderDetailsPage() {
         currentStatus === "Picked Up"
           ? "current"
           : [
-              "Out for Delivery",
-              "Delivered",
-              "Failed Delivery",
-              "Returned",
-            ].includes(currentStatus)
-          ? "done"
-          : "upcoming",
+                "Out for Delivery",
+                "Delivered",
+                "Failed Delivery",
+                "Returned",
+              ].includes(currentStatus)
+            ? "done"
+            : "upcoming",
     },
     {
       label: "Out for Delivery",
@@ -614,8 +613,8 @@ export default function DeliveryOrderDetailsPage() {
         currentStatus === "Out for Delivery"
           ? "current"
           : ["Delivered", "Failed Delivery", "Returned"].includes(currentStatus)
-          ? "done"
-          : "upcoming",
+            ? "done"
+            : "upcoming",
     },
     {
       label: "Delivered",
@@ -668,22 +667,22 @@ export default function DeliveryOrderDetailsPage() {
   const otpChannelUsed = safeStr(order?.deliveryAssignment?.otpChannel);
 
   return (
-    <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
+    <div className="-m-6 min-h-screen overflow-x-hidden bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.14),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(96,165,250,0.08),transparent_30%)]" />
 
       <ToastView toast={toast} />
 
-      <div className="relative space-y-6">
+      <div className="relative max-w-full space-y-6 overflow-x-hidden">
         <motion.section
           initial={{ opacity: 0, y: 22 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className={`${panelClass} relative overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.24),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(96,165,250,0.12),transparent_34%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6 lg:p-7`}
+          className={`${panelClass} relative min-w-0 max-w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.24),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(96,165,250,0.12),transparent_34%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6 lg:p-7`}
         >
           <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-[#8b5cf6]/10 blur-3xl" />
           <div className="pointer-events-none absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
-          <div className="relative flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="relative flex min-w-0 flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0">
               <div className="break-words text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
                 Delivery <span className="mx-2 text-[#7f879f]">/</span> Orders{" "}
@@ -710,7 +709,7 @@ export default function DeliveryOrderDetailsPage() {
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex shrink-0 flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => loadOrder("refresh")}
@@ -750,7 +749,7 @@ export default function DeliveryOrderDetailsPage() {
             </div>
           </div>
 
-          <div className="relative mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="relative mt-6 grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SummaryCard
               index={0}
               label="Customer"
@@ -762,7 +761,7 @@ export default function DeliveryOrderDetailsPage() {
               index={1}
               label="Items"
               value={String(items.length)}
-              hint="Products in this order"
+              hint="Products / variants in this order"
             />
 
             <SummaryCard
@@ -781,13 +780,13 @@ export default function DeliveryOrderDetailsPage() {
           </div>
         </motion.section>
 
-        <div className="grid gap-5 2xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
-          <div className="space-y-5">
+        <div className="grid min-w-0 max-w-full gap-5 2xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
+          <div className="min-w-0 space-y-5">
             <motion.section
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, ease: "easeOut" }}
-              className={`${panelClass} overflow-hidden`}
+              className={`${panelClass} min-w-0 max-w-full overflow-hidden`}
             >
               <div className="border-b border-[#26293a] px-5 py-4 sm:px-6">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
@@ -799,24 +798,27 @@ export default function DeliveryOrderDetailsPage() {
                 </h2>
 
                 <p className="mt-1 text-[13px] text-[#a7aec4]">
-                  Product, quantity, color, size, and pricing
+                  Product variant, SKU, quantity, color, size, and pricing
                 </p>
               </div>
 
-              <div className="hidden overflow-x-auto lg:block">
-                <table className="w-full min-w-[980px] border-collapse text-[13px]">
+              <div className="hidden max-w-full overflow-x-auto lg:block">
+                <table className="w-full min-w-[900px] border-collapse text-[13px] xl:min-w-[1120px]">
                   <thead>
                     <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                      <th className="px-5 py-4 font-medium">Product</th>
-                      <th className="px-5 py-4 font-medium">Size</th>
-                      <th className="px-5 py-4 font-medium">Color</th>
-                      <th className="px-5 py-4 text-center font-medium">
+                      <th className="px-4 py-4 font-medium xl:px-5">Product</th>
+                      <th className="px-4 py-4 font-medium xl:px-5">
+                        Variant / SKU
+                      </th>
+                      <th className="px-4 py-4 font-medium xl:px-5">Size</th>
+                      <th className="px-4 py-4 font-medium xl:px-5">Color</th>
+                      <th className="px-4 py-4 text-center font-medium xl:px-5">
                         Qty
                       </th>
-                      <th className="px-5 py-4 text-right font-medium">
+                      <th className="px-4 py-4 text-right font-medium xl:px-5">
                         Price
                       </th>
-                      <th className="px-5 py-4 text-right font-medium">
+                      <th className="px-4 py-4 text-right font-medium xl:px-5">
                         Total
                       </th>
                     </tr>
@@ -825,6 +827,9 @@ export default function DeliveryOrderDetailsPage() {
                   <tbody>
                     {items.length ? (
                       items.map((it: any, i: number) => {
+                        const productId = safeStr(it?.productId);
+                        const variantId = safeStr(it?.variantId);
+                        const sku = safeStr(it?.sku);
                         const colorValue = safeStr(it?.color);
                         const colorLabel = safeStr(it?.colorLabel);
                         const colorClass = getColorDotClass(
@@ -836,7 +841,7 @@ export default function DeliveryOrderDetailsPage() {
 
                         return (
                           <motion.tr
-                            key={i}
+                            key={`${productId}-${variantId || i}`}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{
@@ -846,45 +851,77 @@ export default function DeliveryOrderDetailsPage() {
                             }}
                             className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
                           >
-                            <td className="px-5 py-4">
-                              <div className="font-semibold text-white">
+                            <td className="px-4 py-4 xl:px-5">
+                              <div className="max-w-[240px] truncate font-semibold text-white">
                                 {it?.name || "-"}
                               </div>
 
-                              {it?.productId ? (
-                                <div className="mt-1 break-all text-xs text-[#7f879f]">
-                                  Product ID: {it.productId}
+                              {productId ? (
+                                <div className="mt-1 max-w-[240px] truncate text-xs text-[#7f879f]">
+                                  Product ID: {productId}
                                 </div>
                               ) : null}
                             </td>
 
-                            <td className="px-5 py-4 text-[#d1d5db]">
-                              {safeStr(it?.size) || "-"}
+                            <td className="px-4 py-4 xl:px-5">
+                              <div className="space-y-1">
+                                {sku ? (
+                                  <div className="inline-flex max-w-[220px] rounded-full border border-[#8b5cf6]/20 bg-[#8b5cf6]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d6c7ff]">
+                                    <span className="truncate">SKU: {sku}</span>
+                                  </div>
+                                ) : (
+                                  <div className="text-[12px] text-[#7f879f]">
+                                    No SKU
+                                  </div>
+                                )}
+
+                                {variantId ? (
+                                  <div className="max-w-[220px] truncate text-[11px] text-[#7f879f]">
+                                    Variant ID: {variantId}
+                                  </div>
+                                ) : (
+                                  <div className="text-[11px] text-[#7f879f]">
+                                    Legacy stock item
+                                  </div>
+                                )}
+                              </div>
                             </td>
 
-                            <td className="px-5 py-4">
+                            <td className="px-4 py-4 xl:px-5">
+                              {safeStr(it?.size) ? (
+                                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white">
+                                  {safeStr(it.size)}
+                                </span>
+                              ) : (
+                                <span className="text-[#d1d5db]">-</span>
+                              )}
+                            </td>
+
+                            <td className="px-4 py-4 xl:px-5">
                               {colorValue || colorLabel ? (
                                 <div className="flex items-center gap-2 text-[#d1d5db]">
                                   <span
-                                    className={`h-4 w-4 rounded-full border border-white/20 ${colorClass}`}
+                                    className={`h-4 w-4 shrink-0 rounded-full border border-white/20 ${colorClass}`}
                                     aria-hidden="true"
                                   />
-                                  <span>{colorLabel || colorValue}</span>
+                                  <span className="max-w-[120px] truncate">
+                                    {colorLabel || colorValue}
+                                  </span>
                                 </div>
                               ) : (
                                 <span className="text-[#d1d5db]">-</span>
                               )}
                             </td>
 
-                            <td className="px-5 py-4 text-center text-[#d1d5db]">
+                            <td className="px-4 py-4 text-center text-[#d1d5db] xl:px-5">
                               {qty || "-"}
                             </td>
 
-                            <td className="px-5 py-4 text-right text-[#d1d5db]">
+                            <td className="px-4 py-4 text-right text-[#d1d5db] xl:px-5">
                               {formatNPR(pricePaisa)}
                             </td>
 
-                            <td className="px-5 py-4 text-right font-semibold text-[#d6c7ff]">
+                            <td className="px-4 py-4 text-right font-semibold text-[#d6c7ff] xl:px-5">
                               {formatNPR(lineTotalPaisa)}
                             </td>
                           </motion.tr>
@@ -893,7 +930,7 @@ export default function DeliveryOrderDetailsPage() {
                     ) : (
                       <tr>
                         <td
-                          colSpan={6}
+                          colSpan={7}
                           className="px-5 py-8 text-center text-[#a7aec4]"
                         >
                           No items found.
@@ -907,6 +944,9 @@ export default function DeliveryOrderDetailsPage() {
               <div className="grid gap-4 p-4 lg:hidden">
                 {items.length ? (
                   items.map((it: any, i: number) => {
+                    const productId = safeStr(it?.productId);
+                    const variantId = safeStr(it?.variantId);
+                    const sku = safeStr(it?.sku);
                     const colorValue = safeStr(it?.color);
                     const colorLabel = safeStr(it?.colorLabel);
                     const colorClass = getColorDotClass(
@@ -918,7 +958,7 @@ export default function DeliveryOrderDetailsPage() {
 
                     return (
                       <motion.div
-                        key={i}
+                        key={`${productId}-${variantId || i}`}
                         initial={{ opacity: 0, y: 14 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{
@@ -932,13 +972,37 @@ export default function DeliveryOrderDetailsPage() {
                           {it?.name || "-"}
                         </div>
 
-                        {it?.productId ? (
+                        {productId ? (
                           <div className="mt-1 break-all text-xs text-[#7f879f]">
-                            Product ID: {it.productId}
+                            Product ID: {productId}
                           </div>
                         ) : null}
 
                         <div className="mt-4 grid gap-3">
+                          <MobileInfo
+                            label="SKU"
+                            value={
+                              sku ? (
+                                <span className="break-all text-[#d6c7ff]">
+                                  {sku}
+                                </span>
+                              ) : (
+                                "-"
+                              )
+                            }
+                          />
+
+                          <MobileInfo
+                            label="Variant ID"
+                            value={
+                              variantId ? (
+                                <span className="break-all">{variantId}</span>
+                              ) : (
+                                "Legacy stock item"
+                              )
+                            }
+                          />
+
                           <MobileInfo
                             label="Size"
                             value={safeStr(it?.size) || "-"}
@@ -950,7 +1014,7 @@ export default function DeliveryOrderDetailsPage() {
                               colorValue || colorLabel ? (
                                 <span className="inline-flex items-center gap-2">
                                   <span
-                                    className={`h-4 w-4 rounded-full border border-white/20 ${colorClass}`}
+                                    className={`h-4 w-4 shrink-0 rounded-full border border-white/20 ${colorClass}`}
                                     aria-hidden="true"
                                   />
                                   {colorLabel || colorValue}
@@ -988,7 +1052,7 @@ export default function DeliveryOrderDetailsPage() {
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, ease: "easeOut" }}
-              className={`${panelClass} p-5 sm:p-6`}
+              className={`${panelClass} min-w-0 max-w-full overflow-hidden p-5 sm:p-6`}
             >
               <div className="mb-5">
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
@@ -1040,7 +1104,7 @@ export default function DeliveryOrderDetailsPage() {
             </motion.section>
           </div>
 
-          <div className="space-y-5">
+          <div className="min-w-0 space-y-5">
             <SidePanel>
               <div className="flex items-start gap-4">
                 <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] border border-white/10 bg-white/[0.05] text-base font-bold text-white shadow-[0_0_30px_rgba(139,92,246,0.12)]">
@@ -1056,19 +1120,14 @@ export default function DeliveryOrderDetailsPage() {
                     Customer Details
                   </h2>
 
-                  <div className="mt-3 text-sm font-medium text-white">
-                    {order.customer?.name || addrName || "-"}
+                  <div className="mt-4 space-y-3">
+                    <LineItem label="Name" value={addrName} />
+                    <LineItem
+                      label="Email"
+                      value={safeStr(order.customer?.email) || "-"}
+                    />
+                    <LineItem label="Phone" value={addrPhone} />
                   </div>
-
-                  <div className="mt-1 break-all text-sm text-[#a7aec4]">
-                    {order.customer?.email || "-"}
-                  </div>
-
-                  {addrPhone ? (
-                    <div className="mt-1 text-sm text-[#a7aec4]">
-                      {addrPhone}
-                    </div>
-                  ) : null}
                 </div>
               </div>
             </SidePanel>
@@ -1083,200 +1142,96 @@ export default function DeliveryOrderDetailsPage() {
                   {addrTitle}
                 </h2>
 
-                <p className="mt-1 text-[13px] text-[#a7aec4]">
-                  Delivery information attached to this order
-                </p>
-              </div>
+                <div className="mt-5 space-y-3">
+                  <LineItem label="Street" value={addrStreet || "-"} />
+                  <LineItem label="Area" value={addrArea || "-"} />
+                  <LineItem label="City" value={addrCity || "-"} />
 
-              {!addr ? (
-                <div className="mt-5 rounded-[16px] border border-white/10 bg-white/[0.03] p-5 text-sm text-[#a7aec4]">
-                  No shipping address found.
-                </div>
-              ) : (
-                <div className="mt-5 space-y-4">
-                  <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-5">
-                    <div className="text-base font-semibold text-white">
-                      {addrName || "-"}
-                    </div>
-
-                    {addrPhone ? (
-                      <div className="mt-1 text-sm text-[#a7aec4]">
-                        {addrPhone}
-                      </div>
-                    ) : null}
-
-                    <div className="mt-4 space-y-3">
-                      <LineItem label="Street" value={addrStreet || "-"} />
-                      <LineItem label="Area" value={addrArea || "-"} />
-                      <LineItem label="City" value={addrCity || "-"} />
-                    </div>
-                  </div>
-
-                  <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-5">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
-                      Map Location
-                    </div>
-
-                    <div
-                      className={`mt-2 break-words text-sm ${
-                        hasLatLng(addr) ? "text-white" : "text-[#7f879f]"
-                      }`}
-                    >
-                      {hasLatLng(addr)
-                        ? `${Number(addr.lat).toFixed(6)}, ${Number(
-                            addr.lng
-                          ).toFixed(6)}`
-                        : "No map location saved in this order"}
-                    </div>
-
-                    {hasLatLng(addr) ? (
-                      <div className="mt-4">
+                  {hasLatLng(addr) ? (
+                    <LineItem
+                      label="Map"
+                      value={
                         <a
                           href={getGoogleMapsUrl(addr)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={secondaryBtnClass}
+                          className="font-semibold text-[#d6c7ff] hover:text-white"
                         >
-                          View on Google Maps
+                          Open location
                         </a>
-                      </div>
-                    ) : null}
-                  </div>
+                      }
+                    />
+                  ) : (
+                    <LineItem label="Map" value="No map location" />
+                  )}
                 </div>
-              )}
+              </div>
             </SidePanel>
 
             <SidePanel>
               <div>
                 <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                  Payment
+                  Management
                 </div>
 
                 <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  Payment & Totals
+                  Update Delivery Status
                 </h2>
 
-                <p className="mt-1 text-[13px] text-[#a7aec4]">
-                  Payment information and order amount breakdown
+                <p className="mt-1 text-[13px] leading-6 text-[#a7aec4]">
+                  Follow the delivery flow carefully. Delivered status is only
+                  completed after OTP verification.
                 </p>
               </div>
 
-              <div className="mt-5 space-y-3 rounded-[16px] border border-white/10 bg-white/[0.03] p-5">
-                <LineItem
-                  label="Payment Method"
-                  value={safeStr(order?.paymentMethod) || "-"}
-                />
-
-                <LineItem
-                  label="Payment Reference"
-                  value={safeStr(order?.paymentRef) || "-"}
-                />
-
-                <LineItem label="Subtotal" value={formatNPR(subtotalPaisa)} />
-
-                <LineItem label="Shipping" value={formatNPR(shippingPaisa)} />
-
-                <LineItem
-                  label="Discount"
-                  value={`- ${formatNPR(discountPaisa)}`}
-                  valueClassName="text-emerald-300"
-                />
-
-                <div className="border-t border-[#26293a] pt-3">
-                  <LineItem
-                    label="Total"
-                    value={formatNPR(totalPaisa)}
-                    valueClassName="text-base font-bold text-[#d6c7ff]"
-                  />
-                </div>
-              </div>
-            </SidePanel>
-
-            <SidePanel>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                    Status
-                  </div>
-
-                  <h2 className="mt-1 text-[20px] font-semibold text-white">
-                    Update Delivery Status
-                  </h2>
-
-                  <p className="mt-1 text-[13px] text-[#a7aec4]">
-                    Update your current delivery progress
-                  </p>
-                </div>
-
-                <span
-                  className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-semibold ${
-                    isFinalState
-                      ? "border-white/10 bg-white/[0.03] text-[#a7aec4]"
-                      : "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
-                  }`}
-                >
-                  {isFinalState ? "Final State" : "Editable"}
-                </span>
-              </div>
-
               <div className="mt-5 space-y-5">
-                <div>
-                  <label
-                    htmlFor="delivery-status"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
-                  >
-                    Delivery Status
-                  </label>
-
+                <Field label="Delivery Status">
                   <select
-                    id="delivery-status"
                     value={deliveryStatus}
                     onChange={(e) =>
                       setDeliveryStatus(e.target.value as DeliveryStatus)
                     }
                     disabled={isFinalState}
                     className={inputClass}
+                    title="Delivery status"
+                    aria-label="Delivery status"
                   >
                     {allowedStatuses.map((status) => (
                       <option
                         key={status}
                         value={status}
-                        className="bg-[#0d0f17]"
+                        className="bg-[#11121a]"
                       >
                         {status}
                       </option>
                     ))}
                   </select>
-                </div>
+                </Field>
 
-                <div>
-                  <label
-                    htmlFor="delivery-note"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
-                  >
-                    Delivery Note
-                  </label>
-
+                <Field label="Delivery Note">
                   <textarea
-                    id="delivery-note"
                     value={deliveryNote}
                     onChange={(e) => setDeliveryNote(e.target.value)}
-                    rows={4}
-                    placeholder="Add delivery update note"
                     disabled={isFinalState}
-                    className={`${inputClass} resize-none`}
+                    rows={4}
+                    placeholder="Add delivery note, failed reason, landmark, etc."
+                    className={`${inputClass} min-h-[120px] resize-none`}
+                    title="Delivery note"
+                    aria-label="Delivery note"
                   />
-                </div>
+                </Field>
 
-                <div className="flex flex-col gap-3 border-t border-[#26293a] pt-5 sm:flex-row sm:items-center sm:justify-between">
-                  <Link href="/delivery/orders" className={secondaryBtnClass}>
-                    Back
-                  </Link>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
+                  <div className="text-[12px] text-[#7f879f]">
+                    {hasStatusChanges
+                      ? "You have unsaved changes."
+                      : "No unsaved changes."}
+                  </div>
 
                   <button
                     type="button"
                     onClick={saveChanges}
-                    disabled={saving || isFinalState || !hasStatusChanges}
+                    disabled={saving || !hasStatusChanges || isFinalState}
                     className={primaryBtnClass}
                   >
                     {saving ? (
@@ -1310,147 +1265,136 @@ export default function DeliveryOrderDetailsPage() {
 
               {!canSendOtp && !otpVerified ? (
                 <div className="mt-5 rounded-[16px] border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-6 text-amber-200">
-                  OTP can be sent only when the order status is{" "}
-                  <span className="font-semibold">Out for Delivery</span>.
+                  OTP can be sent only when delivery status is Out for Delivery.
                 </div>
               ) : null}
 
               {otpVerified ? (
-                <div className="mt-5 rounded-[16px] border border-emerald-400/20 bg-emerald-500/15 px-4 py-3 text-[13px] leading-6 text-emerald-300">
-                  OTP already verified for this order.
+                <div className="mt-5 rounded-[16px] border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-[13px] leading-6 text-emerald-200">
+                  OTP already verified. This order is marked as delivered.
                 </div>
               ) : null}
 
               <div className="mt-5 space-y-5">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label
-                      htmlFor="otp-channel"
-                      className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
-                    >
-                      OTP Channel
-                    </label>
+                <Field label="OTP Channel">
+                  <select
+                    value={otpChannel}
+                    onChange={(e) =>
+                      setOtpChannel(e.target.value as DeliveryOtpChannel)
+                    }
+                    disabled={!canSendOtp || otpVerified}
+                    className={inputClass}
+                    title="OTP channel"
+                    aria-label="OTP channel"
+                  >
+                    <option value="phone" className="bg-[#11121a]">
+                      Phone
+                    </option>
+                    <option value="email" className="bg-[#11121a]">
+                      Email
+                    </option>
+                  </select>
+                </Field>
 
-                    <select
-                      id="otp-channel"
-                      value={otpChannel}
-                      onChange={(e) =>
-                        setOtpChannel(e.target.value as DeliveryOtpChannel)
-                      }
-                      disabled={!canSendOtp || otpSending || isFinalState}
-                      className={inputClass}
-                    >
-                      <option value="phone" className="bg-[#0d0f17]">
-                        Phone
-                      </option>
+                <button
+                  type="button"
+                  onClick={sendOtp}
+                  disabled={!canSendOtp || otpVerified || otpSending}
+                  className={secondaryBtnClass}
+                >
+                  {otpSending ? "Sending OTP..." : "Send OTP"}
+                </button>
 
-                      <option value="email" className="bg-[#0d0f17]">
-                        Email
-                      </option>
-                    </select>
-                  </div>
+                <Field label="Enter OTP">
+                  <input
+                    value={otpInput}
+                    onChange={(e) =>
+                      setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 4))
+                    }
+                    disabled={!canSendOtp || otpVerified}
+                    placeholder="4 digit OTP"
+                    inputMode="numeric"
+                    maxLength={4}
+                    className={inputClass}
+                    title="OTP"
+                    aria-label="OTP"
+                  />
+                </Field>
 
-                  <div className="flex items-end">
-                    <button
-                      type="button"
-                      onClick={sendOtp}
-                      disabled={!canSendOtp || otpSending || isFinalState}
-                      className="inline-flex w-full items-center justify-center rounded-full border border-amber-400/20 bg-amber-500/15 px-5 py-3 text-[12px] font-bold uppercase tracking-[0.16em] text-amber-300 transition hover:-translate-y-0.5 hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {otpSending ? (
-                        <>
-                          <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-amber-300/30 border-t-amber-300" />
-                          Sending OTP
-                        </>
-                      ) : (
-                        "Send OTP"
-                      )}
-                    </button>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  onClick={verifyOtp}
+                  disabled={
+                    !canSendOtp ||
+                    otpVerified ||
+                    otpVerifying ||
+                    otpInput.trim().length !== 4
+                  }
+                  className={primaryBtnClass}
+                >
+                  {otpVerifying ? "Verifying..." : "Verify & Deliver"}
+                </button>
 
-                <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-5">
-                  <div className="grid gap-3 text-sm">
-                    <LineItem
-                      label="OTP Verified"
-                      value={otpVerified ? "Yes" : "No"}
-                      valueClassName={
-                        otpVerified ? "text-emerald-300" : "text-white"
-                      }
-                    />
-
-                    <LineItem
-                      label="Last Channel"
-                      value={otpChannelUsed || "-"}
-                    />
-
+                {otpSentTo || otpChannelUsed || otpExpiresAt ? (
+                  <div className="space-y-3 rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
                     <LineItem label="Sent To" value={otpSentTo || "-"} />
-
+                    <LineItem label="Channel" value={otpChannelUsed || "-"} />
                     <LineItem
-                      label="Expires At"
+                      label="Expires"
                       value={otpExpiresAt ? formatDateTime(otpExpiresAt) : "-"}
                     />
                   </div>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="otp-input"
-                    className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
-                  >
-                    Enter Customer OTP
-                  </label>
-
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <input
-                      id="otp-input"
-                      value={otpInput}
-                      onChange={(e) => {
-                        const onlyDigits = e.target.value
-                          .replace(/\D/g, "")
-                          .slice(0, 4);
-                        setOtpInput(onlyDigits);
-                      }}
-                      placeholder="Enter 4 digit OTP"
-                      inputMode="numeric"
-                      maxLength={4}
-                      disabled={isFinalState || otpVerifying}
-                      className={inputClass}
-                    />
-
-                    <button
-                      type="button"
-                      onClick={verifyOtp}
-                      disabled={
-                        isFinalState ||
-                        otpVerifying ||
-                        !/^\d{4}$/.test(otpInput.trim())
-                      }
-                      className="inline-flex shrink-0 items-center justify-center rounded-full bg-emerald-500 px-6 py-3 text-[12px] font-bold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {otpVerifying ? (
-                        <>
-                          <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                          Verifying
-                        </>
-                      ) : (
-                        "Verify & Deliver"
-                      )}
-                    </button>
-                  </div>
-                </div>
+                ) : null}
 
                 {otpMessage ? (
-                  <div className="rounded-[16px] border border-emerald-400/20 bg-emerald-500/15 px-4 py-3 text-sm text-emerald-300">
+                  <div className="rounded-[16px] border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-[13px] leading-6 text-emerald-200">
                     {otpMessage}
                   </div>
                 ) : null}
 
                 {otpError ? (
-                  <div className="rounded-[16px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  <div className="rounded-[16px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-[13px] leading-6 text-red-200">
                     {otpError}
                   </div>
                 ) : null}
+              </div>
+            </SidePanel>
+
+            <SidePanel>
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                  Billing
+                </div>
+
+                <h2 className="mt-1 text-[20px] font-semibold text-white">
+                  Payment Summary
+                </h2>
+              </div>
+
+              <div className="mt-5 space-y-3 rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+                <LineItem
+                  label="Payment"
+                  value={safeStr(order.paymentMethod) || "-"}
+                />
+                <LineItem
+                  label="Payment Status"
+                  value={safeStr(order.paymentStatus) || "-"}
+                />
+                <LineItem label="Subtotal" value={formatNPR(subtotalPaisa)} />
+                <LineItem label="Shipping" value={formatNPR(shippingPaisa)} />
+                <LineItem
+                  label="Discount"
+                  value={`- ${formatNPR(discountPaisa)}`}
+                  valueClassName="text-emerald-300"
+                />
+
+                <div className="border-t border-white/10 pt-3">
+                  <LineItem
+                    label="Collection Total"
+                    value={formatNPR(totalPaisa)}
+                    valueClassName="text-base font-bold text-white"
+                  />
+                </div>
               </div>
             </SidePanel>
           </div>
@@ -1460,40 +1404,29 @@ export default function DeliveryOrderDetailsPage() {
   );
 }
 
-function ToastView({ toast }: { toast: Toast | null }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
-    <AnimatePresence>
-      {toast ? (
-        <motion.div
-          initial={{ opacity: 0, y: -18, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -18, scale: 0.98 }}
-          className={[
-            "fixed right-4 top-4 z-50 max-w-[380px] rounded-[18px] border px-4 py-3 text-sm font-semibold shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl",
-            toast.type === "success"
-              ? "border-emerald-400/25 bg-emerald-500/15 text-emerald-100"
-              : toast.type === "info"
-              ? "border-blue-400/25 bg-blue-500/15 text-blue-100"
-              : "border-red-400/25 bg-red-500/15 text-red-100",
-          ].join(" ")}
-        >
-          {toast.message}
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
+    <div>
+      <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
+        {label}
+      </label>
+
+      {children}
+    </div>
   );
 }
 
 function SidePanel({ children }: { children: React.ReactNode }) {
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 18 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: "easeOut" }}
-      className={`${panelClass} p-5 sm:p-6`}
-    >
+    <section className={`${panelClass} min-w-0 max-w-full p-5 sm:p-6`}>
       {children}
-    </motion.section>
+    </section>
   );
 }
 
@@ -1510,42 +1443,62 @@ function MobileInfo({
         {label}
       </div>
 
-      <div className="mt-1 font-semibold text-white">{value}</div>
+      <div className="mt-1 break-words font-semibold text-white">{value}</div>
     </div>
+  );
+}
+
+function ToastView({ toast }: { toast: Toast | null }) {
+  return (
+    <AnimatePresence>
+      {toast ? (
+        <motion.div
+          initial={{ opacity: 0, y: -18 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -18 }}
+          className={[
+            "fixed right-5 top-5 z-[1200] max-w-[380px] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur",
+            toast.type === "success"
+              ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
+              : toast.type === "info"
+                ? "border-blue-400/20 bg-blue-500/15 text-blue-200"
+                : "border-red-400/20 bg-red-500/15 text-red-200",
+          ].join(" ")}
+        >
+          {toast.message}
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }
 
 function SkeletonHero() {
   return (
-    <div className={`${panelClass} p-5 sm:p-6 lg:p-7`}>
-      <div className="h-3 w-56 animate-pulse rounded bg-white/5" />
-      <div className="mt-4 h-10 w-72 animate-pulse rounded bg-white/5" />
-      <div className="mt-4 h-4 w-full max-w-[680px] animate-pulse rounded bg-white/5" />
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className={`${softPanelClass} p-5`}>
-            <div className="h-3 w-24 animate-pulse rounded bg-white/5" />
-            <div className="mt-4 h-7 w-32 animate-pulse rounded bg-white/5" />
-            <div className="mt-3 h-3 w-24 animate-pulse rounded bg-white/5" />
-          </div>
+    <div className={`${panelClass} p-6`}>
+      <div className="h-4 w-48 animate-pulse rounded-full bg-white/10" />
+      <div className="mt-5 h-10 w-full max-w-[420px] animate-pulse rounded-full bg-white/10" />
+      <div className="mt-4 h-4 w-full max-w-[620px] animate-pulse rounded-full bg-white/10" />
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-[110px] animate-pulse rounded-[22px] bg-white/[0.05]"
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function SkeletonPanel({ rows = 4 }: { rows?: number }) {
+function SkeletonPanel({ rows }: { rows: number }) {
   return (
-    <div className={`${panelClass} p-5 sm:p-6`}>
-      <div className="h-3 w-32 animate-pulse rounded bg-white/5" />
-      <div className="mt-4 h-6 w-52 animate-pulse rounded bg-white/5" />
-
-      <div className="mt-6 space-y-3">
-        {Array.from({ length: rows }).map((_, i) => (
+    <div className={`${panelClass} p-6`}>
+      <div className="h-4 w-40 animate-pulse rounded-full bg-white/10" />
+      <div className="mt-5 space-y-4">
+        {Array.from({ length: rows }).map((_, index) => (
           <div
-            key={i}
-            className="h-12 animate-pulse rounded-[16px] bg-white/5"
+            key={index}
+            className="h-4 w-full animate-pulse rounded-full bg-white/10"
           />
         ))}
       </div>

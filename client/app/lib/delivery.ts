@@ -115,6 +115,19 @@ export function getDeliveryStatusTone(status?: string) {
   return "border-slate-700/60 bg-slate-900/35 text-slate-300";
 }
 
+export type DeliveryOrderItem = {
+  productId?: string;
+  variantId?: string;
+  name?: string;
+  size?: string;
+  color?: string;
+  colorLabel?: string;
+  sku?: string;
+  image?: string;
+  qty?: number;
+  pricePaisa?: number;
+};
+
 export type DeliveryOrder = {
   id: string;
   _id?: string;
@@ -149,15 +162,7 @@ export type DeliveryOrder = {
     lat?: number;
     lng?: number;
   };
-  items?: Array<{
-    productId?: string;
-    name?: string;
-    size?: string;
-    color?: string;
-    colorLabel?: string;
-    qty?: number;
-    pricePaisa?: number;
-  }>;
+  items?: DeliveryOrderItem[];
   deliveryAssignment?: {
     deliveryManId?: string;
     name?: string;

@@ -11,6 +11,23 @@ import {
   sendDeliveryInviteEmail,
 } from "../../../services/invite.service";
 
+function mapDeliveryItems(items: any[]) {
+  if (!Array.isArray(items)) return [];
+
+  return items.map((it: any) => ({
+    productId: it?.productId?.toString?.() || String(it?.productId || ""),
+    variantId: it?.variantId?.toString?.() || String(it?.variantId || ""),
+    name: String(it?.name || ""),
+    size: String(it?.size || ""),
+    color: String(it?.color || ""),
+    colorLabel: String(it?.colorLabel || ""),
+    sku: String(it?.sku || ""),
+    image: String(it?.image || ""),
+    qty: Number(it?.qty || 0),
+    pricePaisa: Number(it?.pricePaisa || 0),
+  }));
+}
+
 function mapDeliveryOrder(o: any) {
   return {
     id: String(o._id),
@@ -30,7 +47,7 @@ function mapDeliveryOrder(o: any) {
           phone: o.customer.phone || "",
         }
       : { id: "", name: "", email: "", phone: "" },
-    items: Array.isArray(o.items) ? o.items : [],
+    items: mapDeliveryItems(o.items),
     address: o.address || null,
     shippingPaisa: Number(o.shippingPaisa || 0),
     discountPaisa: Number(o.discountPaisa || 0),

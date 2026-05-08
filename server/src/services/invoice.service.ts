@@ -8,6 +8,7 @@ export type InvoiceItem = {
   size?: string;
   color?: string;
   colorLabel?: string;
+  sku?: string;
   qty: number;
   pricePaisa: number;
 };
@@ -45,6 +46,7 @@ function moneyFromPaisa(paisa: number) {
 function buildVariantText(item: InvoiceItem) {
   const parts: string[] = [];
 
+  if (item.sku) parts.push(`SKU: ${item.sku}`);
   if (item.size) parts.push(`Size: ${item.size}`);
   if (item.colorLabel) parts.push(`Color: ${item.colorLabel}`);
   else if (item.color) parts.push(`Color: ${item.color}`);
@@ -56,7 +58,10 @@ export async function generateInvoicePdf(data: InvoiceData) {
   const invoicesDir = path.join(process.cwd(), "tmp", "invoices");
   fs.mkdirSync(invoicesDir, { recursive: true });
 
-  const safeInvoiceNo = String(data.invoiceNo || "invoice").replace(/[\\/:*?"<>|]/g, "-");
+  const safeInvoiceNo = String(data.invoiceNo || "invoice").replace(
+    /[\\/:*?"<>|]/g,
+    "-"
+  );
   const fileName = `${safeInvoiceNo}.pdf`;
   const filePath = path.join(invoicesDir, fileName);
 
@@ -64,8 +69,9 @@ export async function generateInvoicePdf(data: InvoiceData) {
   const stream = fs.createWriteStream(filePath);
   doc.pipe(stream);
 
-  // ---------------- WATERMARK (FADED LOGO CENTER) ----------------
   const logoPath = path.join(process.cwd(), "public", "assets", "ufo-logo.png");
+
+  // ---------------- WATERMARK ----------------
   if (fs.existsSync(logoPath)) {
     const wmSize = 380;
     const wmX = (doc.page.width - wmSize) / 2;
@@ -78,7 +84,7 @@ export async function generateInvoicePdf(data: InvoiceData) {
     doc.restore();
   }
 
-  // ---------------- LOGO + BRAND (LEFT) ----------------
+  // ---------------- LOGO + BRAND ----------------
   if (fs.existsSync(logoPath)) {
     doc.image(logoPath, 50, 45, { width: 70 });
   }
@@ -92,8 +98,10 @@ export async function generateInvoicePdf(data: InvoiceData) {
     .text("Email: ufocollection075@gmail.com", 140, 90)
     .text("Phone: +977-9804880758", 140, 105);
 
-  // ---------------- INVOICE (RIGHT) ----------------
-  doc.fillColor("#000").fontSize(18).text("INVOICE", 350, 50, { align: "right" });
+  // ---------------- INVOICE RIGHT ----------------
+  doc.fillColor("#000").fontSize(18).text("INVOICE", 350, 50, {
+    align: "right",
+  });
 
   doc
     .fontSize(10)
@@ -129,13 +137,19 @@ export async function generateInvoicePdf(data: InvoiceData) {
 
   // ---------------- ITEMS TABLE ----------------
   const tableTop = doc.y;
-  const cols = { item: 50, variant: 260, price: 390, qty: 450, total: 500 };
+  const cols = {
+    item: 50,
+    variant: 240,
+    price: 385,
+    qty: 448,
+    total: 500,
+  };
 
   doc.fillColor("#000").fontSize(10);
   doc.text("Item", cols.item, tableTop);
-  doc.text("Variant", cols.variant, tableTop);
-  doc.text("Price", cols.price, tableTop, { width: 80, align: "right" });
-  doc.text("Qty", cols.qty, tableTop, { width: 40, align: "right" });
+  doc.text("Variant / SKU", cols.variant, tableTop);
+  doc.text("Price", cols.price, tableTop, { width: 75, align: "right" });
+  doc.text("Qty", cols.qty, tableTop, { width: 35, align: "right" });
   doc.text("Total", cols.total, tableTop, { width: 80, align: "right" });
 
   doc.moveTo(50, tableTop + 15).lineTo(545, tableTop + 15).stroke();
@@ -144,22 +158,43 @@ export async function generateInvoicePdf(data: InvoiceData) {
 
   for (const it of data.items) {
     const variant = buildVariantText(it);
-    const lineTotalPaisa = (it.pricePaisa || 0) * (it.qty || 0);
+    const lineTotalPaisa = Number(it.pricePaisa || 0) * Number(it.qty || 0);
+
+    const rowHeight = Math.max(
+      34,
+      Math.ceil(String(variant).length / 38) * 13 + 12
+    );
+
+    if (y + rowHeight > 720) {
+      doc.addPage();
+      y = 60;
+
+      doc.fillColor("#000").fontSize(10);
+      doc.text("Item", cols.item, y);
+      doc.text("Variant / SKU", cols.variant, y);
+      doc.text("Price", cols.price, y, { width: 75, align: "right" });
+      doc.text("Qty", cols.qty, y, { width: 35, align: "right" });
+      doc.text("Total", cols.total, y, { width: 80, align: "right" });
+      doc.moveTo(50, y + 15).lineTo(545, y + 15).stroke();
+
+      y += 25;
+    }
 
     doc.fillColor("#111").fontSize(10);
-    doc.text(it.name, cols.item, y, { width: 190 });
+    doc.text(it.name || "-", cols.item, y, { width: 175 });
 
-    doc.fillColor("#333");
-    doc.text(variant, cols.variant, y, { width: 110 });
+    doc.fillColor("#333").fontSize(8.5);
+    doc.text(variant, cols.variant, y, { width: 135 });
 
+    doc.fontSize(10);
     doc.text(moneyFromPaisa(it.pricePaisa), cols.price, y, {
-      width: 80,
+      width: 75,
       align: "right",
       lineBreak: false,
     });
 
-    doc.text(String(it.qty), cols.qty, y, {
-      width: 40,
+    doc.text(String(it.qty || 0), cols.qty, y, {
+      width: 35,
       align: "right",
       lineBreak: false,
     });
@@ -170,12 +205,7 @@ export async function generateInvoicePdf(data: InvoiceData) {
       lineBreak: false,
     });
 
-    y += 20;
-
-    if (y > 720) {
-      doc.addPage();
-      y = 60;
-    }
+    y += rowHeight;
   }
 
   doc.moveTo(50, y + 5).lineTo(545, y + 5).stroke();
@@ -185,6 +215,11 @@ export async function generateInvoicePdf(data: InvoiceData) {
   const amountX = 445;
   const amountW = 100;
   let ty = y + 20;
+
+  if (ty > 650) {
+    doc.addPage();
+    ty = 70;
+  }
 
   doc.fillColor("#000").fontSize(10);
 
@@ -220,7 +255,13 @@ export async function generateInvoicePdf(data: InvoiceData) {
   });
 
   // ---------------- PAYMENT DETAILS ----------------
-  const paymentY = ty + 70;
+  let paymentY = ty + 70;
+
+  if (paymentY > 690) {
+    doc.addPage();
+    paymentY = 70;
+  }
+
   doc.fillColor("#000").fontSize(11).text("Payment Details:", labelX, paymentY);
 
   doc
@@ -236,8 +277,9 @@ export async function generateInvoicePdf(data: InvoiceData) {
   doc
     .fontSize(9)
     .fillColor("#666")
-    .text("Note: This is a system-generated invoice.", labelX, 740, {
-      width: 200,
+    .text("Note: This is a system-generated invoice.", 50, 770, {
+      width: 500,
+      align: "center",
     });
 
   doc.end();

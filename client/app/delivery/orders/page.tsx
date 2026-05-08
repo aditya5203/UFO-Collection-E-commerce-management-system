@@ -52,6 +52,64 @@ function StatusPill({ children }: { children: React.ReactNode }) {
   );
 }
 
+function OrderItemsPreview({ item }: { item: DeliveryOrder }) {
+  const items = Array.isArray(item.items) ? item.items : [];
+
+  if (!items.length) {
+    return <span className="text-[12px] text-[#7f879f]">No items</span>;
+  }
+
+  const first = items[0];
+  const totalQty = items.reduce((sum, it) => sum + Number(it.qty || 0), 0);
+
+  return (
+    <div className="max-w-[260px]">
+      <div className="line-clamp-1 font-semibold text-white">
+        {safeStr(first.name) || "Product"}
+      </div>
+
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[#a7aec4]">
+        <span>
+          {safeStr(first.colorLabel) || safeStr(first.color) || "Color"}
+        </span>
+        <span>•</span>
+        <span>{safeStr(first.size) || "Size"}</span>
+        <span>•</span>
+        <span>Qty {Number(first.qty || 0)}</span>
+      </div>
+
+      {first.sku ? (
+        <div className="mt-1 max-w-[240px] truncate text-[10px] uppercase tracking-[0.12em] text-[#7f879f]">
+          SKU: {first.sku}
+        </div>
+      ) : null}
+
+      <div className="mt-2 flex flex-wrap gap-2">
+        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a7aec4]">
+          {items.length} product{items.length === 1 ? "" : "s"}
+        </span>
+
+        <span className="rounded-full border border-[#8b5cf6]/20 bg-[#8b5cf6]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d6c7ff]">
+          {totalQty} item{totalQty === 1 ? "" : "s"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function getMobileItemSubValue(item: DeliveryOrder) {
+  const first = item.items?.[0];
+
+  if (!first) return undefined;
+
+  const color = safeStr(first.colorLabel) || safeStr(first.color) || "Color";
+  const size = safeStr(first.size) || "Size";
+  const qty = Number(first.qty || 0);
+  const sku = first.sku ? ` • SKU: ${first.sku}` : "";
+
+  return `${color} • ${size} • Qty ${qty}${sku}`;
+}
+
 export default function DeliveryOrdersPage() {
   const [rows, setRows] = React.useState<DeliveryOrder[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -132,6 +190,19 @@ export default function DeliveryOrdersPage() {
       if (!search) return true;
 
       const orderId = safeStr(item.id || item._id || "");
+
+      const itemSearchText = (item.items || [])
+        .map((it) =>
+          [
+            safeStr(it.name),
+            safeStr(it.sku),
+            safeStr(it.size),
+            safeStr(it.color),
+            safeStr(it.colorLabel),
+          ].join(" ")
+        )
+        .join(" ");
+
       const searchable = [
         orderId,
         safeStr(item.orderCode),
@@ -141,6 +212,7 @@ export default function DeliveryOrdersPage() {
         getCity(item),
         status,
         formatNPR(item.totalPaisa, item.total),
+        itemSearchText,
       ]
         .join(" ")
         .toLowerCase();
@@ -175,7 +247,7 @@ export default function DeliveryOrdersPage() {
 
               <p className="mt-2 max-w-[650px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
                 View, search, filter, and manage all delivery orders assigned to
-                you.
+                you with product variant details.
               </p>
 
               <div className="mt-5 flex flex-wrap gap-3">
@@ -188,7 +260,10 @@ export default function DeliveryOrdersPage() {
                     (statusCounts["Out for Delivery"] || 0)
                   }
                 />
-                <MiniMetric label="Delivered" value={statusCounts.Delivered || 0} />
+                <MiniMetric
+                  label="Delivered"
+                  value={statusCounts.Delivered || 0}
+                />
               </div>
             </div>
 
@@ -220,7 +295,7 @@ export default function DeliveryOrdersPage() {
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by order ID, customer, phone, city, area..."
+              placeholder="Search by order ID, customer, SKU, product, size, color, city..."
               className={inputClass}
             />
 
@@ -301,12 +376,13 @@ export default function DeliveryOrdersPage() {
           </div>
 
           <div className="hidden overflow-x-auto lg:block">
-            <table className="w-full min-w-[1180px] border-collapse text-[13px]">
+            <table className="w-full min-w-[1380px] border-collapse text-[13px]">
               <thead>
                 <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
                   <th className="px-5 py-4 font-medium">Order ID</th>
                   <th className="px-5 py-4 font-medium">Customer</th>
                   <th className="px-5 py-4 font-medium">Address</th>
+                  <th className="px-5 py-4 font-medium">Items / Variants</th>
                   <th className="px-5 py-4 font-medium">Status</th>
                   <th className="px-5 py-4 font-medium">Total</th>
                   <th className="px-5 py-4 font-medium">Assigned</th>
@@ -360,6 +436,10 @@ export default function DeliveryOrdersPage() {
                         </td>
 
                         <td className="px-5 py-4">
+                          <OrderItemsPreview item={item} />
+                        </td>
+
+                        <td className="px-5 py-4">
                           <StatusPill>{status}</StatusPill>
                         </td>
 
@@ -384,7 +464,7 @@ export default function DeliveryOrdersPage() {
                   })
                 ) : (
                   <EmptyTable
-                    colSpan={7}
+                    colSpan={8}
                     title="No delivery orders found"
                     description={
                       query
@@ -450,6 +530,16 @@ export default function DeliveryOrdersPage() {
                       />
 
                       <MobileInfo
+                        label="Items"
+                        value={
+                          item.items?.length
+                            ? safeStr(item.items[0]?.name) || "Product"
+                            : "No items"
+                        }
+                        subValue={getMobileItemSubValue(item)}
+                      />
+
+                      <MobileInfo
                         label="Total"
                         value={formatNPR(item.totalPaisa, item.total)}
                       />
@@ -511,7 +601,7 @@ function TableSkeleton() {
     <>
       {Array.from({ length: 6 }).map((_, index) => (
         <tr key={index} className="border-t border-[#26293a]">
-          {Array.from({ length: 7 }).map((__, cellIndex) => (
+          {Array.from({ length: 8 }).map((__, cellIndex) => (
             <td key={cellIndex} className="px-5 py-4">
               <div className="h-4 w-full max-w-[150px] animate-pulse rounded-full bg-white/10" />
             </td>

@@ -390,9 +390,13 @@ export const orderController = {
       const { id } = req.params;
 
       const isObjId = mongoose.Types.ObjectId.isValid(id);
+      const normalizedCode = String(id || "").startsWith("#")
+        ? String(id || "")
+        : `#${String(id || "")}`;
+
       const order: any = isObjId
         ? await Order.findById(id).lean()
-        : await Order.findOne({ orderCode: id }).lean();
+        : await Order.findOne({ orderCode: normalizedCode }).lean();
 
       if (!order) {
         res.status(404).json({ message: "Order not found" });
@@ -434,10 +438,11 @@ export const orderController = {
         },
         addressText: buildAddressText(order.address),
         items: (order.items || []).map((it: any) => ({
-          name: it.colorLabel
-            ? `${it.name} (${it.colorLabel}${it.size ? `, ${it.size}` : ""})`
-            : it.name,
+          name: it.name || "",
           size: it.size || "",
+          color: it.color || "",
+          colorLabel: it.colorLabel || "",
+          sku: it.sku || "",
           qty: Number(it.qty || 0),
           pricePaisa: Number(it.pricePaisa || 0),
         })),
