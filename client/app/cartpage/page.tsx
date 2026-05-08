@@ -9,14 +9,18 @@ import MainFooter from "@/components/layout/MainFooter";
 
 type CartItem = {
   id: string;
+  productId?: string;
+  variantId?: string;
   name: string;
   size: string;
   color: string;
   colorLabel: string;
+  sku?: string;
   price: number;
   qty: number;
   image: string;
   stock?: number;
+  totalProductStock?: number;
 };
 
 type CollectedCouponRow = {
@@ -103,62 +107,64 @@ function normalizeColorKey(color: string) {
   return String(color || "").trim().toLowerCase();
 }
 
-function getColorSwatchClass(color: string) {
-  const c = normalizeColorKey(color);
-
-  const map: Record<string, string> = {
-    black: "bg-black",
-    "#000000": "bg-black",
-    "#16191f": "bg-black",
-    "#111827": "bg-black",
-    white: "bg-white",
-    "#ffffff": "bg-white",
-    red: "bg-red-500",
-    "#ef4444": "bg-red-500",
-    blue: "bg-blue-500",
-    "#3b82f6": "bg-blue-500",
-    navy: "bg-blue-900",
-    "navy blue": "bg-blue-900",
-    "#000080": "bg-blue-900",
-    green: "bg-green-500",
-    "#22c55e": "bg-green-500",
-    yellow: "bg-yellow-400",
-    "#eab308": "bg-yellow-400",
-    gray: "bg-gray-500",
-    grey: "bg-gray-500",
-    "#808080": "bg-gray-500",
-    "#9ca3af": "bg-gray-400",
-    pink: "bg-pink-500",
-    "#ec4899": "bg-pink-500",
-    purple: "bg-purple-500",
-    "#a855f7": "bg-purple-500",
-    orange: "bg-orange-500",
-    "#f97316": "bg-orange-500",
-  };
-
-  return map[c] || "bg-neutral-800";
-}
-
 function hasRealStockValue(stock: unknown) {
   return typeof stock === "number" && Number.isFinite(stock);
+}
+
+function getCartItemKey(
+  item: Pick<CartItem, "id" | "variantId" | "size" | "color">
+) {
+  if (item.variantId) return `variant:${item.variantId}`;
+
+  return `product:${item.id}|size:${item.size}|color:${normalizeColorKey(
+    item.color
+  )}`;
 }
 
 function sanitizeCartItems(input: unknown): CartItem[] {
   if (!Array.isArray(input)) return [];
 
   return input
-    .map((item: any) => ({
-      id: String(item?.id || "").trim(),
-      name: String(item?.name || "Product").trim(),
-      size: String(item?.size || "").trim(),
-      color: String(item?.color || "").trim(),
-      colorLabel: String(item?.colorLabel || "").trim(),
-      price: Math.max(0, Number(item?.price || 0)),
-      qty: Math.max(1, Math.min(99, Number(item?.qty || 1))),
-      image: String(item?.image || "").trim(),
-      stock: hasRealStockValue(item?.stock) ? Number(item.stock) : undefined,
-    }))
+    .map((item: any) => {
+      const productId = String(item?.productId || item?.id || "").trim();
+      const variantId = String(item?.variantId || "").trim();
+
+      return {
+        id: productId,
+        productId,
+        variantId: variantId || undefined,
+        name: String(item?.name || "Product").trim(),
+        size: String(item?.size || "").trim().toUpperCase(),
+        color: String(item?.color || "").trim(),
+        colorLabel: String(item?.colorLabel || "").trim(),
+        sku: String(item?.sku || "").trim() || undefined,
+        price: Math.max(0, Number(item?.price || 0)),
+        qty: Math.max(1, Math.min(99, Number(item?.qty || 1))),
+        image: String(item?.image || "").trim(),
+        stock: hasRealStockValue(item?.stock) ? Number(item.stock) : undefined,
+        totalProductStock: hasRealStockValue(item?.totalProductStock)
+          ? Number(item.totalProductStock)
+          : undefined,
+      };
+    })
     .filter((item) => item.id && item.price >= 0);
+}
+
+function ColorSwatch({ color }: { color: string }) {
+  const ref = React.useRef<HTMLSpanElement | null>(null);
+
+  React.useEffect(() => {
+    if (!ref.current) return;
+    ref.current.style.backgroundColor = color || "#16191f";
+  }, [color]);
+
+  return (
+    <span
+      ref={ref}
+      className="h-4 w-4 shrink-0 rounded-full border border-[#3a3f58]"
+      aria-hidden="true"
+    />
+  );
 }
 
 export default function CartPage() {
@@ -291,7 +297,8 @@ export default function CartPage() {
     (couponCode: string) => ({
       couponCode,
       items: items.map((i) => ({
-        productId: i.id,
+        productId: i.productId || i.id,
+        variantId: i.variantId || null,
         qty: i.qty,
       })),
       shippingPaisa: shipping * 100,
@@ -455,15 +462,8 @@ export default function CartPage() {
     return () => window.clearTimeout(timer);
   }, [autoApplyBestCoupon]);
 
-  const updateQty = (
-    id: string,
-    size: string,
-    color: string,
-    qty: number
-  ) => {
-    const item = items.find(
-      (it) => it.id === id && it.size === size && it.color === color
-    );
+  const updateQty = (itemKey: string, qty: number) => {
+    const item = items.find((it) => getCartItemKey(it) === itemKey);
 
     const hasKnownStock = hasRealStockValue(item?.stock);
     const stock = Number(item?.stock || 0);
@@ -473,28 +473,24 @@ export default function CartPage() {
       : Math.max(1, Math.min(99, qty || 1));
 
     if (hasKnownStock && stock <= 0) {
-      showToast("error", "This item is out of stock. Please remove it.");
+      showToast(
+        "error",
+        "This selected variant is out of stock. Please remove it."
+      );
     } else if (hasKnownStock && qty > stock) {
       showToast("error", `Only ${stock} item(s) available in stock.`);
     }
 
     const next = items.map((it) =>
-      it.id === id && it.size === size && it.color === color
-        ? { ...it, qty: safe }
-        : it
+      getCartItemKey(it) === itemKey ? { ...it, qty: safe } : it
     );
 
     saveCart(next);
   };
 
-  const removeItem = (id: string, size: string, color: string) => {
-    const removedItem = items.find(
-      (it) => it.id === id && it.size === size && it.color === color
-    );
-
-    const next = items.filter(
-      (it) => !(it.id === id && it.size === size && it.color === color)
-    );
+  const removeItem = (itemKey: string) => {
+    const removedItem = items.find((it) => getCartItemKey(it) === itemKey);
+    const next = items.filter((it) => getCartItemKey(it) !== itemKey);
 
     saveCart(next);
 
@@ -522,7 +518,8 @@ export default function CartPage() {
         setAppliedCouponCode("");
         setAppliedCouponLabel("");
         setCouponMessage(
-          result.json?.message || "Coupon is invalid or not applicable for this cart."
+          result.json?.message ||
+            "Coupon is invalid or not applicable for this cart."
         );
         showToast("error", "Coupon failed.");
         return;
@@ -588,6 +585,19 @@ export default function CartPage() {
       currency: "NPR",
       updatedAt: new Date().toISOString(),
       couponCode: appliedCouponCode || discount.trim().toUpperCase() || null,
+      items: items.map((item) => ({
+        productId: item.productId || item.id,
+        variantId: item.variantId || null,
+        name: item.name,
+        size: item.size,
+        color: item.color,
+        colorLabel: item.colorLabel,
+        sku: item.sku || null,
+        price: item.price,
+        qty: item.qty,
+        image: item.image,
+        stock: item.stock ?? null,
+      })),
     };
 
     localStorage.setItem(ORDER_SUMMARY_KEY, JSON.stringify(orderSummary));
@@ -691,6 +701,8 @@ export default function CartPage() {
                 </div>
 
                 {items.map((it) => {
+                  const itemKey = getCartItemKey(it);
+                  const productId = it.productId || it.id;
                   const hasKnownStock = hasRealStockValue(it.stock);
                   const stock = Number(it.stock || 0);
                   const qty = Number(it.qty || 0);
@@ -707,7 +719,7 @@ export default function CartPage() {
 
                   return (
                     <div
-                      key={`${it.id}-${it.size}-${it.color}`}
+                      key={itemKey}
                       className={`border-b px-4 py-5 last:border-0 sm:px-5 md:px-6 md:py-6 ${
                         itemHasStockIssue
                           ? "border-red-400/20 bg-red-500/5"
@@ -717,7 +729,7 @@ export default function CartPage() {
                       <div className="hidden grid-cols-[1.5fr_0.65fr_0.85fr_0.9fr_0.9fr_0.35fr] items-center gap-4 md:grid">
                         <div className="flex min-w-0 items-center gap-4">
                           <Link
-                            href={`/product/${it.id}`}
+                            href={`/product/${productId}`}
                             className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[18px] border border-[#2b2f45] bg-[#0d0f17]"
                           >
                             <Image
@@ -733,7 +745,7 @@ export default function CartPage() {
 
                           <div className="min-w-0">
                             <Link
-                              href={`/product/${it.id}`}
+                              href={`/product/${productId}`}
                               className="block truncate font-medium text-white transition hover:text-[#d6c7ff]"
                             >
                               {it.name}
@@ -743,6 +755,12 @@ export default function CartPage() {
                               {formatNpr(it.price)} × {it.qty} ={" "}
                               {formatNpr(itemTotal)}
                             </div>
+
+                            {it.sku ? (
+                              <div className="mt-1 text-[11px] text-[#7f879f]">
+                                SKU: {it.sku}
+                              </div>
+                            ) : null}
 
                             {hasKnownStock ? (
                               <div
@@ -767,11 +785,7 @@ export default function CartPage() {
                         </span>
 
                         <div className="flex items-center gap-2">
-                          <span
-                            className={`h-4 w-4 rounded-full border border-[#3a3f58] ${getColorSwatchClass(
-                              it.color
-                            )}`}
-                          />
+                          <ColorSwatch color={it.color} />
 
                           <span className="truncate text-[#d6dbeb]">
                             {it.colorLabel || "Color"}
@@ -783,12 +797,7 @@ export default function CartPage() {
                             <button
                               type="button"
                               onClick={() =>
-                                updateQty(
-                                  it.id,
-                                  it.size,
-                                  it.color,
-                                  Number(it.qty || 1) - 1
-                                )
+                                updateQty(itemKey, Number(it.qty || 1) - 1)
                               }
                               disabled={hasKnownStock && stock <= 0}
                               className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
@@ -804,12 +813,7 @@ export default function CartPage() {
                             <button
                               type="button"
                               onClick={() =>
-                                updateQty(
-                                  it.id,
-                                  it.size,
-                                  it.color,
-                                  Number(it.qty || 1) + 1
-                                )
+                                updateQty(itemKey, Number(it.qty || 1) + 1)
                               }
                               disabled={hasKnownStock && stock <= 0}
                               className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
@@ -832,7 +836,7 @@ export default function CartPage() {
 
                         <button
                           type="button"
-                          onClick={() => removeItem(it.id, it.size, it.color)}
+                          onClick={() => removeItem(itemKey)}
                           className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:bg-red-500/15"
                           aria-label={`Remove ${it.name} from cart`}
                         >
@@ -848,7 +852,7 @@ export default function CartPage() {
 
                       <div className="flex gap-4 md:hidden">
                         <Link
-                          href={`/product/${it.id}`}
+                          href={`/product/${productId}`}
                           className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[18px] border border-[#2b2f45] bg-[#0d0f17]"
                         >
                           <Image
@@ -864,7 +868,7 @@ export default function CartPage() {
 
                         <div className="min-w-0 flex-1">
                           <Link
-                            href={`/product/${it.id}`}
+                            href={`/product/${productId}`}
                             className="block truncate text-[15px] font-semibold text-white transition hover:text-[#d6c7ff]"
                           >
                             {it.name}
@@ -892,16 +896,18 @@ export default function CartPage() {
                             <div className="flex items-center gap-2">
                               <span>Color:</span>
 
-                              <span
-                                className={`h-4 w-4 rounded-full border border-[#3a3f58] ${getColorSwatchClass(
-                                  it.color
-                                )}`}
-                              />
+                              <ColorSwatch color={it.color} />
 
                               <span className="truncate">
                                 {it.colorLabel || "Color"}
                               </span>
                             </div>
+
+                            {it.sku ? (
+                              <div className="text-[12px] text-[#7f879f]">
+                                SKU: {it.sku}
+                              </div>
+                            ) : null}
 
                             <div className="font-semibold text-[#d6c7ff]">
                               {formatNpr(it.price)} × {it.qty} ={" "}
@@ -914,12 +920,7 @@ export default function CartPage() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  updateQty(
-                                    it.id,
-                                    it.size,
-                                    it.color,
-                                    Number(it.qty || 1) - 1
-                                  )
+                                  updateQty(itemKey, Number(it.qty || 1) - 1)
                                 }
                                 disabled={hasKnownStock && stock <= 0}
                                 className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
@@ -935,12 +936,7 @@ export default function CartPage() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  updateQty(
-                                    it.id,
-                                    it.size,
-                                    it.color,
-                                    Number(it.qty || 1) + 1
-                                  )
+                                  updateQty(itemKey, Number(it.qty || 1) + 1)
                                 }
                                 disabled={hasKnownStock && stock <= 0}
                                 className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
@@ -952,9 +948,7 @@ export default function CartPage() {
 
                             <button
                               type="button"
-                              onClick={() =>
-                                removeItem(it.id, it.size, it.color)
-                              }
+                              onClick={() => removeItem(itemKey)}
                               className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-red-500/15"
                             >
                               Remove

@@ -14,6 +14,7 @@ import HeroFeatureSection from "@/components/home/HeroFeatureSection";
 import HeroAdSlider from "@/components/home/HeroAdSlider";
 import CouponSection from "@/components/home/CouponSection";
 import ServiceCards from "@/components/home/ServiceCards";
+import WeatherOutfitSuggestion from "@/components/home/WeatherOutfitSuggestion";
 
 type ToastType = "success" | "error" | "info";
 
@@ -521,6 +522,8 @@ export default function HomePage() {
             <HeroAdSlider />
           </div>
         </section>
+
+        <WeatherOutfitSuggestion />
 
         <CouponSection showToast={showToast} />
 

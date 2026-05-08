@@ -39,9 +39,11 @@ type CreateOrderBody = {
   couponCode?: string;
   items: Array<{
     productId: string;
+    variantId?: string | null;
     size?: string;
     color?: string;
     colorLabel?: string;
+    sku?: string | null;
     qty: number;
   }>;
   addressId?: string;
@@ -70,6 +72,48 @@ function normalizeNumber(v: any): number | undefined {
   if (v === undefined || v === null || v === "") return undefined;
   const n = typeof v === "number" ? v : Number(v);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function normalizeHexColor(value: any) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeSize(value: any) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function getVariantId(variant: any) {
+  return String(variant?._id || variant?.id || "").trim();
+}
+
+function findMatchingVariant(product: any, item: any) {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+
+  if (!variants.length) return null;
+
+  const requestedVariantId = String(item?.variantId || "").trim();
+  const requestedColor = normalizeHexColor(item?.color);
+  const requestedSize = normalizeSize(item?.size);
+
+  if (
+    requestedVariantId &&
+    mongoose.Types.ObjectId.isValid(requestedVariantId)
+  ) {
+    const byId = variants.find(
+      (variant: any) => getVariantId(variant) === requestedVariantId
+    );
+
+    if (byId) return byId;
+  }
+
+  return (
+    variants.find((variant: any) => {
+      const variantColor = normalizeHexColor(variant?.color);
+      const variantSize = normalizeSize(variant?.size);
+
+      return variantColor === requestedColor && variantSize === requestedSize;
+    }) || null
+  );
 }
 
 async function generateUniqueOrderCode() {
@@ -219,8 +263,7 @@ export const orderService = {
           paymentStatus: (existing as any).paymentStatus,
           orderStatus: (existing as any).orderStatus,
           shipping: {
-            method:
-              (existing as any).shipping?.method || "Standard Shipping",
+            method: (existing as any).shipping?.method || "Standard Shipping",
             estimatedDelivery:
               (existing as any).shipping?.estimatedDelivery ||
               computeEstimatedDeliveryRange(),
@@ -229,50 +272,148 @@ export const orderService = {
       }
     }
 
+    const normalizedItems = body.items.map((item) => ({
+      productId: String(item.productId || "").trim(),
+      variantId: String(item.variantId || "").trim(),
+      size: normalizeSize(item.size),
+      color: normalizeHexColor(item.color),
+      colorLabel: String(item.colorLabel || "").trim(),
+      sku: String(item.sku || "").trim(),
+      qty: Math.max(1, Number(item.qty || 1)),
+    }));
+
     const qtyByProductId = new Map<string, number>();
 
-    for (const it of body.items) {
-      const id = String(it.productId);
-      const qty = Math.max(1, Number(it.qty || 1));
-      qtyByProductId.set(id, (qtyByProductId.get(id) || 0) + qty);
+    for (const it of normalizedItems) {
+      if (!mongoose.Types.ObjectId.isValid(it.productId)) {
+        throw new Error("Invalid product id");
+      }
+
+      qtyByProductId.set(
+        it.productId,
+        (qtyByProductId.get(it.productId) || 0) + it.qty
+      );
     }
 
     const productIds = Array.from(qtyByProductId.keys());
 
     const products = await Product.find({ _id: { $in: productIds } })
-      .select("_id name price stock status image images categoryId")
+      .select("_id name price stock status image images categoryId variants")
       .lean();
 
     const productMap = new Map<string, any>(
       products.map((p: any) => [String(p._id), p])
     );
 
-    for (const [pid, qty] of qtyByProductId.entries()) {
-      const p: any = productMap.get(pid);
+    const stockRequestMap = new Map<
+      string,
+      {
+        productId: string;
+        variantId?: string;
+        qty: number;
+        product: any;
+        variant?: any;
+        isVariantStock: boolean;
+      }
+    >();
 
-      if (!p) {
-        throw new Error(`Product not found: ${pid}`);
+    for (const item of normalizedItems) {
+      const product: any = productMap.get(item.productId);
+
+      if (!product) {
+        throw new Error(`Product not found: ${item.productId}`);
       }
 
-      if (String(p.status) !== "Active") {
-        throw new Error(`Product is inactive: ${p.name}`);
+      if (String(product.status) !== "Active") {
+        throw new Error(`Product is inactive: ${product.name}`);
       }
 
-      if (Number(p.stock || 0) < qty) {
+      const variants = Array.isArray(product.variants) ? product.variants : [];
+      const matchedVariant = findMatchingVariant(product, item);
+
+      if (variants.length > 0) {
+        if (!matchedVariant) {
+          throw new Error(
+            `Variant not found for ${product.name} (${item.colorLabel || item.color}, ${item.size})`
+          );
+        }
+
+        if (matchedVariant.isActive === false) {
+          throw new Error(`Selected variant is inactive: ${product.name}`);
+        }
+
+        const available = Number(matchedVariant.stock || 0);
+
+        if (available < item.qty) {
+          throw new Error(
+            `Out of stock: ${product.name} ${item.colorLabel || item.color} ${item.size} (Available: ${available}, Requested: ${item.qty})`
+          );
+        }
+
+        const key = `variant:${getVariantId(matchedVariant)}`;
+        const existing = stockRequestMap.get(key);
+
+        stockRequestMap.set(key, {
+          productId: item.productId,
+          variantId: getVariantId(matchedVariant),
+          qty: (existing?.qty || 0) + item.qty,
+          product,
+          variant: matchedVariant,
+          isVariantStock: true,
+        });
+
+        continue;
+      }
+
+      const available = Number(product.stock || 0);
+
+      if (available < item.qty) {
         throw new Error(
-          `Out of stock: ${p.name} (Available: ${p.stock}, Requested: ${qty})`
+          `Out of stock: ${product.name} (Available: ${available}, Requested: ${item.qty})`
         );
+      }
+
+      const key = `product:${item.productId}`;
+      const existing = stockRequestMap.get(key);
+
+      stockRequestMap.set(key, {
+        productId: item.productId,
+        qty: (existing?.qty || 0) + item.qty,
+        product,
+        isVariantStock: false,
+      });
+    }
+
+    for (const request of stockRequestMap.values()) {
+      if (request.isVariantStock) {
+        const available = Number(request.variant?.stock || 0);
+
+        if (available < request.qty) {
+          throw new Error(
+            `Out of stock: ${request.product.name} (Available: ${available}, Requested: ${request.qty})`
+          );
+        }
+      } else {
+        const available = Number(request.product?.stock || 0);
+
+        if (available < request.qty) {
+          throw new Error(
+            `Out of stock: ${request.product.name} (Available: ${available}, Requested: ${request.qty})`
+          );
+        }
       }
     }
 
     let subtotalPaisa = 0;
 
-    const orderItems = body.items.map((i) => {
+    const orderItems = normalizedItems.map((i) => {
       const p = productMap.get(String(i.productId));
 
       if (!p) {
         throw new Error(`Product not found: ${i.productId}`);
       }
+
+      const matchedVariant = findMatchingVariant(p, i);
 
       const qty = Math.max(1, Number(i.qty || 1));
       const pricePaisa = Math.round(Number(p.price || 0) * 100);
@@ -285,10 +426,18 @@ export const orderService = {
 
       return {
         productId: new mongoose.Types.ObjectId(i.productId),
+
+        variantId:
+          matchedVariant && getVariantId(matchedVariant)
+            ? new mongoose.Types.ObjectId(getVariantId(matchedVariant))
+            : null,
+
         name: p.name,
-        size: String(i.size || "").trim(),
-        color: String(i.color || "").trim(),
-        colorLabel: String(i.colorLabel || "").trim(),
+        size: i.size || String(matchedVariant?.size || "").trim(),
+        color: i.color || String(matchedVariant?.color || "").trim(),
+        colorLabel: i.colorLabel || "",
+        sku: i.sku || String(matchedVariant?.sku || "").trim(),
+
         qty,
         pricePaisa,
         image,
@@ -307,8 +456,9 @@ export const orderService = {
       const out = await discountService.computeDiscountPaisa({
         userId,
         couponCode,
-        items: body.items.map((x) => ({
+        items: normalizedItems.map((x) => ({
           productId: x.productId,
+          variantId: x.variantId || null,
           qty: x.qty,
         })),
         productMap,
@@ -330,15 +480,37 @@ export const orderService = {
       }
     }
 
-    const bulkOps = Array.from(qtyByProductId.entries()).map(([pid, qty]) => ({
-      updateOne: {
-        filter: {
-          _id: new mongoose.Types.ObjectId(pid),
-          stock: { $gte: qty },
+    const bulkOps = Array.from(stockRequestMap.values()).map((request) => {
+      if (request.isVariantStock && request.variantId) {
+        return {
+          updateOne: {
+            filter: {
+              _id: new mongoose.Types.ObjectId(request.productId),
+              "variants._id": new mongoose.Types.ObjectId(request.variantId),
+              "variants.stock": { $gte: request.qty },
+              "variants.isActive": { $ne: false },
+              stock: { $gte: request.qty },
+            },
+            update: {
+              $inc: {
+                stock: -request.qty,
+                "variants.$.stock": -request.qty,
+              },
+            },
+          },
+        };
+      }
+
+      return {
+        updateOne: {
+          filter: {
+            _id: new mongoose.Types.ObjectId(request.productId),
+            stock: { $gte: request.qty },
+          },
+          update: { $inc: { stock: -request.qty } },
         },
-        update: { $inc: { stock: -qty } },
-      },
-    }));
+      };
+    });
 
     const bulkRes = await Product.bulkWrite(bulkOps);
 
@@ -507,7 +679,6 @@ export const orderService = {
       paymentMethod: body.paymentMethod,
       paymentStatus: initialPaymentStatus,
 
-      // New orders are confirmed automatically after checkout.
       orderStatus: "Confirmed",
 
       paymentRef: body.paymentRef || null,
@@ -518,7 +689,6 @@ export const orderService = {
       },
       deliveryAssignment: null,
 
-      // Timeline starts from Confirmed immediately.
       confirmedAt: now,
 
       shippedAt: null,
@@ -551,7 +721,10 @@ export const orderService = {
     try {
       const io = getIO();
 
-      io.to("admins").emit("order:updated", buildOrderCreatedPayload(doc, userId));
+      io.to("admins").emit(
+        "order:updated",
+        buildOrderCreatedPayload(doc, userId)
+      );
     } catch (e: any) {
       console.log("New order socket emit failed (ignored):", e?.message);
     }
@@ -593,8 +766,7 @@ export const orderService = {
       orderStatus: doc.orderStatus,
       shipping: {
         method: doc.shipping?.method || "Standard Shipping",
-        estimatedDelivery:
-          doc.shipping?.estimatedDelivery || estimatedDelivery,
+        estimatedDelivery: doc.shipping?.estimatedDelivery || estimatedDelivery,
       },
     };
   },
@@ -654,6 +826,17 @@ export const orderService = {
         : { id: "", name: "", email: "", phone: "" },
       shipping: o.shipping || null,
       address: o.address || null,
+      items: Array.isArray(o.items)
+        ? o.items.map((it: any) => ({
+            ...it,
+            productId: it?.productId ? String(it.productId) : "",
+            variantId: it?.variantId ? String(it.variantId) : "",
+            size: it?.size || "",
+            color: it?.color || "",
+            colorLabel: it?.colorLabel || "",
+            sku: it?.sku || "",
+          }))
+        : [],
       deliveryAssignment: o.deliveryAssignment
         ? {
             ...o.deliveryAssignment,
@@ -876,21 +1059,10 @@ export const orderService = {
           nextDeliveryAssignment.isOtpVerified = false;
           nextDeliveryAssignment.otpVerifiedAt = null;
 
-          if (!found.inTransitAt) {
-            update.inTransitAt = now;
-          }
-
-          if (!found.shippedAt) {
-            update.shippedAt = now;
-          }
-
-          if (!found.confirmedAt) {
-            update.confirmedAt = now;
-          }
-
-          if (!update.orderStatus) {
-            update.orderStatus = "Transit";
-          }
+          if (!found.inTransitAt) update.inTransitAt = now;
+          if (!found.shippedAt) update.shippedAt = now;
+          if (!found.confirmedAt) update.confirmedAt = now;
+          if (!update.orderStatus) update.orderStatus = "Transit";
         }
 
         if (
@@ -907,25 +1079,11 @@ export const orderService = {
             nextDeliveryAssignment.pickedUpAt = now;
           }
 
-          if (!found.deliveredAt) {
-            update.deliveredAt = now;
-          }
-
-          if (!found.inTransitAt) {
-            update.inTransitAt = now;
-          }
-
-          if (!found.shippedAt) {
-            update.shippedAt = now;
-          }
-
-          if (!found.confirmedAt) {
-            update.confirmedAt = now;
-          }
-
-          if (!update.orderStatus) {
-            update.orderStatus = "Delivered";
-          }
+          if (!found.deliveredAt) update.deliveredAt = now;
+          if (!found.inTransitAt) update.inTransitAt = now;
+          if (!found.shippedAt) update.shippedAt = now;
+          if (!found.confirmedAt) update.confirmedAt = now;
+          if (!update.orderStatus) update.orderStatus = "Delivered";
         }
 
         if (
@@ -1190,8 +1348,12 @@ export const orderService = {
       items: Array.isArray(o.items)
         ? o.items.map((it: any) => ({
             ...it,
+            productId: it?.productId ? String(it.productId) : "",
+            variantId: it?.variantId ? String(it.variantId) : "",
             color: it?.color || "",
             colorLabel: it?.colorLabel || "",
+            size: it?.size || "",
+            sku: it?.sku || "",
           }))
         : [],
       address: o.address
@@ -1261,10 +1423,13 @@ export const orderService = {
     const items = (Array.isArray(o.items) ? o.items : []).map(
       (it: any, idx: number) => ({
         id: String(it.productId || idx),
+        productId: it.productId ? String(it.productId) : "",
+        variantId: it.variantId ? String(it.variantId) : "",
         name: it.name || "",
         size: it.size || "",
         color: it.color || "",
         colorLabel: it.colorLabel || "",
+        sku: it.sku || "",
         qty: Number(it.qty || 0),
         price: Math.round(Number(it.pricePaisa || 0) / 100),
         image: it.image || "",
@@ -1360,10 +1525,13 @@ export const orderService = {
     const items = (Array.isArray(o.items) ? o.items : []).map(
       (it: any, idx: number) => ({
         id: String(it.productId || idx),
+        productId: it.productId ? String(it.productId) : "",
+        variantId: it.variantId ? String(it.variantId) : "",
         name: it.name || "",
         size: it.size || "",
         color: it.color || "",
         colorLabel: it.colorLabel || "",
+        sku: it.sku || "",
         qty: Number(it.qty || 0),
         price: Math.round(Number(it.pricePaisa || 0) / 100),
         image: it.image || "",

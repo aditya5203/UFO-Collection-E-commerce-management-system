@@ -14,10 +14,19 @@ export type PaymentMethod = "COD" | "Khalti" | "eSewa" | "Fonepay";
 const orderItemSchema = new Schema(
   {
     productId: { type: Schema.Types.ObjectId, ref: "Product", required: false },
+
+    variantId: {
+      type: Schema.Types.ObjectId,
+      required: false,
+      default: null,
+    },
+
     name: { type: String, required: true, trim: true },
     size: { type: String, required: false, default: "" },
     color: { type: String, required: false, default: "" },
     colorLabel: { type: String, required: false, default: "" },
+    sku: { type: String, required: false, default: "" },
+
     image: { type: String, required: false, default: "" },
     qty: { type: Number, required: true, min: 1 },
     pricePaisa: { type: Number, required: true, min: 0 },
@@ -150,7 +159,14 @@ const orderSchema = new Schema(
 
     orderStatus: {
       type: String,
-      enum: ["Delivered", "Transit", "Shipped", "Confirmed", "Pending", "Cancelled"],
+      enum: [
+        "Delivered",
+        "Transit",
+        "Shipped",
+        "Confirmed",
+        "Pending",
+        "Cancelled",
+      ],
       default: "Pending",
       index: true,
     },

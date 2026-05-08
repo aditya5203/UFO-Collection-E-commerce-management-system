@@ -11,6 +11,15 @@ import MainFooter from "@/components/layout/MainFooter";
 
 type CustomerType = "Men" | "Women" | "Boys" | "Girls";
 type ToastType = "success" | "error" | "info";
+type WeatherMood = "cold" | "mild" | "hot" | "rainy";
+
+type WeatherCollectionContext = {
+  mood: WeatherMood;
+  city: string;
+  title: string;
+  message: string;
+  types: string[];
+};
 
 type Product = {
   id: string;
@@ -110,6 +119,40 @@ const productGridMotion = {
 const productCardMotion = {
   hidden: { opacity: 0, y: 24, scale: 0.97 },
   show: { opacity: 1, y: 0, scale: 1 },
+};
+
+const weatherCollectionMap: Record<
+  WeatherMood,
+  {
+    title: string;
+    message: string;
+    types: string[];
+  }
+> = {
+  cold: {
+    title: "Cold Weather Collection",
+    message:
+      "Showing warm outfit picks like hoodies, jackets, sweaters, and sneakers.",
+    types: ["Hoodie", "Jacket", "Sweater", "Sneakers"],
+  },
+  mild: {
+    title: "Comfort Weather Collection",
+    message:
+      "Showing relaxed daily picks like hoodies, shirts, joggers, and sneakers.",
+    types: ["Hoodie", "Formal Shirt", "Joggers", "Sneakers"],
+  },
+  hot: {
+    title: "Warm Weather Collection",
+    message:
+      "Showing breathable outfit picks like t-shirts, shorts, caps, and light shoes.",
+    types: ["T-Shirt", "Shorts", "Cap", "Light Shoes"],
+  },
+  rainy: {
+    title: "Rain Ready Collection",
+    message:
+      "Showing weather-friendly picks like jackets, hoodies, dark pants, and waterproof shoes.",
+    types: ["Jacket", "Hoodie", "Dark Pants", "Waterproof Shoes"],
+  },
 };
 
 function norm(s: unknown) {
@@ -483,6 +526,8 @@ export default function CollectionPage() {
   >([]);
   const [selectedTypes, setSelectedTypes] = React.useState<string[]>([]);
   const [search, setSearch] = React.useState("");
+  const [weatherContext, setWeatherContext] =
+    React.useState<WeatherCollectionContext | null>(null);
 
   const searchRef = React.useRef<HTMLInputElement | null>(null);
   const recognitionRef = React.useRef<any>(null);
@@ -517,6 +562,7 @@ export default function CollectionPage() {
     setSelectedCustomers([]);
     setSelectedTypes([]);
     setSearch("");
+    setWeatherContext(null);
   }, []);
 
   const clearFiltersWithToast = React.useCallback(() => {
@@ -531,6 +577,44 @@ export default function CollectionPage() {
       }
     };
   }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const weatherParam = norm(params.get("weather"));
+    const cityParam = String(params.get("city") || "").trim();
+
+    if (!weatherParam) return;
+
+    if (
+      weatherParam !== "cold" &&
+      weatherParam !== "mild" &&
+      weatherParam !== "hot" &&
+      weatherParam !== "rainy"
+    ) {
+      return;
+    }
+
+    const weatherMood = weatherParam as WeatherMood;
+    const config = weatherCollectionMap[weatherMood];
+
+    setWeatherContext({
+      mood: weatherMood,
+      city: cityParam || "your city",
+      title: config.title,
+      message: config.message,
+      types: config.types,
+    });
+
+    setSelectedTypes((prev) => [...new Set([...prev, ...config.types])]);
+    setSortValue("newest");
+
+    showToast(
+      `Weather outfit picks loaded for ${cityParam || "your city"}.`,
+      "success"
+    );
+  }, [showToast]);
 
   const fetchAllProducts = React.useCallback(async () => {
     try {
@@ -557,7 +641,9 @@ export default function CollectionPage() {
 
       const mappedProducts = arr
         .map(mapBackendProduct)
-        .filter((product: Product) => product.name && product.name !== "Product");
+        .filter(
+          (product: Product) => product.name && product.name !== "Product"
+        );
 
       setProducts(mappedProducts);
     } catch (err: unknown) {
@@ -644,8 +730,10 @@ export default function CollectionPage() {
 
       if (cmd.includes("men")) nextCustomers.push("Men");
       if (cmd.includes("women")) nextCustomers.push("Women");
-      if (cmd.includes("boys") || cmd.includes("boy")) nextCustomers.push("Boys");
-      if (cmd.includes("girls") || cmd.includes("girl")) nextCustomers.push("Girls");
+      if (cmd.includes("boys") || cmd.includes("boy"))
+        nextCustomers.push("Boys");
+      if (cmd.includes("girls") || cmd.includes("girl"))
+        nextCustomers.push("Girls");
 
       if (
         cmd.includes("t-shirt") ||
@@ -653,6 +741,30 @@ export default function CollectionPage() {
         cmd.includes("tshirt")
       ) {
         nextTypes.push("T-Shirt");
+      }
+
+      if (cmd.includes("hoodie")) {
+        nextTypes.push("Hoodie");
+      }
+
+      if (cmd.includes("sweater")) {
+        nextTypes.push("Sweater");
+      }
+
+      if (cmd.includes("sneaker") || cmd.includes("sneakers")) {
+        nextTypes.push("Sneakers");
+      }
+
+      if (cmd.includes("shoe") || cmd.includes("shoes")) {
+        nextTypes.push("Shoes");
+      }
+
+      if (cmd.includes("jogger") || cmd.includes("joggers")) {
+        nextTypes.push("Joggers");
+      }
+
+      if (cmd.includes("cap")) {
+        nextTypes.push("Cap");
       }
 
       if (cmd.includes("windcheater") || cmd.includes("wind cheater")) {
@@ -685,6 +797,7 @@ export default function CollectionPage() {
         nextTypes.push("Wide-leg");
       }
 
+      setWeatherContext(null);
       setSelectedCustomers([...new Set(nextCustomers)]);
       setSelectedTypes([...new Set(nextTypes)]);
       setSearch(spoken);
@@ -728,6 +841,8 @@ export default function CollectionPage() {
   };
 
   const toggleType = (value: string) => {
+    setWeatherContext(null);
+
     setSelectedTypes((prev) =>
       prev.includes(value) ? prev.filter((t) => t !== value) : [...prev, value]
     );
@@ -786,10 +901,19 @@ export default function CollectionPage() {
     "T-Shirt",
     "Jean",
     "Jacket",
+    "Hoodie",
+    "Sweater",
+    "Sneakers",
+    "Shoes",
+    "Light Shoes",
+    "Waterproof Shoes",
+    "Joggers",
+    "Dark Pants",
     "Formal Shirt",
     "Frock",
     "Wide-leg",
     "Shorts",
+    "Cap",
   ];
 
   return (
@@ -874,8 +998,8 @@ export default function CollectionPage() {
                 </div>
 
                 <div className="mt-1 text-[12px] text-[#a7aec4] sm:text-[13px]">
-                  Search any product name, customer type, category, color, or use
-                  voice commands.
+                  Search any product name, customer type, category, color, or
+                  use voice commands.
                 </div>
               </div>
 
@@ -885,7 +1009,8 @@ export default function CollectionPage() {
                   onClick={() => setMobileFiltersOpen(true)}
                   className={`${secondaryBtnClass} lg:hidden`}
                 >
-                  Filters {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ""}
+                  Filters{" "}
+                  {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ""}
                 </button>
 
                 <button
@@ -934,7 +1059,7 @@ export default function CollectionPage() {
                   <option value="newest">Newest First</option>
                 </select>
 
-                {activeFiltersCount > 0 ? (
+                {activeFiltersCount > 0 || weatherContext ? (
                   <button
                     type="button"
                     onClick={clearFiltersWithToast}
@@ -956,7 +1081,10 @@ export default function CollectionPage() {
                   id="search"
                   ref={searchRef}
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    if (e.target.value.trim()) setWeatherContext(null);
+                  }}
                   placeholder="Search product name, Men, Women, Boys, Girls, T-Shirt, Jacket..."
                   className="h-[50px] w-full rounded-full border border-[#2b3042] bg-[#0d0f17] px-5 text-[13px] text-[#f5f7fb] outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
                 />
@@ -988,7 +1116,8 @@ export default function CollectionPage() {
 
                   {lastHeard ? (
                     <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                      Heard: <span className="text-[#f5f7fb]">{lastHeard}</span>
+                      Heard:{" "}
+                      <span className="text-[#f5f7fb]">{lastHeard}</span>
                     </span>
                   ) : null}
                 </>
@@ -999,6 +1128,58 @@ export default function CollectionPage() {
               )}
             </div>
           </motion.div>
+
+          {weatherContext ? (
+            <motion.div
+              initial="hidden"
+              animate="show"
+              variants={fadeUp}
+              transition={{ duration: 0.45, delay: 0.1 }}
+              className="mt-6 overflow-hidden rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]"
+            >
+              <div className="relative overflow-hidden bg-gradient-to-br from-white/[0.08] via-white/[0.03] to-transparent p-5 sm:p-6">
+                <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
+
+                <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                      Weather Based Picks
+                    </div>
+
+                    <h2 className="mt-2 text-[22px] font-semibold tracking-[-0.02em] text-white sm:text-[28px]">
+                      {weatherContext.title}
+                    </h2>
+
+                    <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                      {weatherContext.city !== "your city"
+                        ? `Today in ${weatherContext.city}: `
+                        : ""}
+                      {weatherContext.message}
+                    </p>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {weatherContext.types.map((type) => (
+                        <span
+                          key={type}
+                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] font-medium text-white/85"
+                        >
+                          {type}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={clearFiltersWithToast}
+                    className="w-fit rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10"
+                  >
+                    Remove Weather Filter
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          ) : null}
 
           <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6">
             <motion.aside
@@ -1013,7 +1194,7 @@ export default function CollectionPage() {
                   Filters
                 </div>
 
-                {activeFiltersCount > 0 ? (
+                {activeFiltersCount > 0 || weatherContext ? (
                   <button
                     type="button"
                     onClick={clearFiltersWithToast}
@@ -1184,7 +1365,7 @@ export default function CollectionPage() {
                   </button>
                 </div>
 
-                {activeFiltersCount > 0 ? (
+                {activeFiltersCount > 0 || weatherContext ? (
                   <button
                     type="button"
                     onClick={clearFiltersWithToast}
@@ -1235,7 +1416,7 @@ export default function CollectionPage() {
                   onClick={() => {
                     setMobileFiltersOpen(false);
 
-                    if (activeFiltersCount > 0) {
+                    if (activeFiltersCount > 0 || weatherContext) {
                       showToast("Filters applied.", "success");
                     }
                   }}

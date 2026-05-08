@@ -13,6 +13,103 @@ function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function normalizeVariantInput(variants: any[] | undefined) {
+  if (!Array.isArray(variants)) return [];
+
+  const seen = new Set<string>();
+
+  return variants
+    .map((variant) => {
+      const color = String(variant.color || "").trim().toLowerCase();
+      const size = String(variant.size || "").trim().toUpperCase();
+      const stock = Number(variant.stock || 0);
+      const sku = String(variant.sku || "").trim().toUpperCase();
+      const isActive = variant.isActive !== false;
+
+      return {
+        color,
+        size,
+        stock,
+        sku: sku || undefined,
+        isActive,
+      };
+    })
+    .filter((variant) => {
+      if (!variant.color || !/^#([0-9a-f]{6})$/.test(variant.color)) {
+        return false;
+      }
+
+      if (!["S", "M", "L", "XL", "XXL"].includes(variant.size)) {
+        return false;
+      }
+
+      if (Number.isNaN(variant.stock) || variant.stock < 0) {
+        return false;
+      }
+
+      const key = `${variant.color}-${variant.size}`;
+
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+}
+
+function buildProductInventory(data: {
+  stock?: number;
+  colors?: string[];
+  sizes?: string[];
+  variants?: any[];
+}) {
+  const variants = normalizeVariantInput(data.variants);
+
+  if (variants.length > 0) {
+    const activeVariants = variants.filter(
+      (variant) => variant.isActive !== false
+    );
+
+    const stock = activeVariants.reduce(
+      (total, variant) => total + Number(variant.stock || 0),
+      0
+    );
+
+    const colors = Array.from(
+      new Set(variants.map((variant) => variant.color).filter(Boolean))
+    );
+
+    const sizes = Array.from(
+      new Set(variants.map((variant) => variant.size).filter(Boolean))
+    );
+
+    return {
+      stock,
+      colors,
+      sizes,
+      variants,
+    };
+  }
+
+  const colors = Array.isArray(data.colors)
+    ? data.colors
+        .map((c) => String(c).trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+
+  const sizes = Array.isArray(data.sizes)
+    ? data.sizes.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
+    : [];
+
+  return {
+    stock: Number(data.stock || 0),
+    colors,
+    sizes,
+    variants: [],
+  };
+}
+
 export const productService = {
   async getAllForAdmin(query: ProductQueryDto) {
     const filter: { [key: string]: any } = {};
@@ -26,24 +123,52 @@ export const productService = {
       filter.status = query.status;
     }
 
-    if (query.gender) filter.gender = query.gender;
-    if (query.size) filter.sizes = query.size;
-    if (query.categoryId) filter.categoryId = query.categoryId;
+    if (query.gender) {
+      filter.gender = query.gender;
+    }
+
+    if (query.size) {
+      filter.$and = [
+        ...(filter.$and || []),
+        {
+          $or: [{ sizes: query.size }, { "variants.size": query.size }],
+        },
+      ];
+    }
+
+    if (query.categoryId) {
+      filter.categoryId = query.categoryId;
+    }
 
     return Product.find(filter).sort({ createdAt: -1 }).lean().exec();
   },
 
   async getAllPublic(query: ProductQueryDto) {
-    const filter: { [key: string]: any } = { status: "Active" };
+    const filter: { [key: string]: any } = {
+      status: "Active",
+    };
 
     if (query.search) {
       const regex = new RegExp(escapeRegex(query.search), "i");
       filter.$or = [{ name: regex }, { slug: regex }];
     }
 
-    if (query.gender) filter.gender = query.gender;
-    if (query.size) filter.sizes = query.size;
-    if (query.categoryId) filter.categoryId = query.categoryId;
+    if (query.gender) {
+      filter.gender = query.gender;
+    }
+
+    if (query.size) {
+      filter.$and = [
+        ...(filter.$and || []),
+        {
+          $or: [{ sizes: query.size }, { "variants.size": query.size }],
+        },
+      ];
+    }
+
+    if (query.categoryId) {
+      filter.categoryId = query.categoryId;
+    }
 
     return Product.find(filter).sort({ createdAt: -1 }).lean().exec();
   },
@@ -107,6 +232,7 @@ export const productService = {
 
   async getById(id: string) {
     if (!mongoose.Types.ObjectId.isValid(id)) return null;
+
     return Product.findById(id).lean().exec();
   },
 
@@ -175,6 +301,7 @@ export const productService = {
     const slug = data.slug ?? generateProductSlug(data.name);
 
     const existing = await Product.findOne({ slug }).lean();
+
     if (existing) {
       const err: any = new Error(`Product '${data.name}' already exists`);
       err.statusCode = 400;
@@ -196,26 +323,37 @@ export const productService = {
     };
 
     const mainImageUrl = await uploadIfNeeded(data.image);
+
     const galleryUrls = data.images?.length
       ? (await Promise.all(data.images.map(uploadIfNeeded))).filter(
           (u): u is string => Boolean(u)
         )
       : [];
 
-    const product = await Product.create({
+    const inventory = buildProductInventory({
+      stock: data.stock,
+      colors: data.colors,
+      sizes: data.sizes,
+      variants: data.variants,
+    });
+
+    const product = new Product({
       name: data.name,
       slug,
       description: data.description,
       price: data.price,
-      stock: data.stock,
+      stock: inventory.stock,
       status: data.status ?? "Active",
       image: mainImageUrl ?? data.image,
       images: galleryUrls ?? [],
       gender: data.gender,
-      colors: data.colors,
-      sizes: data.sizes,
+      colors: inventory.colors,
+      sizes: inventory.sizes,
+      variants: inventory.variants,
       categoryId: data.categoryId,
     });
+
+    await product.save();
 
     return product.toObject();
   },
@@ -242,6 +380,20 @@ export const productService = {
       }
     }
 
+    if (Array.isArray(data.variants)) {
+      const inventory = buildProductInventory({
+        stock: data.stock,
+        colors: data.colors,
+        sizes: data.sizes,
+        variants: data.variants,
+      });
+
+      update.stock = inventory.stock;
+      update.colors = inventory.colors;
+      update.sizes = inventory.sizes;
+      update.variants = inventory.variants;
+    }
+
     return Product.findByIdAndUpdate(id, update, {
       new: true,
       runValidators: true,
@@ -252,6 +404,7 @@ export const productService = {
 
   async remove(id: string) {
     if (!mongoose.Types.ObjectId.isValid(id)) return null;
+
     return Product.findByIdAndDelete(id).lean().exec();
   },
 };

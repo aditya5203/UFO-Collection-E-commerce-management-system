@@ -25,8 +25,6 @@ const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
-const dangerBtnClass =
-  "rounded-full border border-red-400/20 bg-red-500/10 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-red-300 transition hover:-translate-y-0.5 hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-60";
 const inputClass =
   "h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60";
 
@@ -73,10 +71,12 @@ type RiderRow = {
 
 type OrderItem = {
   productId?: string;
+  variantId?: string;
   name?: string;
   size?: string;
   color?: string;
   colorLabel?: string;
+  sku?: string;
   qty?: number;
   pricePaisa?: number;
   image?: string;
@@ -333,6 +333,23 @@ async function safeJson(res: Response) {
   } catch {
     return { raw: text };
   }
+}
+
+function ColorSwatch({ color }: { color: string }) {
+  const ref = React.useRef<HTMLSpanElement | null>(null);
+
+  React.useEffect(() => {
+    if (!ref.current) return;
+    ref.current.style.backgroundColor = color;
+  }, [color]);
+
+  return (
+    <span
+      ref={ref}
+      aria-hidden="true"
+      className="h-4 w-4 shrink-0 rounded-full border border-white/20"
+    />
+  );
 }
 
 export default function OrderDetailsPage() {
@@ -763,8 +780,8 @@ export default function OrderDetailsPage() {
         orderStatus === "Confirmed"
           ? "current"
           : ["Shipped", "Transit", "Delivered"].includes(orderStatus)
-          ? "done"
-          : "upcoming",
+            ? "done"
+            : "upcoming",
     },
     {
       label: "Order Shipped",
@@ -773,8 +790,8 @@ export default function OrderDetailsPage() {
         orderStatus === "Shipped"
           ? "current"
           : orderStatus === "Transit" || orderStatus === "Delivered"
-          ? "done"
-          : "upcoming",
+            ? "done"
+            : "upcoming",
     },
     {
       label: "Order In Transit",
@@ -783,8 +800,8 @@ export default function OrderDetailsPage() {
         orderStatus === "Transit"
           ? "current"
           : orderStatus === "Delivered"
-          ? "done"
-          : "upcoming",
+            ? "done"
+            : "upcoming",
     },
     {
       label: "Order Delivered",
@@ -923,7 +940,7 @@ export default function OrderDetailsPage() {
             <SummaryCard
               label="Items"
               value={String(items.length)}
-              hint="Products in this order"
+              hint="Products / variants in this order"
               iconSrc="/images/admin/product.png"
             />
 
@@ -948,14 +965,15 @@ export default function OrderDetailsPage() {
                 <SectionHeader
                   eyebrow="Order Items"
                   title="Ordered Products"
-                  description="Product, quantity, color, size, and pricing"
+                  description="Product variant, SKU, quantity, color, size, and pricing"
                 />
 
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[980px] text-[13px]">
+                  <table className="w-full min-w-[1120px] text-[13px]">
                     <thead>
                       <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
                         <th className="px-5 py-4 font-medium">Product</th>
+                        <th className="px-5 py-4 font-medium">Variant / SKU</th>
                         <th className="px-5 py-4 font-medium">Size</th>
                         <th className="px-5 py-4 font-medium">Color</th>
                         <th className="px-5 py-4 text-center font-medium">
@@ -973,6 +991,9 @@ export default function OrderDetailsPage() {
                     <tbody>
                       {items.length ? (
                         items.map((it: OrderItem, i: number) => {
+                          const productId = safeStr(it?.productId);
+                          const variantId = safeStr(it?.variantId);
+                          const sku = safeStr(it?.sku);
                           const colorValue = safeStr(it?.color);
                           const colorLabel = safeStr(it?.colorLabel);
                           const qty = Number(it?.qty || 0);
@@ -981,7 +1002,7 @@ export default function OrderDetailsPage() {
 
                           return (
                             <tr
-                              key={`${safeStr(it?.productId)}-${i}`}
+                              key={`${productId}-${variantId || i}`}
                               className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
                             >
                               <td className="px-5 py-4">
@@ -1001,24 +1022,60 @@ export default function OrderDetailsPage() {
                                       {it?.name || "-"}
                                     </div>
 
-                                    {it?.productId ? (
-                                      <div className="mt-1 text-[12px] text-[#7f879f]">
-                                        Product ID: {it.productId}
+                                    {productId ? (
+                                      <div className="mt-1 max-w-[260px] truncate text-[11px] text-[#7f879f]">
+                                        Product ID: {productId}
                                       </div>
                                     ) : null}
                                   </div>
                                 </div>
                               </td>
 
-                              <td className="px-5 py-4 text-[#a7aec4]">
-                                {safeStr(it?.size) || "-"}
+                              <td className="px-5 py-4">
+                                <div className="space-y-1">
+                                  {sku ? (
+                                    <div className="inline-flex max-w-[260px] rounded-full border border-[#8b5cf6]/20 bg-[#8b5cf6]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d6c7ff]">
+                                      <span className="truncate">SKU: {sku}</span>
+                                    </div>
+                                  ) : (
+                                    <div className="text-[12px] text-[#7f879f]">
+                                      No SKU
+                                    </div>
+                                  )}
+
+                                  {variantId ? (
+                                    <div className="max-w-[260px] truncate text-[11px] text-[#7f879f]">
+                                      Variant ID: {variantId}
+                                    </div>
+                                  ) : (
+                                    <div className="text-[11px] text-[#7f879f]">
+                                      Legacy stock item
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="px-5 py-4">
+                                {safeStr(it?.size) ? (
+                                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white">
+                                    {safeStr(it.size)}
+                                  </span>
+                                ) : (
+                                  <span className="text-[#a7aec4]">-</span>
+                                )}
                               </td>
 
                               <td className="px-5 py-4">
                                 {colorValue || colorLabel ? (
-                                  <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
-                                    {colorLabel || colorValue}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    {colorValue ? (
+                                      <ColorSwatch color={colorValue} />
+                                    ) : null}
+
+                                    <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
+                                      {colorLabel || colorValue}
+                                    </span>
+                                  </div>
                                 ) : (
                                   <span className="text-[#a7aec4]">-</span>
                                 )}
@@ -1041,7 +1098,7 @@ export default function OrderDetailsPage() {
                       ) : (
                         <tr className="border-t border-[#26293a]">
                           <td
-                            colSpan={6}
+                            colSpan={7}
                             className="px-5 py-10 text-center text-[#a7aec4]"
                           >
                             No items found.
@@ -1466,8 +1523,8 @@ function Toast({ toast }: { toast: ToastState }) {
         toast.type === "success"
           ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
           : toast.type === "info"
-          ? "border-blue-400/20 bg-blue-500/15 text-blue-200"
-          : "border-red-400/20 bg-red-500/15 text-red-200",
+            ? "border-blue-400/20 bg-blue-500/15 text-blue-200"
+            : "border-red-400/20 bg-red-500/15 text-red-200",
       ].join(" ")}
     >
       {toast.message}

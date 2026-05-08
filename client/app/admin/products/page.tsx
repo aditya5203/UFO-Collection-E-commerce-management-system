@@ -15,6 +15,24 @@ type ProductStatus = "Active" | "Inactive";
 type Gender = "Male" | "Female";
 type Size = "S" | "M" | "L" | "XL" | "XXL";
 
+type ProductVariant = {
+  id?: string;
+  color: string;
+  size: Size;
+  stock: number;
+  sku?: string;
+  isActive: boolean;
+};
+
+type ProductVariantForm = {
+  id?: string;
+  color: string;
+  size: Size;
+  stock: number | "";
+  sku: string;
+  isActive: boolean;
+};
+
 type Product = {
   id: string;
   name: string;
@@ -28,7 +46,18 @@ type Product = {
   gender: Gender;
   colors: string[];
   sizes: Size[];
+  variants: ProductVariant[];
   categoryId: string;
+};
+
+type ApiProductVariant = {
+  _id?: string;
+  id?: string;
+  color?: string;
+  size?: string;
+  stock?: number | string;
+  sku?: string;
+  isActive?: boolean;
 };
 
 type ApiProduct = {
@@ -45,6 +74,7 @@ type ApiProduct = {
   gender?: string;
   colors?: string[];
   sizes?: string[];
+  variants?: ApiProductVariant[];
   categoryId?: string;
   category?: string | { _id?: string; id?: string };
 };
@@ -110,6 +140,8 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
 const PLACEHOLDER = "/images/products/placeholder.png";
+
+const SIZE_OPTIONS: Size[] = ["S", "M", "L", "XL", "XXL"];
 
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 const panelClass =
@@ -185,11 +217,28 @@ function normalizeGender(gender?: string): Gender {
 }
 
 function normalizeSizes(values?: string[]): Size[] {
-  const allowed: Size[] = ["S", "M", "L", "XL", "XXL"];
-
   if (!Array.isArray(values)) return [];
 
-  return values.filter((v): v is Size => allowed.includes(v as Size));
+  return values.filter((v): v is Size => SIZE_OPTIONS.includes(v as Size));
+}
+
+function normalizeVariant(v: ApiProductVariant): ProductVariant | null {
+  const color = String(v.color || "").trim().toLowerCase();
+  const size = String(v.size || "").trim().toUpperCase() as Size;
+  const stock = Number(v.stock || 0);
+
+  if (!/^#([0-9a-f]{6})$/.test(color)) return null;
+  if (!SIZE_OPTIONS.includes(size)) return null;
+  if (Number.isNaN(stock) || stock < 0) return null;
+
+  return {
+    id: String(v._id || v.id || ""),
+    color,
+    size,
+    stock,
+    sku: String(v.sku || ""),
+    isActive: v.isActive !== false,
+  };
 }
 
 function getProductCategoryId(product: ApiProduct) {
@@ -204,6 +253,12 @@ function getProductCategoryId(product: ApiProduct) {
 }
 
 function mapProduct(p: ApiProduct): Product {
+  const variants = Array.isArray(p.variants)
+    ? p.variants
+        .map(normalizeVariant)
+        .filter((v): v is ProductVariant => Boolean(v))
+    : [];
+
   return {
     id: String(p._id || p.id || ""),
     name: String(p.name || "Untitled Product"),
@@ -217,6 +272,7 @@ function mapProduct(p: ApiProduct): Product {
     gender: normalizeGender(p.gender),
     colors: Array.isArray(p.colors) ? p.colors : [],
     sizes: normalizeSizes(p.sizes),
+    variants,
     categoryId: getProductCategoryId(p),
   };
 }
@@ -262,20 +318,110 @@ function getCategoryArray(
   return [];
 }
 
+function emptyVariant(): ProductVariantForm {
+  return {
+    color: "#000000",
+    size: "M",
+    stock: "",
+    sku: "",
+    isActive: true,
+  };
+}
+
 function emptyForm() {
   return {
     name: "",
     description: "",
     price: "" as number | "",
-    stock: "" as number | "",
     status: "Active" as ProductStatus,
     gender: "Male" as Gender,
-    colors: "",
-    sizes: [] as Size[],
     categoryId: "",
     image: "",
     images: "",
+    variants: [emptyVariant()] as ProductVariantForm[],
   };
+}
+
+function productVariantsToForm(product: Product): ProductVariantForm[] {
+  if (Array.isArray(product.variants) && product.variants.length > 0) {
+    return product.variants.map((v) => ({
+      id: v.id,
+      color: v.color || "#000000",
+      size: v.size || "M",
+      stock: Number(v.stock || 0),
+      sku: v.sku || "",
+      isActive: v.isActive !== false,
+    }));
+  }
+
+  const fallbackColor = product.colors?.[0] || "#000000";
+  const fallbackSize = product.sizes?.[0] || "M";
+
+  return [
+    {
+      color: fallbackColor,
+      size: fallbackSize,
+      stock: Number(product.stock || 0),
+      sku: "",
+      isActive: true,
+    },
+  ];
+}
+
+function getVariantStats(product: Product) {
+  const variants = product.variants || [];
+  const variantCount = variants.length;
+
+  const lowStockVariants = variants.filter(
+    (variant) => variant.isActive && variant.stock > 0 && variant.stock <= 5
+  ).length;
+
+  const outOfStockVariants = variants.filter(
+    (variant) => variant.isActive && variant.stock <= 0
+  ).length;
+
+  return {
+    variantCount,
+    lowStockVariants,
+    outOfStockVariants,
+  };
+}
+
+function getTotalVariantStock(variants: ProductVariantForm[]) {
+  return variants
+    .filter((variant) => variant.isActive)
+    .reduce((total, variant) => total + Number(variant.stock || 0), 0);
+}
+
+function buildSku(name: string, color: string, size: Size) {
+  const cleanName =
+    name
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 18) || "UFO-PRODUCT";
+
+  const colorCode = color.replace("#", "").toUpperCase();
+
+  return `${cleanName}-${colorCode}-${size}`;
+}
+
+function ColorSwatch({ color }: { color: string }) {
+  const ref = React.useRef<HTMLSpanElement | null>(null);
+
+  React.useEffect(() => {
+    if (!ref.current) return;
+    ref.current.style.backgroundColor = color;
+  }, [color]);
+
+  return (
+    <span
+      ref={ref}
+      aria-hidden="true"
+      className="h-3 w-3 rounded-full border border-white/20"
+    />
+  );
 }
 
 export default function AdminProductsPage() {
@@ -298,14 +444,14 @@ export default function AdminProductsPage() {
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [price, setPrice] = React.useState<number | "">("");
-  const [stock, setStock] = React.useState<number | "">("");
   const [status, setStatus] = React.useState<ProductStatus>("Active");
   const [gender, setGender] = React.useState<Gender>("Male");
-  const [colors, setColors] = React.useState("");
-  const [sizes, setSizes] = React.useState<Size[]>([]);
   const [categoryId, setCategoryId] = React.useState("");
   const [image, setImage] = React.useState("");
   const [images, setImages] = React.useState("");
+  const [variants, setVariants] = React.useState<ProductVariantForm[]>([
+    emptyVariant(),
+  ]);
 
   const [submitting, setSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
@@ -328,6 +474,11 @@ export default function AdminProductsPage() {
   const canCreate = hasPermission(role, permissions, "productCreate");
   const canEdit = hasPermission(role, permissions, "productEdit");
   const canDelete = hasPermission(role, permissions, "productDelete");
+
+  const totalVariantStock = React.useMemo(
+    () => getTotalVariantStock(variants),
+    [variants]
+  );
 
   const showToast = React.useCallback(
     (message: string, type: ToastType = "info") => {
@@ -534,15 +685,33 @@ export default function AdminProductsPage() {
   );
 
   const lowStockCount = React.useMemo(
-    () => products.filter((p) => p.stock <= 5).length,
+    () =>
+      products.filter((p) => {
+        if (p.variants.length > 0) {
+          return p.variants.some(
+            (variant) =>
+              variant.isActive && variant.stock > 0 && variant.stock <= 5
+          );
+        }
+
+        return p.stock <= 5;
+      }).length,
     [products]
   );
 
-  const toggleSize = (value: Size) => {
-    setSizes((prev) =>
-      prev.includes(value) ? prev.filter((s) => s !== value) : [...prev, value]
-    );
-  };
+  const outOfStockCount = React.useMemo(
+    () =>
+      products.filter((p) => {
+        if (p.variants.length > 0) {
+          return p.variants.every(
+            (variant) => !variant.isActive || variant.stock <= 0
+          );
+        }
+
+        return p.stock <= 0;
+      }).length,
+    [products]
+  );
 
   const resetForm = () => {
     const form = emptyForm();
@@ -550,14 +719,12 @@ export default function AdminProductsPage() {
     setName(form.name);
     setDescription(form.description);
     setPrice(form.price);
-    setStock(form.stock);
     setStatus(form.status);
     setGender(form.gender);
-    setColors(form.colors);
-    setSizes(form.sizes);
     setCategoryId(form.categoryId);
     setImage(form.image);
     setImages(form.images);
+    setVariants(form.variants);
     setEditingId(null);
     setMainPreview(null);
     setGalleryPreview([]);
@@ -584,14 +751,12 @@ export default function AdminProductsPage() {
     setName(product.name || "");
     setDescription(product.description || "");
     setPrice(product.price);
-    setStock(product.stock);
     setStatus(product.status);
     setGender(product.gender);
-    setColors(product.colors?.join(", ") || "");
-    setSizes(product.sizes || []);
     setCategoryId(product.categoryId || "");
     setImage(product.image || "");
     setImages(product.images?.join(", ") || "");
+    setVariants(productVariantsToForm(product));
     setMainPreview(product.image || null);
     setGalleryPreview(product.images || []);
     setError(null);
@@ -736,6 +901,41 @@ export default function AdminProductsPage() {
     }
   };
 
+  const addVariant = () => {
+    setVariants((prev) => [...prev, emptyVariant()]);
+  };
+
+  const removeVariant = (index: number) => {
+    setVariants((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const updateVariant = (
+    index: number,
+    patch: Partial<ProductVariantForm>
+  ) => {
+    setVariants((prev) =>
+      prev.map((variant, i) =>
+        i === index ? { ...variant, ...patch } : variant
+      )
+    );
+  };
+
+  const generateVariantSku = (index: number) => {
+    setVariants((prev) =>
+      prev.map((variant, i) =>
+        i === index
+          ? {
+              ...variant,
+              sku: buildSku(name, variant.color, variant.size),
+            }
+          : variant
+      )
+    );
+  };
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -755,30 +955,15 @@ export default function AdminProductsPage() {
 
     const cleanName = name.trim();
     const cleanDesc = description.trim();
-
     const priceNum = typeof price === "string" ? Number(price) : price;
-    const stockNum = typeof stock === "string" ? Number(stock) : stock;
-
-    const colorArr = colors
-      .split(",")
-      .map((c) => c.trim().toLowerCase())
-      .filter(Boolean);
-
-    const imageUrls = images
-      .split(",")
-      .map((u) => u.trim())
-      .filter(Boolean);
 
     if (
       !cleanName ||
       priceNum == null ||
       Number.isNaN(priceNum) ||
-      priceNum < 0 ||
-      stockNum == null ||
-      Number.isNaN(stockNum) ||
-      stockNum < 0
+      priceNum < 0
     ) {
-      showToast("Name, valid price, and valid stock are required.", "error");
+      showToast("Name and valid price are required.", "error");
       return;
     }
 
@@ -792,25 +977,78 @@ export default function AdminProductsPage() {
       return;
     }
 
-    if (colorArr.length === 0) {
-      showToast("Add at least one color. Example: #000000", "error");
+    if (!Array.isArray(variants) || variants.length === 0) {
+      showToast("Add at least one product variant.", "error");
       return;
     }
 
-    const invalidColors = colorArr.filter((c) => !/^#([0-9a-f]{6})$/.test(c));
+    const cleanVariants = variants.map((variant) => ({
+      id: variant.id,
+      color: String(variant.color || "").trim().toLowerCase(),
+      size: String(variant.size || "").trim().toUpperCase() as Size,
+      stock: Number(variant.stock || 0),
+      sku: String(variant.sku || "").trim().toUpperCase(),
+      isActive: variant.isActive !== false,
+    }));
 
-    if (invalidColors.length) {
-      showToast(
-        `Invalid color(s): ${invalidColors.join(", ")}. Use hex like #000000`,
-        "error"
-      );
+    const invalidColor = cleanVariants.find(
+      (variant) => !/^#([0-9a-f]{6})$/.test(variant.color)
+    );
+
+    if (invalidColor) {
+      showToast("Each variant color must be a hex code like #000000.", "error");
       return;
     }
 
-    if (sizes.length === 0) {
-      showToast("Select at least one size.", "error");
+    const invalidSize = cleanVariants.find(
+      (variant) => !SIZE_OPTIONS.includes(variant.size)
+    );
+
+    if (invalidSize) {
+      showToast("Each variant must have a valid size.", "error");
       return;
     }
+
+    const invalidStock = cleanVariants.find(
+      (variant) => Number.isNaN(variant.stock) || variant.stock < 0
+    );
+
+    if (invalidStock) {
+      showToast("Each variant stock must be 0 or more.", "error");
+      return;
+    }
+
+    const duplicateCheck = new Set<string>();
+    const duplicateVariant = cleanVariants.find((variant) => {
+      const key = `${variant.color}-${variant.size}`;
+
+      if (duplicateCheck.has(key)) return true;
+
+      duplicateCheck.add(key);
+      return false;
+    });
+
+    if (duplicateVariant) {
+      showToast("Duplicate color and size variant is not allowed.", "error");
+      return;
+    }
+
+    const imageUrls = images
+      .split(",")
+      .map((u) => u.trim())
+      .filter(Boolean);
+
+    const uniqueColors = Array.from(
+      new Set(cleanVariants.map((variant) => variant.color))
+    );
+
+    const uniqueSizes = Array.from(
+      new Set(cleanVariants.map((variant) => variant.size))
+    );
+
+    const totalStock = cleanVariants
+      .filter((variant) => variant.isActive)
+      .reduce((sum, variant) => sum + Number(variant.stock || 0), 0);
 
     try {
       setSubmitting(true);
@@ -819,13 +1057,20 @@ export default function AdminProductsPage() {
         name: cleanName,
         description: cleanDesc || undefined,
         price: priceNum,
-        stock: stockNum,
+        stock: totalStock,
         status,
         image: image.trim(),
         images: imageUrls.length ? imageUrls : undefined,
         gender,
-        colors: colorArr,
-        sizes,
+        colors: uniqueColors,
+        sizes: uniqueSizes,
+        variants: cleanVariants.map((variant) => ({
+          color: variant.color,
+          size: variant.size,
+          stock: variant.stock,
+          sku: variant.sku || undefined,
+          isActive: variant.isActive,
+        })),
         categoryId,
       };
 
@@ -955,9 +1200,9 @@ export default function AdminProductsPage() {
                   Products
                 </h1>
 
-                <p className="mt-2 max-w-[660px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
-                  Manage products, stock, pricing, images, categories, colors,
-                  sizes, and visibility from one premium catalog dashboard.
+                <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                  Manage products, pricing, media, categories, and variant-level
+                  stock by size and color from one premium catalog dashboard.
                 </p>
               </div>
 
@@ -998,15 +1243,15 @@ export default function AdminProductsPage() {
             />
 
             <MetricCard
-              label="Inactive"
-              value={String(inactiveCount)}
-              iconSrc="/images/admin/inactive.png"
-            />
-
-            <MetricCard
               label="Low Stock"
               value={String(lowStockCount)}
               iconSrc="/images/admin/stock.png"
+            />
+
+            <MetricCard
+              label="Out of Stock"
+              value={String(outOfStockCount)}
+              iconSrc="/images/admin/inactive.png"
             />
           </section>
 
@@ -1019,6 +1264,10 @@ export default function AdminProductsPage() {
 
                 <div className="mt-1 text-[20px] font-semibold text-white">
                   All Products
+                </div>
+
+                <div className="mt-1 text-[12px] text-[#7f879f]">
+                  Inactive products: {inactiveCount}
                 </div>
               </div>
 
@@ -1078,12 +1327,12 @@ export default function AdminProductsPage() {
               <NoResults onClear={clearFilters} />
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1080px] border-collapse text-[13px]">
+                <table className="w-full min-w-[1180px] border-collapse text-[13px]">
                   <thead>
                     <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
                       <th className="px-5 py-4 font-medium">Product</th>
                       <th className="px-5 py-4 font-medium">Gender</th>
-                      <th className="px-5 py-4 font-medium">Sizes</th>
+                      <th className="px-5 py-4 font-medium">Variants</th>
                       <th className="px-5 py-4 font-medium">Colors</th>
                       <th className="px-5 py-4 font-medium">Price</th>
                       <th className="px-5 py-4 font-medium">Stock</th>
@@ -1096,113 +1345,139 @@ export default function AdminProductsPage() {
                   </thead>
 
                   <tbody>
-                    {filteredProducts.map((product) => (
-                      <tr
-                        key={product.id}
-                        className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
-                      >
-                        <td className="px-5 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[18px] border border-white/10 bg-[#0d0f17]">
-                              <Image
-                                src={getImageSrc(product.image)}
-                                alt={product.name}
-                                fill
-                                sizes="56px"
-                                className="object-cover"
-                              />
-                            </div>
+                    {filteredProducts.map((product) => {
+                      const stats = getVariantStats(product);
 
-                            <div className="min-w-0">
-                              <div className="line-clamp-1 font-semibold text-white">
-                                {product.name}
-                              </div>
-
-                              <div className="mt-1 line-clamp-1 text-[12px] text-[#7f879f]">
-                                {product.slug}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-4 text-[#a7aec4]">
-                          {product.gender}
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="flex max-w-[190px] flex-wrap gap-1.5">
-                            {product.sizes?.length ? (
-                              product.sizes.map((s) => (
-                                <span
-                                  key={`${product.id}-${s}`}
-                                  className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white"
-                                >
-                                  {s}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-[#7f879f]">-</span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="flex max-w-[220px] flex-wrap gap-1.5">
-                            {product.colors?.length ? (
-                              product.colors.map((c, idx) => (
-                                <span
-                                  key={`${product.id}-${c}-${idx}`}
-                                  title={c}
-                                  className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-[#a7aec4]"
-                                >
-                                  {c}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-[#7f879f]">-</span>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-4 font-semibold text-[#d6c7ff]">
-                          {formatPriceNPR(product.price)}
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <StockBadge stock={product.stock} />
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <StatusBadge status={product.status} />
-                        </td>
-
-                        {canEdit || canDelete ? (
+                      return (
+                        <tr
+                          key={product.id}
+                          className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                        >
                           <td className="px-5 py-4">
-                            <div className="flex flex-wrap gap-2">
-                              {canEdit ? (
-                                <button
-                                  type="button"
-                                  onClick={() => openEditModal(product)}
-                                  className={secondaryBtnClass}
-                                >
-                                  Edit
-                                </button>
-                              ) : null}
+                            <div className="flex items-center gap-3">
+                              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[18px] border border-white/10 bg-[#0d0f17]">
+                                <Image
+                                  src={getImageSrc(product.image)}
+                                  alt={product.name}
+                                  fill
+                                  sizes="56px"
+                                  className="object-cover"
+                                />
+                              </div>
 
-                              {canDelete ? (
-                                <button
-                                  type="button"
-                                  onClick={() => requestDelete(product.id)}
-                                  className="rounded-full border border-red-400/20 bg-red-500/10 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-red-300 transition hover:-translate-y-0.5 hover:bg-red-500/15"
-                                >
-                                  Delete
-                                </button>
-                              ) : null}
+                              <div className="min-w-0">
+                                <div className="line-clamp-1 font-semibold text-white">
+                                  {product.name}
+                                </div>
+
+                                <div className="mt-1 line-clamp-1 text-[12px] text-[#7f879f]">
+                                  {product.slug}
+                                </div>
+                              </div>
                             </div>
                           </td>
-                        ) : null}
-                      </tr>
-                    ))}
+
+                          <td className="px-5 py-4 text-[#a7aec4]">
+                            {product.gender}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white">
+                                  {stats.variantCount || product.sizes.length}{" "}
+                                  variants
+                                </span>
+
+                                {stats.lowStockVariants > 0 ? (
+                                  <span className="rounded-full border border-amber-400/20 bg-amber-500/15 px-2.5 py-1 text-[11px] font-semibold text-amber-300">
+                                    {stats.lowStockVariants} low
+                                  </span>
+                                ) : null}
+
+                                {stats.outOfStockVariants > 0 ? (
+                                  <span className="rounded-full border border-red-400/20 bg-red-500/15 px-2.5 py-1 text-[11px] font-semibold text-red-300">
+                                    {stats.outOfStockVariants} out
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <div className="flex max-w-[190px] flex-wrap gap-1.5">
+                                {product.sizes?.length ? (
+                                  product.sizes.map((s) => (
+                                    <span
+                                      key={`${product.id}-${s}`}
+                                      className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] font-semibold text-[#a7aec4]"
+                                    >
+                                      {s}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-[#7f879f]">-</span>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <div className="flex max-w-[220px] flex-wrap gap-1.5">
+                              {product.colors?.length ? (
+                                product.colors.map((c, idx) => (
+                                  <span
+                                    key={`${product.id}-${c}-${idx}`}
+                                    title={c}
+                                    className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-[#a7aec4]"
+                                  >
+                                    <ColorSwatch color={c} />
+                                    {c}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-[#7f879f]">-</span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4 font-semibold text-[#d6c7ff]">
+                            {formatPriceNPR(product.price)}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <StockBadge stock={product.stock} />
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <StatusBadge status={product.status} />
+                          </td>
+
+                          {canEdit || canDelete ? (
+                            <td className="px-5 py-4">
+                              <div className="flex flex-wrap gap-2">
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(product)}
+                                    className={secondaryBtnClass}
+                                  >
+                                    Edit
+                                  </button>
+                                ) : null}
+
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => requestDelete(product.id)}
+                                    className="rounded-full border border-red-400/20 bg-red-500/10 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-red-300 transition hover:-translate-y-0.5 hover:bg-red-500/15"
+                                  >
+                                    Delete
+                                  </button>
+                                ) : null}
+                              </div>
+                            </td>
+                          ) : null}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1259,7 +1534,7 @@ export default function AdminProductsPage() {
             aria-modal="true"
             className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
           >
-            <div className="flex max-h-[92vh] w-[min(860px,94vw)] flex-col overflow-hidden rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_24px_90px_rgba(0,0,0,0.7)]">
+            <div className="flex max-h-[92vh] w-[min(980px,94vw)] flex-col overflow-hidden rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_24px_90px_rgba(0,0,0,0.7)]">
               <div className="flex items-start justify-between border-b border-[#26293a] px-5 py-5 sm:px-6">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
@@ -1268,6 +1543,13 @@ export default function AdminProductsPage() {
 
                   <div className="mt-1 text-[22px] font-semibold text-white">
                     {editingId ? "Edit Product" : "Add Product"}
+                  </div>
+
+                  <div className="mt-1 text-[12px] text-[#7f879f]">
+                    Total stock from active variants:{" "}
+                    <span className="font-semibold text-[#d6c7ff]">
+                      {totalVariantStock}
+                    </span>
                   </div>
                 </div>
 
@@ -1310,7 +1592,7 @@ export default function AdminProductsPage() {
                     />
                   </Field>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <Field label="Price (Rs) *" htmlFor="product-price">
                       <input
                         id="product-price"
@@ -1330,27 +1612,20 @@ export default function AdminProductsPage() {
                       />
                     </Field>
 
-                    <Field label="Stock *" htmlFor="product-stock">
+                    <Field label="Auto Total Stock" htmlFor="product-stock">
                       <input
                         id="product-stock"
                         name="productStock"
-                        title="Product stock"
-                        aria-label="Product stock"
+                        title="Total stock from variants"
+                        aria-label="Total stock from variants"
                         type="number"
                         min={0}
-                        className={inputClass}
-                        value={stock}
-                        onChange={(e) =>
-                          setStock(
-                            e.target.value === "" ? "" : Number(e.target.value)
-                          )
-                        }
-                        required
+                        className={`${inputClass} cursor-not-allowed text-[#d6c7ff]`}
+                        value={totalVariantStock}
+                        readOnly
                       />
                     </Field>
-                  </div>
 
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <Field label="Status" htmlFor="product-status">
                       <select
                         id="product-status"
@@ -1367,7 +1642,9 @@ export default function AdminProductsPage() {
                         <option value="Inactive">Inactive</option>
                       </select>
                     </Field>
+                  </div>
 
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <Field label="Gender *" htmlFor="product-gender">
                       <select
                         id="product-gender"
@@ -1382,81 +1659,37 @@ export default function AdminProductsPage() {
                         <option value="Female">Female</option>
                       </select>
                     </Field>
+
+                    <Field label="Category *" htmlFor="product-category">
+                      <select
+                        id="product-category"
+                        name="productCategory"
+                        title="Product category"
+                        aria-label="Product category"
+                        className={inputClass}
+                        value={categoryId}
+                        onChange={(e) => setCategoryId(e.target.value)}
+                        required
+                      >
+                        <option value="">Select category</option>
+
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
                   </div>
 
-                  <Field
-                    label="Colors (hex, comma separated) *"
-                    htmlFor="product-colors"
-                  >
-                    <input
-                      id="product-colors"
-                      name="productColors"
-                      title="Product colors"
-                      aria-label="Product colors"
-                      className={inputClass}
-                      placeholder="#000000, #ffffff"
-                      value={colors}
-                      onChange={(e) => setColors(e.target.value)}
-                    />
-                  </Field>
-
-                  <Field label="Sizes *" htmlFor="product-sizes">
-                    <div
-                      id="product-sizes"
-                      className="flex flex-wrap gap-2"
-                      role="group"
-                      aria-label="Product sizes"
-                    >
-                      {(["S", "M", "L", "XL", "XXL"] as Size[]).map((s) => {
-                        const checked = sizes.includes(s);
-
-                        return (
-                          <label
-                            key={s}
-                            className={[
-                              "inline-flex cursor-pointer items-center gap-2 rounded-full border px-4 py-2.5 text-[12px] font-semibold transition",
-                              checked
-                                ? "border-[#d6c7ff]/40 bg-[#d6c7ff]/15 text-[#d6c7ff]"
-                                : "border-white/10 bg-white/5 text-white hover:bg-white/10",
-                            ].join(" ")}
-                          >
-                            <input
-                              name="productSizes"
-                              title={`Size ${s}`}
-                              aria-label={`Size ${s}`}
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleSize(s)}
-                              className="sr-only"
-                            />
-
-                            <span>{s}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </Field>
-
-                  <Field label="Category *" htmlFor="product-category">
-                    <select
-                      id="product-category"
-                      name="productCategory"
-                      title="Product category"
-                      aria-label="Product category"
-                      className={inputClass}
-                      value={categoryId}
-                      onChange={(e) => setCategoryId(e.target.value)}
-                      required
-                    >
-                      <option value="">Select category</option>
-
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                  <VariantInventoryEditor
+                    variants={variants}
+                    name={name}
+                    onAdd={addVariant}
+                    onRemove={removeVariant}
+                    onChange={updateVariant}
+                    onGenerateSku={generateVariantSku}
+                  />
 
                   <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <UploadBox
@@ -1559,6 +1792,224 @@ export default function AdminProductsPage() {
         {toast ? <Toast toast={toast} /> : null}
       </div>
     </AdminPageGuard>
+  );
+}
+
+function VariantInventoryEditor({
+  variants,
+  name,
+  onAdd,
+  onRemove,
+  onChange,
+  onGenerateSku,
+}: {
+  variants: ProductVariantForm[];
+  name: string;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onChange: (index: number, patch: Partial<ProductVariantForm>) => void;
+  onGenerateSku: (index: number) => void;
+}) {
+  const totalStock = getTotalVariantStock(variants);
+  const lowStockCount = variants.filter(
+    (variant) =>
+      variant.isActive &&
+      Number(variant.stock || 0) > 0 &&
+      Number(variant.stock || 0) <= 5
+  ).length;
+  const outOfStockCount = variants.filter(
+    (variant) => variant.isActive && Number(variant.stock || 0) <= 0
+  ).length;
+
+  return (
+    <section className="rounded-[22px] border border-[#26293a] bg-[#0d0f17] p-4 sm:p-5">
+      <div className="flex flex-col gap-4 border-b border-[#26293a] pb-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <div className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
+            Product Variants & Stock
+          </div>
+
+          <div className="mt-1 text-[13px] leading-6 text-[#7f879f]">
+            Manage stock separately for every color and size combination.
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-white">
+            Total: {totalStock}
+          </span>
+
+          <span className="rounded-full border border-amber-400/20 bg-amber-500/15 px-3 py-1.5 text-[11px] font-semibold text-amber-300">
+            Low: {lowStockCount}
+          </span>
+
+          <span className="rounded-full border border-red-400/20 bg-red-500/15 px-3 py-1.5 text-[11px] font-semibold text-red-300">
+            Out: {outOfStockCount}
+          </span>
+
+          <button type="button" onClick={onAdd} className={secondaryBtnClass}>
+            Add Variant
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[860px] border-collapse">
+          <thead>
+            <tr className="text-left text-[11px] uppercase tracking-[0.14em] text-[#a7aec4]">
+              <th className="px-3 py-3 font-medium">Color</th>
+              <th className="px-3 py-3 font-medium">Size</th>
+              <th className="px-3 py-3 font-medium">Stock</th>
+              <th className="px-3 py-3 font-medium">SKU</th>
+              <th className="px-3 py-3 font-medium">Status</th>
+              <th className="px-3 py-3 font-medium">Action</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {variants.map((variant, index) => (
+              <tr
+                key={`${variant.id || "variant"}-${index}`}
+                className="border-t border-[#26293a]"
+              >
+                <td className="px-3 py-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      title={`Variant color ${index + 1}`}
+                      aria-label={`Variant color ${index + 1}`}
+                      type="color"
+                      value={
+                        /^#([0-9a-fA-F]{6})$/.test(variant.color)
+                          ? variant.color
+                          : "#000000"
+                      }
+                      onChange={(e) =>
+                        onChange(index, {
+                          color: e.target.value.toLowerCase(),
+                        })
+                      }
+                      className="h-10 w-12 cursor-pointer rounded-[12px] border border-white/10 bg-transparent"
+                    />
+
+                    <input
+                      title={`Variant color code ${index + 1}`}
+                      aria-label={`Variant color code ${index + 1}`}
+                      className={`${inputClass} h-10 min-w-[120px]`}
+                      value={variant.color}
+                      placeholder="#000000"
+                      onChange={(e) =>
+                        onChange(index, {
+                          color: e.target.value.toLowerCase(),
+                        })
+                      }
+                    />
+                  </div>
+                </td>
+
+                <td className="px-3 py-3">
+                  <select
+                    title={`Variant size ${index + 1}`}
+                    aria-label={`Variant size ${index + 1}`}
+                    className={`${inputClass} h-10 min-w-[96px]`}
+                    value={variant.size}
+                    onChange={(e) =>
+                      onChange(index, {
+                        size: e.target.value as Size,
+                      })
+                    }
+                  >
+                    {SIZE_OPTIONS.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+
+                <td className="px-3 py-3">
+                  <input
+                    title={`Variant stock ${index + 1}`}
+                    aria-label={`Variant stock ${index + 1}`}
+                    type="number"
+                    min={0}
+                    className={`${inputClass} h-10 min-w-[110px]`}
+                    value={variant.stock}
+                    onChange={(e) =>
+                      onChange(index, {
+                        stock:
+                          e.target.value === "" ? "" : Number(e.target.value),
+                      })
+                    }
+                  />
+                </td>
+
+                <td className="px-3 py-3">
+                  <div className="flex items-center gap-2">
+                    <input
+                      title={`Variant SKU ${index + 1}`}
+                      aria-label={`Variant SKU ${index + 1}`}
+                      className={`${inputClass} h-10 min-w-[210px]`}
+                      value={variant.sku}
+                      placeholder="UFO-HOOD-BLK-M"
+                      onChange={(e) =>
+                        onChange(index, {
+                          sku: e.target.value.toUpperCase(),
+                        })
+                      }
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => onGenerateSku(index)}
+                      disabled={!name.trim()}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Auto
+                    </button>
+                  </div>
+                </td>
+
+                <td className="px-3 py-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChange(index, {
+                        isActive: !variant.isActive,
+                      })
+                    }
+                    className={[
+                      "rounded-full border px-3 py-1.5 text-[11px] font-semibold transition",
+                      variant.isActive
+                        ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
+                        : "border-slate-400/20 bg-slate-500/15 text-slate-300",
+                    ].join(" ")}
+                  >
+                    {variant.isActive ? "Active" : "Inactive"}
+                  </button>
+                </td>
+
+                <td className="px-3 py-3">
+                  <button
+                    type="button"
+                    onClick={() => onRemove(index)}
+                    disabled={variants.length <= 1}
+                    className="rounded-full border border-red-400/20 bg-red-500/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-red-300 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="mt-4 rounded-[16px] border border-[#26293a] bg-white/[0.03] px-4 py-3 text-[12px] leading-6 text-[#a7aec4]">
+        Example: Black + M can have 10 stock, Black + L can have 5 stock, and
+        White + M can have 8 stock. The product total stock is calculated
+        automatically from active variants.
+      </p>
+    </section>
   );
 }
 
@@ -1668,13 +2119,16 @@ function StatusBadge({ status }: { status: ProductStatus }) {
 }
 
 function StockBadge({ stock }: { stock: number }) {
-  const low = stock <= 5;
+  const out = stock <= 0;
+  const low = stock > 0 && stock <= 5;
 
   return (
     <span
       className={[
         "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
-        low
+        out
+          ? "border-red-400/20 bg-red-500/15 text-red-300"
+          : low
           ? "border-amber-400/20 bg-amber-500/15 text-amber-300"
           : "border-white/10 bg-white/5 text-[#a7aec4]",
       ].join(" ")}

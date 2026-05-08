@@ -20,6 +20,11 @@ const API_BASE =
 const GOOGLE_MAPS_API_KEY =
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
+const CART_KEY = "ufo_cart";
+const ORDER_SUMMARY_KEY = "ufo_order_summary";
+const CHECKOUT_ITEMS_KEY = "ufo_checkout_items";
+const CHECKOUT_ADDRESS_KEY = "ufo_checkout_address";
+
 const defaultCenter = {
   lat: 27.7172,
   lng: 85.324,
@@ -47,6 +52,22 @@ type Toast = {
   message: string;
 };
 
+type CheckoutCartItem = {
+  id: string;
+  productId: string;
+  variantId?: string | null;
+  name: string;
+  size: string;
+  color: string;
+  colorLabel: string;
+  sku?: string | null;
+  price: number;
+  qty: number;
+  image: string;
+  stock?: number | null;
+  totalProductStock?: number | null;
+};
+
 type OrderSummary = {
   subtotal?: number;
   shipping?: number;
@@ -60,6 +81,7 @@ type OrderSummary = {
   couponCode?: string | null;
   currency?: string;
   updatedAt?: string;
+  items?: CheckoutCartItem[];
 };
 
 function formatMoney(value: number) {
@@ -87,20 +109,79 @@ function getMoney(
   return 0;
 }
 
-function getCartCountFromStorage() {
-  try {
-    const raw = localStorage.getItem("ufo_cart");
-    const parsed = raw ? JSON.parse(raw) : [];
+function hasRealStockValue(stock: unknown) {
+  return typeof stock === "number" && Number.isFinite(stock);
+}
 
-    if (!Array.isArray(parsed)) return 0;
+function sanitizeCheckoutItems(input: unknown): CheckoutCartItem[] {
+  if (!Array.isArray(input)) return [];
 
-    return parsed.reduce(
-      (sum: number, item: any) => sum + Number(item?.qty || 0),
-      0
-    );
-  } catch {
-    return 0;
-  }
+  return input
+    .map((item: any) => {
+      const productId = String(item?.productId || item?.id || "").trim();
+      const variantId = String(item?.variantId || "").trim();
+
+      return {
+        id: productId,
+        productId,
+        variantId: variantId || null,
+        name: String(item?.name || "Product").trim(),
+        size: String(item?.size || "").trim().toUpperCase(),
+        color: String(item?.color || "").trim(),
+        colorLabel: String(item?.colorLabel || "").trim(),
+        sku: String(item?.sku || "").trim() || null,
+        price: Math.max(0, Number(item?.price || 0)),
+        qty: Math.max(1, Math.min(99, Number(item?.qty || 1))),
+        image: String(item?.image || "").trim(),
+        stock: hasRealStockValue(item?.stock) ? Number(item.stock) : null,
+        totalProductStock: hasRealStockValue(item?.totalProductStock)
+          ? Number(item.totalProductStock)
+          : null,
+      };
+    })
+    .filter((item) => item.productId && item.price >= 0);
+}
+
+function getCartCount(items: CheckoutCartItem[]) {
+  return items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+}
+
+function hasStockIssue(items: CheckoutCartItem[]) {
+  return items.some((item) => {
+    if (!hasRealStockValue(item.stock)) return false;
+
+    const stock = Number(item.stock);
+    const qty = Number(item.qty || 0);
+
+    return stock <= 0 || qty > stock;
+  });
+}
+
+function buildSummaryFromCart(
+  cartItems: CheckoutCartItem[],
+  previousSummary: OrderSummary | null
+): OrderSummary {
+  const subtotal = cartItems.reduce(
+    (sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0),
+    0
+  );
+
+  const shipping = Number(previousSummary?.shipping ?? previousSummary?.shippingRs ?? 100);
+  const discount = Number(previousSummary?.discount ?? previousSummary?.discountRs ?? 0);
+  const total = Math.max(0, subtotal + shipping - discount);
+
+  return {
+    ...previousSummary,
+    subtotal,
+    shipping,
+    discount,
+    total,
+    currency: previousSummary?.currency || "NPR",
+    itemCount: getCartCount(cartItems),
+    couponCode: previousSummary?.couponCode || null,
+    updatedAt: new Date().toISOString(),
+    items: cartItems,
+  };
 }
 
 export default function CheckoutPage() {
@@ -127,6 +208,9 @@ export default function CheckoutPage() {
   const [locationLoading, setLocationLoading] = React.useState(false);
   const [orderSummary, setOrderSummary] = React.useState<OrderSummary | null>(
     null
+  );
+  const [checkoutItems, setCheckoutItems] = React.useState<CheckoutCartItem[]>(
+    []
   );
   const [cartChecked, setCartChecked] = React.useState(false);
 
@@ -167,6 +251,11 @@ export default function CheckoutPage() {
     getMoney(orderSummary, "totalRs", "total") ||
     Math.max(0, subtotal + shipping - discount);
 
+  const cartHasStockIssue = React.useMemo(
+    () => hasStockIssue(checkoutItems),
+    [checkoutItems]
+  );
+
   const showToast = React.useCallback((type: Toast["type"], message: string) => {
     setToast({ type, message });
     window.setTimeout(() => setToast(null), 3200);
@@ -174,20 +263,33 @@ export default function CheckoutPage() {
 
   React.useEffect(() => {
     try {
-      const cartRaw = localStorage.getItem("ufo_cart");
-      const summaryRaw = localStorage.getItem("ufo_order_summary");
+      const cartRaw = localStorage.getItem(CART_KEY);
+      const summaryRaw = localStorage.getItem(ORDER_SUMMARY_KEY);
 
-      const cart = cartRaw ? JSON.parse(cartRaw) : [];
-      const hasCart = Array.isArray(cart) && cart.length > 0;
+      const cart = sanitizeCheckoutItems(cartRaw ? JSON.parse(cartRaw) : []);
+      const previousSummary: OrderSummary | null = summaryRaw
+        ? JSON.parse(summaryRaw)
+        : null;
 
-      if (!hasCart || !summaryRaw) {
+      if (!cart.length || !previousSummary) {
         showToast("error", "Your cart is empty.");
         router.replace("/cartpage");
         return;
       }
 
-      const parsed = JSON.parse(summaryRaw);
-      setOrderSummary(parsed);
+      if (hasStockIssue(cart)) {
+        showToast("error", "Some cart items have stock issues.");
+        router.replace("/cartpage");
+        return;
+      }
+
+      const syncedSummary = buildSummaryFromCart(cart, previousSummary);
+
+      setCheckoutItems(cart);
+      setOrderSummary(syncedSummary);
+
+      localStorage.setItem(ORDER_SUMMARY_KEY, JSON.stringify(syncedSummary));
+      localStorage.setItem(CHECKOUT_ITEMS_KEY, JSON.stringify(cart));
     } catch {
       showToast("error", "Checkout data is missing.");
       router.replace("/cartpage");
@@ -237,7 +339,8 @@ export default function CheckoutPage() {
 
         const json = await res.json().catch(() => ({} as any));
         const shippingRows = Array.isArray(json?.shipping) ? json.shipping : [];
-        const def = shippingRows.find((x: any) => x.isDefault) || shippingRows[0];
+        const def =
+          shippingRows.find((x: any) => x.isDefault) || shippingRows[0];
 
         if (!def) return;
 
@@ -283,6 +386,8 @@ export default function CheckoutPage() {
     if (!addressLine.trim()) return "Address is required";
     if (!phone.trim()) return "Phone number is required";
     if (!isPhoneValid) return "Enter a valid Nepali phone number";
+    if (!checkoutItems.length) return "Your cart is empty";
+    if (cartHasStockIssue) return "Some cart items have stock issues";
     return "";
   };
 
@@ -406,8 +511,12 @@ export default function CheckoutPage() {
         lng: markerPosition.lng,
       };
 
-      localStorage.setItem("ufo_checkout_address", JSON.stringify(checkoutAddress));
+      const syncedSummary = buildSummaryFromCart(checkoutItems, orderSummary);
+
+      localStorage.setItem(CHECKOUT_ADDRESS_KEY, JSON.stringify(checkoutAddress));
       localStorage.setItem("checkout_address", JSON.stringify(checkoutAddress));
+      localStorage.setItem(CHECKOUT_ITEMS_KEY, JSON.stringify(checkoutItems));
+      localStorage.setItem(ORDER_SUMMARY_KEY, JSON.stringify(syncedSummary));
 
       showToast("success", "Address saved. Continuing to payment...");
       router.push("/payment");
@@ -879,10 +988,42 @@ export default function CheckoutPage() {
                       <span>Items</span>
                       <span className="text-white">
                         {orderSummary?.itemCount ||
-                          getCartCountFromStorage() ||
+                          getCartCount(checkoutItems) ||
                           "-"}
                       </span>
                     </div>
+
+                    {checkoutItems.length > 0 ? (
+                      <div className="max-h-[220px] space-y-3 overflow-y-auto border-y border-[#26293a] py-3 pr-1">
+                        {checkoutItems.map((item) => (
+                          <div
+                            key={`${item.productId}-${item.variantId || item.size}-${item.color}`}
+                            className="rounded-[16px] border border-[#26293a] bg-[#0d0f17] p-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate text-[13px] font-semibold text-white">
+                                  {item.name}
+                                </div>
+                                <div className="mt-1 text-[11px] text-[#7f88b3]">
+                                  {item.colorLabel || item.color} /{" "}
+                                  {item.size || "-"} × {item.qty}
+                                </div>
+                                {item.sku ? (
+                                  <div className="mt-1 text-[11px] text-[#7f88b3]">
+                                    SKU: {item.sku}
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div className="shrink-0 text-right text-[12px] font-semibold text-[#d6c7ff]">
+                                {formatMoney(item.price * item.qty)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
 
                     <div className="flex items-center justify-between gap-4">
                       <span>Subtotal</span>
@@ -918,10 +1059,14 @@ export default function CheckoutPage() {
                 <button
                   type="button"
                   onClick={handleContinue}
-                  disabled={saving || !isFormReady}
+                  disabled={saving || !isFormReady || cartHasStockIssue}
                   className={`${primaryBtnClass} mt-6 w-full`}
                 >
-                  {saving ? "Saving..." : "Continue to Payment"}
+                  {saving
+                    ? "Saving..."
+                    : cartHasStockIssue
+                      ? "Fix Cart Stock"
+                      : "Continue to Payment"}
                 </button>
 
                 {!isFormReady ? (

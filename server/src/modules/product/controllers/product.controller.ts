@@ -17,15 +17,23 @@ const mapToFrontend = (p: any) => ({
   gender: p.gender,
   colors: p.colors ?? [],
   sizes: p.sizes ?? [],
+  variants: Array.isArray(p.variants)
+    ? p.variants.map((variant: any) => ({
+        id: variant._id?.toString?.() ?? variant.id,
+        color: variant.color,
+        size: variant.size,
+        stock: Number(variant.stock || 0),
+        sku: variant.sku || "",
+        isActive: variant.isActive !== false,
+      }))
+    : [],
   categoryId: p.categoryId ?? null,
 
-  // Real review data
   rating: Number(p.avgRating || 0),
   reviews: Number(p.reviewCount || 0),
   avgRating: Number(p.avgRating || 0),
   reviewCount: Number(p.reviewCount || 0),
 
-  // Real best-seller data from delivered orders
   soldCount: Number(p.soldCount || 0),
 });
 
@@ -87,6 +95,29 @@ async function attachReviewSummary(products: any[]) {
  * @swagger
  * components:
  *   schemas:
+ *     ProductVariant:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           example: "65f1c4b9e3b6f27c0d1a5555"
+ *         color:
+ *           type: string
+ *           example: "#000000"
+ *         size:
+ *           type: string
+ *           enum: [S, M, L, XL, XXL]
+ *           example: "M"
+ *         stock:
+ *           type: number
+ *           example: 10
+ *         sku:
+ *           type: string
+ *           example: "UFO-HOOD-BLK-M"
+ *         isActive:
+ *           type: boolean
+ *           example: true
+ *
  *     ProductResponse:
  *       type: object
  *       properties:
@@ -107,6 +138,7 @@ async function attachReviewSummary(products: any[]) {
  *           example: 1999
  *         stock:
  *           type: number
+ *           description: Total stock calculated from active variants when variants exist
  *           example: 50
  *         status:
  *           type: string
@@ -128,13 +160,19 @@ async function attachReviewSummary(products: any[]) {
  *           type: array
  *           items:
  *             type: string
+ *           description: Unique colors generated from variants when variants exist
  *           example: ["#000000", "#ffffff"]
  *         sizes:
  *           type: array
  *           items:
  *             type: string
  *             enum: [S, M, L, XL, XXL]
+ *           description: Unique sizes generated from variants when variants exist
  *           example: ["M", "L", "XL"]
+ *         variants:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/ProductVariant'
  *         categoryId:
  *           type: string
  *           nullable: true
@@ -160,11 +198,8 @@ async function attachReviewSummary(products: any[]) {
  *       required:
  *         - name
  *         - price
- *         - stock
  *         - image
  *         - gender
- *         - colors
- *         - sizes
  *         - categoryId
  *       properties:
  *         name:
@@ -181,6 +216,7 @@ async function attachReviewSummary(products: any[]) {
  *           example: 1999
  *         stock:
  *           type: number
+ *           description: Used only when variants are not provided
  *           example: 50
  *         status:
  *           type: string
@@ -200,15 +236,38 @@ async function attachReviewSummary(products: any[]) {
  *           example: "Male"
  *         colors:
  *           type: array
+ *           description: Used only when variants are not provided
  *           items:
  *             type: string
  *           example: ["#000000", "#ffffff"]
  *         sizes:
  *           type: array
+ *           description: Used only when variants are not provided
  *           items:
  *             type: string
  *             enum: [S, M, L, XL, XXL]
  *           example: ["M", "L", "XL"]
+ *         variants:
+ *           type: array
+ *           description: Size-wise and color-wise stock list
+ *           items:
+ *             $ref: '#/components/schemas/ProductVariant'
+ *           example:
+ *             - color: "#000000"
+ *               size: "M"
+ *               stock: 10
+ *               sku: "UFO-TEE-BLK-M"
+ *               isActive: true
+ *             - color: "#000000"
+ *               size: "L"
+ *               stock: 5
+ *               sku: "UFO-TEE-BLK-L"
+ *               isActive: true
+ *             - color: "#ffffff"
+ *               size: "M"
+ *               stock: 8
+ *               sku: "UFO-TEE-WHT-M"
+ *               isActive: true
  *         categoryId:
  *           type: string
  *           example: "65f1c4b9e3b6f27c0d1a9999"
@@ -230,6 +289,7 @@ async function attachReviewSummary(products: any[]) {
  *           example: 2499
  *         stock:
  *           type: number
+ *           description: Used only when variants are not provided
  *           example: 25
  *         status:
  *           type: string
@@ -254,6 +314,10 @@ async function attachReviewSummary(products: any[]) {
  *           items:
  *             type: string
  *             enum: [S, M, L, XL, XXL]
+ *         variants:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/ProductVariant'
  *         categoryId:
  *           type: string
  */
@@ -265,8 +329,8 @@ async function attachReviewSummary(products: any[]) {
  *     security:
  *       - bearerAuth: []
  *     tags: [Products - Admin]
- *     summary: List products with real review summary
- *     description: Returns all products for admin with average rating and review count.
+ *     summary: List products for admin
+ *     description: Returns all products for admin with variant stock, average rating, and review count.
  *     parameters:
  *       - in: query
  *         name: search
@@ -329,8 +393,8 @@ const getAllForAdmin = async (
  * /api/products:
  *   get:
  *     tags: [Products]
- *     summary: List active products with real review summary
- *     description: Returns only active public products with average rating and review count.
+ *     summary: List active public products
+ *     description: Returns active public products with variant stock, average rating, and review count.
  *     parameters:
  *       - in: query
  *         name: search
@@ -388,7 +452,7 @@ const getAllPublic = async (
  *   get:
  *     tags: [Products]
  *     summary: List real best-selling active products
- *     description: Returns active products ranked by total sold quantity from orders marked as Delivered. Pending, cancelled, confirmed, shipped, and transit orders are not counted.
+ *     description: Returns active products ranked by total sold quantity from delivered orders only.
  *     parameters:
  *       - in: query
  *         name: limit
@@ -406,13 +470,7 @@ const getAllPublic = async (
  *             schema:
  *               type: array
  *               items:
- *                 allOf:
- *                   - $ref: '#/components/schemas/ProductResponse'
- *                   - type: object
- *                     properties:
- *                       soldCount:
- *                         type: number
- *                         example: 38
+ *                 $ref: '#/components/schemas/ProductResponse'
  */
 const getBestSellers = async (
   req: Request,
@@ -437,7 +495,7 @@ const getBestSellers = async (
  * /api/products/{id}:
  *   get:
  *     tags: [Products]
- *     summary: Get active product by ID with real review summary
+ *     summary: Get active product by ID
  *     description: Returns one active public product. Inactive products are hidden from public users.
  *     parameters:
  *       - in: path
@@ -461,8 +519,8 @@ const getBestSellers = async (
  *     security:
  *       - bearerAuth: []
  *     tags: [Products - Admin]
- *     summary: Get product by ID with real review summary
- *     description: Admin can fetch active or inactive product by ID.
+ *     summary: Get product by ID for admin
+ *     description: Admin can fetch active or inactive products by ID.
  *     parameters:
  *       - in: path
  *         name: id
@@ -503,8 +561,8 @@ const getById = async (req: Request, res: Response, next: NextFunction) => {
  * /api/products/{id}/related:
  *   get:
  *     tags: [Products]
- *     summary: Get related active products with review summary
- *     description: Returns up to 4 active related products. First matches by categoryId, then falls back to gender. Excludes the current product.
+ *     summary: Get related active products
+ *     description: Returns up to 4 active related products. First matches by categoryId, then falls back to gender.
  *     parameters:
  *       - in: path
  *         name: id
@@ -550,7 +608,7 @@ const getRelated = async (req: Request, res: Response, next: NextFunction) => {
  *       - bearerAuth: []
  *     tags: [Products - Admin]
  *     summary: Create a new product
- *     description: Creates a product. Required fields include name, price, stock, image, gender, colors, sizes, and categoryId.
+ *     description: Creates a product. Supports both simple stock and size-wise/color-wise variant stock.
  *     requestBody:
  *       required: true
  *       content:
@@ -558,8 +616,35 @@ const getRelated = async (req: Request, res: Response, next: NextFunction) => {
  *           schema:
  *             $ref: '#/components/schemas/CreateProductRequest'
  *           examples:
- *             default:
- *               summary: Basic product
+ *             variantProduct:
+ *               summary: Product with size-wise and color-wise stock
+ *               value:
+ *                 name: "UFO Oversized Hoodie"
+ *                 description: "Premium oversized hoodie"
+ *                 price: 2999
+ *                 status: "Active"
+ *                 image: "https://example.com/hoodie.jpg"
+ *                 images: ["https://example.com/hoodie-1.jpg"]
+ *                 gender: "Male"
+ *                 categoryId: "65f1c4b9e3b6f27c0d1a1234"
+ *                 variants:
+ *                   - color: "#000000"
+ *                     size: "M"
+ *                     stock: 10
+ *                     sku: "UFO-HOOD-BLK-M"
+ *                     isActive: true
+ *                   - color: "#000000"
+ *                     size: "L"
+ *                     stock: 5
+ *                     sku: "UFO-HOOD-BLK-L"
+ *                     isActive: true
+ *                   - color: "#ffffff"
+ *                     size: "M"
+ *                     stock: 8
+ *                     sku: "UFO-HOOD-WHT-M"
+ *                     isActive: true
+ *             simpleProduct:
+ *               summary: Old simple stock product
  *               value:
  *                 name: "Minimal Tee"
  *                 description: "Soft cotton tee"
@@ -567,7 +652,7 @@ const getRelated = async (req: Request, res: Response, next: NextFunction) => {
  *                 stock: 50
  *                 status: "Active"
  *                 image: "https://example.com/main.jpg"
- *                 images: ["https://example.com/a.jpg", "https://example.com/b.jpg"]
+ *                 images: ["https://example.com/a.jpg"]
  *                 gender: "Male"
  *                 colors: ["#000000", "#ffffff"]
  *                 sizes: ["M", "L", "XL"]
@@ -586,24 +671,36 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const body: CreateProductDto = req.body;
 
+    const hasVariants = Array.isArray(body.variants) && body.variants.length > 0;
+
     if (
       !body.name ||
       body.price == null ||
-      body.stock == null ||
       !body.image ||
       !body.gender ||
-      !body.colors ||
-      !Array.isArray(body.colors) ||
-      body.colors.length === 0 ||
-      !body.sizes ||
-      !Array.isArray(body.sizes) ||
-      body.sizes.length === 0 ||
       !body.categoryId
     ) {
       throw new AppError(
-        "name, price, stock, image, gender, colors, sizes, categoryId are required",
+        "name, price, image, gender, categoryId are required",
         400
       );
+    }
+
+    if (!hasVariants) {
+      if (
+        body.stock == null ||
+        !body.colors ||
+        !Array.isArray(body.colors) ||
+        body.colors.length === 0 ||
+        !body.sizes ||
+        !Array.isArray(body.sizes) ||
+        body.sizes.length === 0
+      ) {
+        throw new AppError(
+          "Either variants are required, or stock, colors, and sizes are required",
+          400
+        );
+      }
     }
 
     const product = await productService.create(body);
@@ -622,7 +719,7 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
  *       - bearerAuth: []
  *     tags: [Products - Admin]
  *     summary: Update product
- *     description: Updates product details and returns the product with current review summary.
+ *     description: Updates product details. If variants are provided, total stock, colors, and sizes are recalculated from variants.
  *     parameters:
  *       - in: path
  *         name: id
@@ -637,11 +734,24 @@ const create = async (req: Request, res: Response, next: NextFunction) => {
  *           schema:
  *             $ref: '#/components/schemas/UpdateProductRequest'
  *           examples:
+ *             updateVariantStock:
+ *               summary: Update variant stock
+ *               value:
+ *                 variants:
+ *                   - color: "#000000"
+ *                     size: "M"
+ *                     stock: 12
+ *                     sku: "UFO-HOOD-BLK-M"
+ *                     isActive: true
+ *                   - color: "#000000"
+ *                     size: "L"
+ *                     stock: 0
+ *                     sku: "UFO-HOOD-BLK-L"
+ *                     isActive: true
  *             changeStatus:
- *               summary: Change status and stock
+ *               summary: Change status
  *               value:
  *                 status: "Inactive"
- *                 stock: 0
  *             updatePrice:
  *               summary: Update price
  *               value:

@@ -33,6 +33,19 @@ type DeliveryAssignment = {
   status?: string;
 };
 
+type OrderItem = {
+  productId?: string;
+  variantId?: string;
+  name?: string;
+  size?: string;
+  color?: string;
+  colorLabel?: string;
+  sku?: string;
+  image?: string;
+  qty?: number;
+  pricePaisa?: number;
+};
+
 type OrderRow = {
   id: string;
   orderCode?: string;
@@ -56,6 +69,7 @@ type OrderRow = {
   };
   paymentProvider?: string;
   deliveryAssignment?: DeliveryAssignment | null;
+  items: OrderItem[];
 };
 
 type ApiOrder = {
@@ -91,6 +105,7 @@ type ApiOrder = {
   };
   paymentProvider?: string;
   deliveryAssignment?: DeliveryAssignment | null;
+  items?: OrderItem[];
 };
 
 type OrderListResponse = {
@@ -197,6 +212,23 @@ function normalizePaymentMethod(v?: string) {
   return "Other";
 }
 
+function normalizeOrderItems(items?: OrderItem[]) {
+  if (!Array.isArray(items)) return [];
+
+  return items.map((item) => ({
+    productId: String(item.productId || ""),
+    variantId: String(item.variantId || ""),
+    name: String(item.name || ""),
+    size: String(item.size || ""),
+    color: String(item.color || ""),
+    colorLabel: String(item.colorLabel || ""),
+    sku: String(item.sku || ""),
+    image: String(item.image || ""),
+    qty: Math.max(0, Number(item.qty || 0)),
+    pricePaisa: Math.max(0, Number(item.pricePaisa || 0)),
+  }));
+}
+
 function getOrderArray(body: OrderListResponse | ApiOrder[]): ApiOrder[] {
   if (Array.isArray(body)) return body;
 
@@ -276,6 +308,7 @@ function mapOrder(order: ApiOrder): OrderRow {
     payment: order.payment,
     paymentProvider: order.paymentProvider,
     deliveryAssignment: mapDeliveryAssignment(order.deliveryAssignment),
+    items: normalizeOrderItems(order.items),
   };
 }
 
@@ -442,6 +475,13 @@ export default function OrdersPage() {
     return sum + Number(o.totalPaisa || 0);
   }, 0);
 
+  const itemCount = rows.reduce((sum, order) => {
+    return (
+      sum +
+      order.items.reduce((inner, item) => inner + Number(item.qty || 0), 0)
+    );
+  }, 0);
+
   const hasSearch = q.trim().length > 0;
 
   return (
@@ -462,8 +502,9 @@ export default function OrdersPage() {
                 </h1>
 
                 <p className="mt-2 max-w-[660px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
-                  Track customer orders, payment status, delivery progress, and
-                  invoice downloads in real time.
+                  Track customer orders, payment status, delivery progress,
+                  invoice downloads, and purchased product variants in real
+                  time.
                 </p>
               </div>
 
@@ -492,8 +533,8 @@ export default function OrdersPage() {
             />
 
             <MetricCard
-              label="Pending Orders"
-              value={String(pendingCount)}
+              label="Items Sold"
+              value={String(itemCount)}
               iconSrc="/images/admin/pending.png"
             />
 
@@ -550,11 +591,12 @@ export default function OrdersPage() {
               <OrderSkeleton />
             ) : rows.length ? (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1360px] border-collapse text-[13px]">
+                <table className="w-full min-w-[1520px] border-collapse text-[13px]">
                   <thead>
                     <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
                       <th className="px-5 py-4 font-medium">Order ID</th>
                       <th className="px-5 py-4 font-medium">Customer</th>
+                      <th className="px-5 py-4 font-medium">Items / Variants</th>
                       <th className="px-5 py-4 font-medium">Total</th>
                       <th className="px-5 py-4 font-medium">Payment Method</th>
                       <th className="px-5 py-4 font-medium">Payment Status</th>
@@ -605,6 +647,10 @@ export default function OrdersPage() {
                             </div>
                           </td>
 
+                          <td className="px-5 py-4">
+                            <OrderVariantPreview items={o.items} />
+                          </td>
+
                           <td className="px-5 py-4 font-semibold text-[#d6c7ff]">
                             {formatNPR(o.totalPaisa)}
                           </td>
@@ -626,7 +672,9 @@ export default function OrdersPage() {
                           </td>
 
                           <td className="px-5 py-4">
-                            <DeliveryBadge status={o.deliveryAssignment?.status}>
+                            <DeliveryBadge
+                              status={o.deliveryAssignment?.status}
+                            >
                               {o.deliveryAssignment?.status || "Not Assigned"}
                             </DeliveryBadge>
 
@@ -679,6 +727,73 @@ export default function OrdersPage() {
         {toast ? <Toast toast={toast} /> : null}
       </div>
     </AdminPageGuard>
+  );
+}
+
+function OrderVariantPreview({ items }: { items: OrderItem[] }) {
+  if (!items.length) {
+    return <span className="text-[12px] text-[#7f879f]">No items</span>;
+  }
+
+  const totalQty = items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  const first = items[0];
+
+  return (
+    <div className="max-w-[260px]">
+      <div className="flex items-center gap-3">
+        {first.image ? (
+          <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-[14px] border border-white/10 bg-white/5">
+            <Image
+              src={first.image}
+              alt={first.name || "Product"}
+              fill
+              className="object-cover"
+              sizes="44px"
+            />
+          </div>
+        ) : (
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] border border-white/10 bg-white/5 text-[18px]">
+            📦
+          </div>
+        )}
+
+        <div className="min-w-0">
+          <div className="truncate text-[13px] font-semibold text-white">
+            {first.name || "Product"}
+          </div>
+
+          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[#a7aec4]">
+            <span>{first.colorLabel || first.color || "Color"}</span>
+            <span>•</span>
+            <span>{first.size || "Size"}</span>
+            <span>•</span>
+            <span>Qty {first.qty || 0}</span>
+          </div>
+
+          {first.sku ? (
+            <div className="mt-1 max-w-[220px] truncate text-[10px] uppercase tracking-[0.12em] text-[#7f879f]">
+              SKU: {first.sku}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#a7aec4]">
+          {items.length} product{items.length === 1 ? "" : "s"}
+        </span>
+
+        <span className="rounded-full border border-[#8b5cf6]/20 bg-[#8b5cf6]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d6c7ff]">
+          {totalQty} item{totalQty === 1 ? "" : "s"}
+        </span>
+
+        {items.length > 1 ? (
+          <span className="text-[10px] text-[#7f879f]">
+            +{items.length - 1} more
+          </span>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -786,14 +901,14 @@ function DeliveryBadge({
     s === "delivered"
       ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
       : s === "out for delivery"
-      ? "border-violet-400/20 bg-violet-500/15 text-violet-300"
-      : s === "picked up"
-      ? "border-blue-400/20 bg-blue-500/15 text-blue-300"
-      : s === "assigned"
-      ? "border-cyan-400/20 bg-cyan-500/15 text-cyan-300"
-      : s === "failed delivery" || s === "returned"
-      ? "border-red-400/20 bg-red-500/15 text-red-300"
-      : "border-white/10 bg-white/5 text-[#a7aec4]";
+        ? "border-violet-400/20 bg-violet-500/15 text-violet-300"
+        : s === "picked up"
+          ? "border-blue-400/20 bg-blue-500/15 text-blue-300"
+          : s === "assigned"
+            ? "border-cyan-400/20 bg-cyan-500/15 text-cyan-300"
+            : s === "failed delivery" || s === "returned"
+              ? "border-red-400/20 bg-red-500/15 text-red-300"
+              : "border-white/10 bg-white/5 text-[#a7aec4]";
 
   return (
     <span
@@ -869,8 +984,8 @@ function Toast({ toast }: { toast: Exclude<ToastState, null> }) {
         toast.type === "success"
           ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
           : toast.type === "error"
-          ? "border-red-400/20 bg-red-500/15 text-red-200"
-          : "border-[#8b5cf6]/30 bg-[#8b5cf6]/15 text-[#e9ddff]",
+            ? "border-red-400/20 bg-red-500/15 text-red-200"
+            : "border-[#8b5cf6]/30 bg-[#8b5cf6]/15 text-[#e9ddff]",
       ].join(" ")}
     >
       {toast.message}

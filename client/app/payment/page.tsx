@@ -9,13 +9,18 @@ import MainFooter from "@/components/layout/MainFooter";
 
 type CartItem = {
   id: string;
+  productId?: string;
+  variantId?: string | null;
   name: string;
   size: string;
   color: string;
   colorLabel: string;
+  sku?: string | null;
   price: number;
   qty: number;
   image: string;
+  stock?: number | null;
+  totalProductStock?: number | null;
 };
 
 type PayMethod = "esewa" | "khalti" | "cod";
@@ -65,10 +70,16 @@ type OrderSummaryLS = {
   currency?: string;
   updatedAt?: string;
   couponCode?: string | null;
+  items?: CartItem[];
 };
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+
+const CART_KEY = "ufo_cart";
+const ORDER_SUMMARY_KEY = "ufo_order_summary";
+const CHECKOUT_ITEMS_KEY = "ufo_checkout_items";
+const CHECKOUT_ADDRESS_KEY = "ufo_checkout_address";
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
 const containerClass =
@@ -90,9 +101,42 @@ function formatNpr(value: number) {
   return `Rs. ${Math.round(Number(value || 0)).toLocaleString("en-NP")}`;
 }
 
+function hasRealStockValue(stock: unknown) {
+  return typeof stock === "number" && Number.isFinite(stock);
+}
+
+function normalizeCartItems(input: unknown): CartItem[] {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((item: any) => {
+      const productId = String(item?.productId || item?.id || "").trim();
+      const variantId = String(item?.variantId || "").trim();
+
+      return {
+        id: productId,
+        productId,
+        variantId: variantId || null,
+        name: String(item?.name || "Product").trim(),
+        size: String(item?.size || "").trim().toUpperCase(),
+        color: String(item?.color || "").trim(),
+        colorLabel: String(item?.colorLabel || "").trim(),
+        sku: String(item?.sku || "").trim() || null,
+        price: Math.max(0, Number(item?.price || 0)),
+        qty: Math.max(1, Math.min(99, Number(item?.qty || 1))),
+        image: String(item?.image || "").trim(),
+        stock: hasRealStockValue(item?.stock) ? Number(item.stock) : null,
+        totalProductStock: hasRealStockValue(item?.totalProductStock)
+          ? Number(item.totalProductStock)
+          : null,
+      };
+    })
+    .filter((item) => item.productId && item.price >= 0);
+}
+
 function getOrderSummary(): OrderSummaryLS | null {
   try {
-    const raw = localStorage.getItem("ufo_order_summary");
+    const raw = localStorage.getItem(ORDER_SUMMARY_KEY);
     if (!raw) return null;
 
     const parsed = JSON.parse(raw);
@@ -107,6 +151,7 @@ function getOrderSummary(): OrderSummaryLS | null {
       currency: parsed.currency || "NPR",
       updatedAt: parsed.updatedAt,
       couponCode: parsed.couponCode ?? null,
+      items: normalizeCartItems(parsed.items || []),
     };
   } catch {
     return null;
@@ -122,7 +167,7 @@ function normalizeNumber(v: unknown): number | undefined {
 function getCheckoutAddressLS(): CheckoutAddressLS | undefined {
   try {
     const raw =
-      localStorage.getItem("ufo_checkout_address") ||
+      localStorage.getItem(CHECKOUT_ADDRESS_KEY) ||
       localStorage.getItem("checkout_address") ||
       localStorage.getItem("ufo_address") ||
       "";
@@ -177,26 +222,39 @@ function mapToOrderAddress(a?: CheckoutAddressLS): OrderAddressAPI | undefined {
 
 function readCartItems(): CartItem[] {
   try {
-    const raw = localStorage.getItem("ufo_cart");
+    const checkoutRaw = localStorage.getItem(CHECKOUT_ITEMS_KEY);
+    if (checkoutRaw) {
+      const checkoutItems = normalizeCartItems(JSON.parse(checkoutRaw));
+      if (checkoutItems.length) return checkoutItems;
+    }
+
+    const summary = getOrderSummary();
+    if (summary?.items?.length) {
+      return normalizeCartItems(summary.items);
+    }
+
+    const raw = localStorage.getItem(CART_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
 
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((item: any) => ({
-        id: String(item?.id || "").trim(),
-        name: String(item?.name || "Product").trim(),
-        size: String(item?.size || "").trim(),
-        color: String(item?.color || "").trim(),
-        colorLabel: String(item?.colorLabel || "").trim(),
-        price: Math.max(0, Number(item?.price || 0)),
-        qty: Math.max(1, Number(item?.qty || 1)),
-        image: String(item?.image || "").trim(),
-      }))
-      .filter((item) => item.id);
+    return normalizeCartItems(parsed);
   } catch {
     return [];
   }
+}
+
+function getItemCount(items: CartItem[]) {
+  return items.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+}
+
+function hasStockIssue(items: CartItem[]) {
+  return items.some((item) => {
+    if (!hasRealStockValue(item.stock)) return false;
+
+    const stock = Number(item.stock);
+    const qty = Number(item.qty || 0);
+
+    return stock <= 0 || qty > stock;
+  });
 }
 
 function ToastMessage({
@@ -352,7 +410,16 @@ export default function PaymentPage() {
       if (!parsed.length) {
         showToast("Your cart is empty. Redirecting to cart.", "error");
         router.replace("/cartpage");
+        return;
       }
+
+      if (hasStockIssue(parsed)) {
+        showToast("Some cart items have stock issues.", "error");
+        router.replace("/cartpage");
+        return;
+      }
+
+      localStorage.setItem(CHECKOUT_ITEMS_KEY, JSON.stringify(parsed));
     } catch {
       setItems([]);
       showToast("Failed to load cart items.", "error");
@@ -426,6 +493,10 @@ export default function PaymentPage() {
 
     if (!safeItems.length) throw new Error("Cart is empty.");
 
+    if (hasStockIssue(safeItems)) {
+      throw new Error("Some cart items are out of stock.");
+    }
+
     const addrLS = getCheckoutAddressLS();
     const mappedAddress = mapToOrderAddress(addrLS);
 
@@ -441,10 +512,12 @@ export default function PaymentPage() {
       couponCode: summary?.couponCode || null,
 
       items: safeItems.map((it) => ({
-        productId: it.id,
+        productId: it.productId || it.id,
+        variantId: it.variantId || null,
         size: it.size || "",
         color: it.color || "",
         colorLabel: it.colorLabel || "",
+        sku: it.sku || null,
         qty: Math.max(1, Number(it.qty || 1)),
       })),
 
@@ -481,10 +554,11 @@ export default function PaymentPage() {
     localStorage.setItem("ufo_last_order_number", data.orderCode);
     localStorage.setItem("ufo_last_total_paisa", String(data.totalPaisa));
 
-    localStorage.removeItem("ufo_cart");
-    localStorage.removeItem("ufo_order_summary");
+    localStorage.removeItem(CART_KEY);
+    localStorage.removeItem(ORDER_SUMMARY_KEY);
+    localStorage.removeItem(CHECKOUT_ITEMS_KEY);
     localStorage.removeItem("checkout_address");
-    localStorage.removeItem("ufo_checkout_address");
+    localStorage.removeItem(CHECKOUT_ADDRESS_KEY);
 
     window.dispatchEvent(new Event("ufo_cart_updated"));
     router.replace("/ThankYou");
@@ -605,6 +679,12 @@ export default function PaymentPage() {
 
     if (!items.length) {
       showToast("Your cart is empty. Redirecting to cart.", "error");
+      router.push("/cartpage");
+      return false;
+    }
+
+    if (hasStockIssue(items)) {
+      showToast("Some cart items have stock issues.", "error");
       router.push("/cartpage");
       return false;
     }
@@ -853,10 +933,47 @@ export default function PaymentPage() {
                   </div>
 
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-[#a7aec4]">
-                    {summary?.itemCount || items.length} item
-                    {(summary?.itemCount || items.length) === 1 ? "" : "s"}
+                    {summary?.itemCount || getItemCount(items) || items.length} item
+                    {(summary?.itemCount || getItemCount(items) || items.length) ===
+                    1
+                      ? ""
+                      : "s"}
                   </span>
                 </div>
+
+                {items.length > 0 ? (
+                  <div className="mt-5 max-h-[260px] space-y-3 overflow-y-auto border-y border-[#26293a] py-4 pr-1">
+                    {items.map((item) => (
+                      <div
+                        key={`${item.productId || item.id}-${
+                          item.variantId || item.size
+                        }-${item.color}`}
+                        className="rounded-[16px] border border-[#26293a] bg-[#161824] p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-[13px] font-semibold text-white">
+                              {item.name}
+                            </div>
+                            <div className="mt-1 text-[11px] text-[#a7aec4]">
+                              {item.colorLabel || item.color} /{" "}
+                              {item.size || "-"} × {item.qty}
+                            </div>
+                            {item.sku ? (
+                              <div className="mt-1 text-[11px] text-[#7f879f]">
+                                SKU: {item.sku}
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="shrink-0 text-right text-[12px] font-semibold text-[#d6c7ff]">
+                            {formatNpr(item.price * item.qty)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
 
                 <div className="mt-6 space-y-4 text-sm text-[#a7aec4] sm:text-[15px]">
                   <div className="flex items-center justify-between gap-4">
