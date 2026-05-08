@@ -1,5 +1,3 @@
-// server/src/modules/product/controllers/product.controller.ts
-
 import { Request, Response, NextFunction } from "express";
 import { productService } from "../services/product.service";
 import { CreateProductDto, UpdateProductDto } from "../types/product.types";
@@ -26,6 +24,9 @@ const mapToFrontend = (p: any) => ({
   reviews: Number(p.reviewCount || 0),
   avgRating: Number(p.avgRating || 0),
   reviewCount: Number(p.reviewCount || 0),
+
+  // Real best-seller data from delivered orders
+  soldCount: Number(p.soldCount || 0),
 });
 
 async function attachReviewSummary(products: any[]) {
@@ -150,6 +151,9 @@ async function attachReviewSummary(products: any[]) {
  *         reviewCount:
  *           type: number
  *           example: 12
+ *         soldCount:
+ *           type: number
+ *           example: 38
  *
  *     CreateProductRequest:
  *       type: object
@@ -369,6 +373,56 @@ const getAllPublic = async (
       size: req.query.size as any,
       categoryId: req.query.categoryId as string | undefined,
     });
+
+    const productsWithReviews = await attachReviewSummary(products);
+
+    res.json(productsWithReviews.map(mapToFrontend));
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * @swagger
+ * /api/products/best-sellers:
+ *   get:
+ *     tags: [Products]
+ *     summary: List real best-selling active products
+ *     description: Returns active products ranked by total sold quantity from orders marked as Delivered. Pending, cancelled, confirmed, shipped, and transit orders are not counted.
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 24
+ *           default: 8
+ *         description: Number of best-selling products to return.
+ *     responses:
+ *       200:
+ *         description: Best-selling products fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 allOf:
+ *                   - $ref: '#/components/schemas/ProductResponse'
+ *                   - type: object
+ *                     properties:
+ *                       soldCount:
+ *                         type: number
+ *                         example: 38
+ */
+const getBestSellers = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 24);
+
+    const products = await productService.getBestSellers(limit);
 
     const productsWithReviews = await attachReviewSummary(products);
 
@@ -655,6 +709,7 @@ const remove = async (req: Request, res: Response, next: NextFunction) => {
 export const productController = {
   getAllForAdmin,
   getAllPublic,
+  getBestSellers,
   getById,
   getRelated,
   create,

@@ -14,6 +14,7 @@ import {
 type CouponType = "PERCENT" | "FLAT" | "FREESHIP";
 type CouponScope = "ALL" | "CATEGORY" | "PRODUCT";
 type CouponStatus = "ACTIVE" | "PAUSED";
+type CouponDateStatus = "ACTIVE" | "UPCOMING" | "EXPIRED" | "PAUSED";
 
 type CouponRow = {
   id: string;
@@ -168,6 +169,24 @@ function optionClass() {
   return "bg-[#11121a] text-white";
 }
 
+function getCouponDateStatus(row: CouponRow): CouponDateStatus {
+  if (row.status === "PAUSED") return "PAUSED";
+
+  const now = new Date();
+  const start = row.startAt ? new Date(row.startAt) : null;
+  const end = row.endAt ? new Date(row.endAt) : null;
+
+  if (start && !Number.isNaN(start.getTime()) && now < start) {
+    return "UPCOMING";
+  }
+
+  if (end && !Number.isNaN(end.getTime()) && now > end) {
+    return "EXPIRED";
+  }
+
+  return "ACTIVE";
+}
+
 async function safeJson(res: Response) {
   const text = await res.text();
 
@@ -207,7 +226,9 @@ export default function AdminDiscountsPage() {
   const [toast, setToast] = useState<ToastState | null>(null);
 
   const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | CouponStatus>("ALL");
+  const [statusFilter, setStatusFilter] = useState<
+    "ALL" | CouponDateStatus
+  >("ALL");
   const [typeFilter, setTypeFilter] = useState<"ALL" | CouponType>("ALL");
 
   const [open, setOpen] = useState(false);
@@ -272,19 +293,35 @@ export default function AdminDiscountsPage() {
   }, []);
 
   const stats = useMemo(() => {
-    const active = rows.filter((r) => r.status === "ACTIVE").length;
-    const paused = rows.filter((r) => r.status === "PAUSED").length;
+    const active = rows.filter(
+      (r) => getCouponDateStatus(r) === "ACTIVE"
+    ).length;
+
+    const upcoming = rows.filter(
+      (r) => getCouponDateStatus(r) === "UPCOMING"
+    ).length;
+
+    const expired = rows.filter(
+      (r) => getCouponDateStatus(r) === "EXPIRED"
+    ).length;
+
+    const paused = rows.filter(
+      (r) => getCouponDateStatus(r) === "PAUSED"
+    ).length;
+
     const usedTotal = rows.reduce((acc, r) => acc + Number(r.usedCount || 0), 0);
     const total = rows.length;
 
-    return { active, paused, usedTotal, total };
+    return { active, upcoming, expired, paused, usedTotal, total };
   }, [rows]);
 
   const filteredRows = useMemo(() => {
     const needle = q.trim().toLowerCase();
 
     return rows.filter((r) => {
-      if (statusFilter !== "ALL" && r.status !== statusFilter) return false;
+      const realStatus = getCouponDateStatus(r);
+
+      if (statusFilter !== "ALL" && realStatus !== statusFilter) return false;
       if (typeFilter !== "ALL" && r.type !== typeFilter) return false;
       if (!needle) return true;
 
@@ -466,8 +503,11 @@ export default function AdminDiscountsPage() {
   }
 
   function normalizePayload(f: FormState) {
-    const eligibleCategoryIds = f.scope === "CATEGORY" ? textToIds(f.eligibleCategoryIds) : [];
-    const eligibleProductIds = f.scope === "PRODUCT" ? textToIds(f.eligibleProductIds) : [];
+    const eligibleCategoryIds =
+      f.scope === "CATEGORY" ? textToIds(f.eligibleCategoryIds) : [];
+
+    const eligibleProductIds =
+      f.scope === "PRODUCT" ? textToIds(f.eligibleProductIds) : [];
 
     const payload: any = {
       code: String(f.code || "").trim().toUpperCase(),
@@ -478,7 +518,8 @@ export default function AdminDiscountsPage() {
       value: Number(f.value || 0),
       status: f.status,
       minOrder: f.minOrder == null ? null : Number(f.minOrder),
-      maxDiscountCap: f.maxDiscountCap == null ? null : Number(f.maxDiscountCap),
+      maxDiscountCap:
+        f.maxDiscountCap == null ? null : Number(f.maxDiscountCap),
       globalUsageLimit:
         f.globalUsageLimit == null ? null : Number(f.globalUsageLimit),
       maxUsesPerUser:
@@ -654,12 +695,16 @@ export default function AdminDiscountsPage() {
 
                 <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
                   Create coupon codes, manage discount rules, pause campaigns,
-                  and track collected coupons used by customers at checkout.
+                  check expiry dates, and track collected coupons used by
+                  customers at checkout.
                 </p>
               </div>
 
               <div className="flex flex-wrap gap-3">
-                <TabButton active={tab === "coupons"} onClick={() => setTab("coupons")}>
+                <TabButton
+                  active={tab === "coupons"}
+                  onClick={() => setTab("coupons")}
+                >
                   Coupons
                 </TabButton>
 
@@ -671,7 +716,11 @@ export default function AdminDiscountsPage() {
                 </TabButton>
 
                 {tab === "coupons" && canCreate ? (
-                  <button type="button" onClick={openCreate} className={primaryBtnClass}>
+                  <button
+                    type="button"
+                    onClick={openCreate}
+                    className={primaryBtnClass}
+                  >
                     Create Coupon
                   </button>
                 ) : null}
@@ -685,7 +734,7 @@ export default function AdminDiscountsPage() {
 
           {tab === "coupons" ? (
             <>
-              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 <StatCard
                   label="Total Coupons"
                   value={String(stats.total)}
@@ -699,15 +748,21 @@ export default function AdminDiscountsPage() {
                 />
 
                 <StatCard
-                  label="Paused"
-                  value={String(stats.paused)}
+                  label="Upcoming"
+                  value={String(stats.upcoming)}
+                  iconSrc="/images/admin/active.png"
+                />
+
+                <StatCard
+                  label="Expired"
+                  value={String(stats.expired)}
                   iconSrc="/images/admin/paused.png"
                 />
 
                 <StatCard
-                  label="Used Count"
-                  value={String(stats.usedTotal)}
-                  iconSrc="/images/admin/orders.png"
+                  label="Paused"
+                  value={String(stats.paused)}
+                  iconSrc="/images/admin/paused.png"
                 />
               </section>
 
@@ -737,7 +792,7 @@ export default function AdminDiscountsPage() {
                     aria-label="Coupon status filter"
                     value={statusFilter}
                     onChange={(e) =>
-                      setStatusFilter(e.target.value as "ALL" | CouponStatus)
+                      setStatusFilter(e.target.value as "ALL" | CouponDateStatus)
                     }
                     className={selectClass}
                   >
@@ -746,6 +801,12 @@ export default function AdminDiscountsPage() {
                     </option>
                     <option className={optionClass()} value="ACTIVE">
                       Active
+                    </option>
+                    <option className={optionClass()} value="UPCOMING">
+                      Upcoming
+                    </option>
+                    <option className={optionClass()} value="EXPIRED">
+                      Expired
                     </option>
                     <option className={optionClass()} value="PAUSED">
                       Paused
@@ -777,7 +838,11 @@ export default function AdminDiscountsPage() {
                     </option>
                   </select>
 
-                  <button type="button" onClick={loadCoupons} className={secondaryBtnClass}>
+                  <button
+                    type="button"
+                    onClick={loadCoupons}
+                    className={secondaryBtnClass}
+                  >
                     Refresh
                   </button>
                 </div>
@@ -960,17 +1025,35 @@ function StatCard({
   );
 }
 
-function StatusPill({ status }: { status: CouponStatus }) {
+function StatusPill({ row }: { row: CouponRow }) {
+  const status = getCouponDateStatus(row);
+
+  const tone =
+    status === "ACTIVE"
+      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
+      : status === "UPCOMING"
+      ? "border-sky-400/20 bg-sky-500/15 text-sky-300"
+      : status === "EXPIRED"
+      ? "border-red-400/20 bg-red-500/15 text-red-300"
+      : "border-amber-400/20 bg-amber-500/15 text-amber-300";
+
+  const label =
+    status === "ACTIVE"
+      ? "Active"
+      : status === "UPCOMING"
+      ? "Upcoming"
+      : status === "EXPIRED"
+      ? "Expired"
+      : "Paused";
+
   return (
     <span
       className={[
         "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold",
-        status === "ACTIVE"
-          ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
-          : "border-amber-400/20 bg-amber-500/15 text-amber-300",
+        tone,
       ].join(" ")}
     >
-      {status}
+      {label}
     </span>
   );
 }
@@ -1020,7 +1103,7 @@ function CouponsTable({
         </div>
 
         <h2 className="mt-1 text-[20px] font-semibold text-white">
-          Active Discount Rules
+          Discount Rules
         </h2>
       </div>
 
@@ -1046,90 +1129,108 @@ function CouponsTable({
             </thead>
 
             <tbody>
-              {rows.map((r) => (
-                <tr
-                  key={r.id}
-                  className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
-                >
-                  <td className="px-5 py-4">
-                    <div className="font-semibold text-white">{r.code}</div>
+              {rows.map((r) => {
+                const realStatus = getCouponDateStatus(r);
 
-                    <div className="mt-1 text-[12px] text-[#7f879f]">
-                      {r.globalUsageLimit
-                        ? `Limit ${r.usedCount}/${r.globalUsageLimit}`
-                        : `Used ${r.usedCount}`}
-                    </div>
-                  </td>
+                return (
+                  <tr
+                    key={r.id}
+                    className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                  >
+                    <td className="px-5 py-4">
+                      <div className="font-semibold text-white">{r.code}</div>
 
-                  <td className="px-5 py-4">
-                    <div className="font-medium text-white">{r.title}</div>
-
-                    {r.description ? (
-                      <div className="mt-1 max-w-[240px] truncate text-[12px] text-[#7f879f]">
-                        {r.description}
+                      <div className="mt-1 text-[12px] text-[#7f879f]">
+                        {r.globalUsageLimit
+                          ? `Limit ${r.usedCount}/${r.globalUsageLimit}`
+                          : `Used ${r.usedCount}`}
                       </div>
-                    ) : null}
-                  </td>
+                    </td>
 
-                  <td className="px-5 py-4 text-[#a7aec4]">
-                    {typeLabel(r.type, r.value, r.maxDiscountCap)}
-                  </td>
+                    <td className="px-5 py-4">
+                      <div className="font-medium text-white">{r.title}</div>
 
-                  <td className="px-5 py-4 text-[#a7aec4]">
-                    {scopeLabel(r.scope)}
-                  </td>
+                      {r.description ? (
+                        <div className="mt-1 max-w-[240px] truncate text-[12px] text-[#7f879f]">
+                          {r.description}
+                        </div>
+                      ) : null}
+                    </td>
 
-                  <td className="px-5 py-4 text-[#a7aec4]">
-                    {moneyLabelRs(r.minOrder)}
-                  </td>
+                    <td className="px-5 py-4 text-[#a7aec4]">
+                      {typeLabel(r.type, r.value, r.maxDiscountCap)}
+                    </td>
 
-                  <td className="px-5 py-4 text-[#a7aec4]">
-                    {formatDate(r.startAt)} – {formatDate(r.endAt)}
-                  </td>
+                    <td className="px-5 py-4 text-[#a7aec4]">
+                      {scopeLabel(r.scope)}
+                    </td>
 
-                  <td className="px-5 py-4">
-                    <CountBadge>{r.usedCount ?? 0}</CountBadge>
-                  </td>
+                    <td className="px-5 py-4 text-[#a7aec4]">
+                      {moneyLabelRs(r.minOrder)}
+                    </td>
 
-                  <td className="px-5 py-4">
-                    <StatusPill status={r.status} />
-                  </td>
+                    <td className="px-5 py-4">
+                      <div className="text-[#a7aec4]">
+                        {formatDate(r.startAt)} – {formatDate(r.endAt)}
+                      </div>
 
-                  <td className="px-5 py-4">
-                    <div className="flex justify-end gap-2">
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => openEdit(r)}
-                          className={actionBtnClass}
-                        >
-                          Edit
-                        </button>
+                      {realStatus === "EXPIRED" ? (
+                        <div className="mt-1 text-[11px] text-red-300">
+                          Date expired
+                        </div>
                       ) : null}
 
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleStatus(r)}
-                          className={actionBtnClass}
-                        >
-                          {r.status === "ACTIVE" ? "Pause" : "Activate"}
-                        </button>
+                      {realStatus === "UPCOMING" ? (
+                        <div className="mt-1 text-[11px] text-sky-300">
+                          Starts later
+                        </div>
                       ) : null}
+                    </td>
 
-                      {canDelete ? (
-                        <button
-                          type="button"
-                          onClick={() => requestDelete(r)}
-                          className="rounded-full border border-red-400/20 bg-red-500/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-red-300 transition hover:-translate-y-0.5 hover:bg-red-500/15"
-                        >
-                          Delete
-                        </button>
-                      ) : null}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    <td className="px-5 py-4">
+                      <CountBadge>{r.usedCount ?? 0}</CountBadge>
+                    </td>
+
+                    <td className="px-5 py-4">
+                      <StatusPill row={r} />
+                    </td>
+
+                    <td className="px-5 py-4">
+                      <div className="flex justify-end gap-2">
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => openEdit(r)}
+                            className={actionBtnClass}
+                          >
+                            Edit
+                          </button>
+                        ) : null}
+
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleStatus(r)}
+                            className={actionBtnClass}
+                          >
+                            {r.status === "ACTIVE" ? "Pause" : "Activate"}
+                          </button>
+                        ) : null}
+
+                        {canDelete ? (
+                          <button
+                            type="button"
+                            onClick={() => requestDelete(r)}
+                            className="rounded-full border border-red-400/20 bg-red-500/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-red-300 transition hover:-translate-y-0.5 hover:bg-red-500/15"
+                          >
+                            Delete
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -1305,7 +1406,7 @@ function CouponModal({
                 </h3>
 
                 <p className="mt-1 text-[13px] text-[#a7aec4]">
-                  Configure discount rules for customers.
+                  Configure discount rules, start date, and expiry date.
                 </p>
               </div>
 
@@ -1641,7 +1742,8 @@ function CouponModal({
           <div className="shrink-0 border-t border-[#26293a] px-5 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[12px] text-[#7f879f]">
-                Totals are calculated server-side at checkout for safety.
+                Active, upcoming, expired, and paused status are calculated from
+                status plus start/end date.
               </p>
 
               <div className="flex gap-2">

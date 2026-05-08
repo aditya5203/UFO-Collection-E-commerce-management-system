@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { Product } from "../../../models/Product.model";
+import { Order } from "../../../models/Order.model";
 import {
   CreateProductDto,
   UpdateProductDto,
@@ -45,6 +46,63 @@ export const productService = {
     if (query.categoryId) filter.categoryId = query.categoryId;
 
     return Product.find(filter).sort({ createdAt: -1 }).lean().exec();
+  },
+
+  async getBestSellers(limit = 8) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 8, 1), 24);
+
+    return Order.aggregate([
+      {
+        $match: {
+          orderStatus: "Delivered",
+        },
+      },
+      {
+        $unwind: "$items",
+      },
+      {
+        $match: {
+          "items.productId": { $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: "$items.productId",
+          soldCount: { $sum: "$items.qty" },
+        },
+      },
+      {
+        $sort: {
+          soldCount: -1,
+        },
+      },
+      {
+        $limit: safeLimit,
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "_id",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      {
+        $unwind: "$product",
+      },
+      {
+        $match: {
+          "product.status": "Active",
+        },
+      },
+      {
+        $replaceRoot: {
+          newRoot: {
+            $mergeObjects: ["$product", { soldCount: "$soldCount" }],
+          },
+        },
+      },
+    ]);
   },
 
   async getById(id: string) {

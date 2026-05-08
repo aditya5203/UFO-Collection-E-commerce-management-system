@@ -1,4 +1,3 @@
-// server/src/modules/product/routes/product.routes.ts
 import { Router } from "express";
 import { productController } from "../controllers/product.controller";
 import {
@@ -13,6 +12,7 @@ const adminRouter = Router();
 
 /* ---------- Public ---------- */
 publicRouter.get("/", productController.getAllPublic);
+publicRouter.get("/best-sellers", productController.getBestSellers);
 publicRouter.get("/:id/related", productController.getRelated);
 publicRouter.get("/:id", productController.getById);
 
@@ -54,21 +54,25 @@ adminRouter.get(
   authorizePermission("productView"),
   productController.getAllForAdmin
 );
+
 adminRouter.post(
   "/",
   authorizePermission("productCreate"),
   productController.create
 );
+
 adminRouter.get(
   "/:id",
   authorizePermission("productView"),
   productController.getById
 );
+
 adminRouter.patch(
   "/:id",
   authorizePermission("productEdit"),
   productController.update
 );
+
 adminRouter.delete(
   "/:id",
   authorizePermission("productDelete"),

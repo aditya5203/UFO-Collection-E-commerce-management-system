@@ -1,5 +1,3 @@
-// client/app/page.tsx
-
 "use client";
 
 import * as React from "react";
@@ -29,6 +27,7 @@ type Product = {
   image: string;
   rating?: number;
   reviews?: number;
+  soldCount?: number;
 };
 
 const API_BASE =
@@ -95,6 +94,7 @@ function mapProduct(raw: any): Product {
     image: resolveMediaSrc(raw?.image),
     rating: normalizeNumber(raw?.rating || raw?.displayRating, 0),
     reviews: normalizeNumber(raw?.reviews || raw?.reviewCount, 0),
+    soldCount: normalizeNumber(raw?.soldCount, 0),
   };
 }
 
@@ -284,7 +284,9 @@ function ProductCard({
           />
 
           <div className="absolute left-3 top-3 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur">
-            New
+            {product.soldCount && product.soldCount > 0
+              ? `${product.soldCount} Sold`
+              : "New"}
           </div>
 
           <div className="absolute bottom-3 left-3 right-3 translate-y-2 rounded-full bg-white px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-[#090a12] opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">
@@ -428,27 +430,49 @@ export default function HomePage() {
       try {
         setLoadingProducts(true);
 
-        const res = await fetch(`${API_BASE}/products`, {
-          cache: "no-store",
-        });
+        const [latestRes, bestSellerRes] = await Promise.all([
+          fetch(`${API_BASE}/products`, {
+            cache: "no-store",
+          }),
+          fetch(`${API_BASE}/products/best-sellers?limit=8`, {
+            cache: "no-store",
+          }),
+        ]);
 
-        if (!res.ok) throw new Error("Failed to load products");
+        if (!latestRes.ok) throw new Error("Failed to load products");
 
-        const json = await res.json();
+        const latestJson = await latestRes.json();
 
-        const all: any[] =
-          (Array.isArray(json) && json) ||
-          (Array.isArray(json?.data) && json.data) ||
-          (Array.isArray(json?.data?.products) && json.data.products) ||
+        const latestRaw: any[] =
+          (Array.isArray(latestJson) && latestJson) ||
+          (Array.isArray(latestJson?.data) && latestJson.data) ||
+          (Array.isArray(latestJson?.data?.products) &&
+            latestJson.data.products) ||
           [];
 
-        const mapped = all.map(mapProduct).filter((p) => p.id);
-        const limited = mapped.slice(0, 50);
+        let bestSellerRaw: any[] = [];
+
+        if (bestSellerRes.ok) {
+          const bestSellerJson = await bestSellerRes.json();
+
+          bestSellerRaw =
+            (Array.isArray(bestSellerJson) && bestSellerJson) ||
+            (Array.isArray(bestSellerJson?.data) && bestSellerJson.data) ||
+            (Array.isArray(bestSellerJson?.data?.products) &&
+              bestSellerJson.data.products) ||
+            [];
+        }
+
+        const latestMapped = latestRaw.map(mapProduct).filter((p) => p.id);
+
+        const bestSellerMapped = bestSellerRaw
+          .map(mapProduct)
+          .filter((p) => p.id);
 
         if (!active) return;
 
-        setLatestProducts(limited.slice(0, 8));
-        setBestSellerProducts(limited.slice(8, 16));
+        setLatestProducts(latestMapped.slice(0, 8));
+        setBestSellerProducts(bestSellerMapped.slice(0, 8));
       } catch {
         if (!active) return;
 
@@ -514,11 +538,11 @@ export default function HomePage() {
         <ProductSection
           eyebrow="Best Sellers"
           title="Most Loved Pieces"
-          description="Customer favorites that blend comfort, quality, and standout style for daily wear."
+          description="Real customer favorites based on delivered orders and total sold quantity."
           products={bestSellerProducts}
           loading={loadingProducts}
-          emptyTitle="No best seller products available"
-          emptyDescription="Add more products from the admin panel to show this section."
+          emptyTitle="No best seller products yet"
+          emptyDescription="Best sellers will appear here after customers place orders and those orders are marked as Delivered."
         />
 
         <ServiceCards />
