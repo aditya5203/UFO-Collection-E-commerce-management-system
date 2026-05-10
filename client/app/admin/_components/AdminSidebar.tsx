@@ -86,10 +86,10 @@ const NAV_ITEMS: NavItem[] = [
     viewPermission: "liveChatView",
   },
   {
-    label: "Customer Support",
-    href: "/admin/customer-support",
+    label: "Returns & Refunds",
+    href: "/admin/returns-refunds",
     icon: "/images/admin/support.png",
-    viewPermission: "supportView",
+    viewPermission: "returnsRefundsView",
   },
   {
     label: "Advertisement",
@@ -125,6 +125,7 @@ const API_BASE = `${BASE}/api`;
 
 async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return JSON.parse(text);
   } catch {
@@ -227,11 +228,19 @@ export default function AdminSidebar() {
             <li key={item.href}>
               <Link
                 href={item.href}
-                className={`admin-nav-link ${isActive(item.href) ? "active" : ""}`}
+                className={`admin-nav-link ${
+                  isActive(item.href) ? "active" : ""
+                }`}
               >
                 <span className="admin-nav-icon">
-                  <Image src={item.icon} alt={item.label} width={18} height={18} />
+                  <Image
+                    src={item.icon}
+                    alt={item.label}
+                    width={18}
+                    height={18}
+                  />
                 </span>
+
                 <span>{item.label}</span>
               </Link>
             </li>

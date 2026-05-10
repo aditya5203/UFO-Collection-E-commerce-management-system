@@ -43,6 +43,7 @@ export type AdminPermissionKey =
   | "liveChatReply"
   | "supportView"
   | "supportReply"
+  | "returnsRefundsView"
   | "advertisementView"
   | "advertisementCreate"
   | "advertisementEdit"
@@ -113,6 +114,8 @@ export const defaultAdminPermissions = (): AdminPermissions => ({
   supportView: false,
   supportReply: false,
 
+  returnsRefundsView: false,
+
   advertisementView: false,
   advertisementCreate: false,
   advertisementEdit: false,
@@ -179,6 +182,8 @@ export const fullSuperadminPermissions = (): AdminPermissions => ({
 
   supportView: true,
   supportReply: true,
+
+  returnsRefundsView: true,
 
   advertisementView: true,
   advertisementCreate: true,
@@ -351,6 +356,12 @@ export const ADMIN_PERMISSION_GROUPS: {
     items: [
       { key: "supportView", label: "Support View" },
       { key: "supportReply", label: "Support Reply" },
+    ],
+  },
+  {
+    title: "Returns & Refunds",
+    items: [
+      { key: "returnsRefundsView", label: "Returns & Refunds View" },
     ],
   },
   {

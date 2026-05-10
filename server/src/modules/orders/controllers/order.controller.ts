@@ -51,9 +51,12 @@ function isPaidLike(s: any) {
 function statusLabel(statusLower: string) {
   if (statusLower === "pending") return "Order Pending";
   if (statusLower === "confirmed") return "Order Confirmed";
+  if (statusLower === "processing") return "Order Processing";
   if (statusLower === "shipped") return "Order Shipped";
   if (statusLower === "transit") return "Order In Transit";
   if (statusLower === "delivered") return "Order Delivered";
+  if (statusLower === "returned") return "Order Returned";
+  if (statusLower === "refunded") return "Order Refunded";
   if (statusLower === "cancelled" || statusLower === "canceled") {
     return "Order Cancelled";
   }
@@ -65,14 +68,20 @@ function orderDetailsLink(orderCode: string) {
   return clean ? `/customerorderdetails/${clean}` : "/profile/orders";
 }
 
+function getAuthUserId(req: AuthRequest, res: Response) {
+  const userId = req.user?.userId;
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return "";
+  }
+  return userId;
+}
+
 export const orderController = {
   async create(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.userId;
-      if (!userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
-      }
+      const userId = getAuthUserId(req, res);
+      if (!userId) return;
 
       const data: any = await orderService.createOrder(userId, req.body);
 
@@ -135,7 +144,11 @@ export const orderController = {
       const isObjId = mongoose.Types.ObjectId.isValid(id);
       const existingOrder: any = isObjId
         ? await Order.findById(id).lean()
-        : await Order.findOne({ orderCode: id }).lean();
+        : await Order.findOne({
+            orderCode: String(id || "").startsWith("#")
+              ? String(id || "")
+              : `#${String(id || "")}`,
+          }).lean();
 
       if (!existingOrder) {
         res.status(404).json({ message: "Order not found" });
@@ -199,6 +212,15 @@ export const orderController = {
             link: orderDetailsLink(orderCode),
             meta: { orderId: existingOrder._id, orderCode },
           });
+        } else if (nextOrderStatus === "processing") {
+          await safeNotifyCustomer({
+            userId: customerId,
+            title: "Order Processing",
+            message: `Your order ${orderCode} is now being processed.`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: { orderId: existingOrder._id, orderCode },
+          });
         } else if (nextOrderStatus === "shipped") {
           await safeNotifyCustomer({
             userId: customerId,
@@ -222,6 +244,24 @@ export const orderController = {
             userId: customerId,
             title: "Order Delivered",
             message: `Your order ${orderCode} has been delivered. Thank you for shopping with us!`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: { orderId: existingOrder._id, orderCode },
+          });
+        } else if (nextOrderStatus === "returned") {
+          await safeNotifyCustomer({
+            userId: customerId,
+            title: "Order Returned",
+            message: `Your order ${orderCode} has been marked as returned.`,
+            type: "order",
+            link: orderDetailsLink(orderCode),
+            meta: { orderId: existingOrder._id, orderCode },
+          });
+        } else if (nextOrderStatus === "refunded") {
+          await safeNotifyCustomer({
+            userId: customerId,
+            title: "Order Refunded",
+            message: `Your order ${orderCode} has been marked as refunded.`,
             type: "order",
             link: orderDetailsLink(orderCode),
             meta: { orderId: existingOrder._id, orderCode },
@@ -309,11 +349,8 @@ export const orderController = {
 
   async getMyOrderDetails(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.userId;
-      if (!userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
-      }
+      const userId = getAuthUserId(req, res);
+      if (!userId) return;
 
       const { id } = req.params;
 
@@ -335,11 +372,8 @@ export const orderController = {
 
   async getMyOrders(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.userId;
-      if (!userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
-      }
+      const userId = getAuthUserId(req, res);
+      if (!userId) return;
 
       if (!mongoose.Types.ObjectId.isValid(userId)) {
         res.status(400).json({ message: "Invalid user" });
@@ -378,15 +412,528 @@ export const orderController = {
     }
   },
 
+  async requestCancellation(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = getAuthUserId(req, res);
+      if (!userId) return;
+
+      const { id } = req.params;
+      const { reason } = req.body || {};
+
+      const order = await orderService.requestCancellation({
+        userId,
+        idOrCode: id,
+        reason: String(reason || ""),
+      });
+
+      res.status(200).json({
+        message: "Cancellation request submitted successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to submit cancellation request",
+      });
+      return;
+    }
+  },
+
+  async requestReturn(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = getAuthUserId(req, res);
+      if (!userId) return;
+
+      const { id } = req.params;
+      const { reason, type, preferredResolution, images } = req.body || {};
+
+      const order = await orderService.requestReturn({
+        userId,
+        idOrCode: id,
+        reason: String(reason || ""),
+        type,
+        preferredResolution,
+        images: Array.isArray(images) ? images : [],
+      });
+
+      res.status(200).json({
+        message: "Return/exchange request submitted successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to submit return/exchange request",
+      });
+      return;
+    }
+  },
+
+  async listReturnsRefunds(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { type = "", status = "", search = "" } = req.query;
+
+      const requests = await orderService.listReturnsRefunds({
+        type: String(type || ""),
+        status: String(status || ""),
+        search: String(search || ""),
+      });
+
+      res.status(200).json({ requests });
+      return;
+    } catch (err: any) {
+      res.status(500).json({
+        message: err?.message || "Failed to fetch return/refund requests",
+      });
+      return;
+    }
+  },
+
+  async approveCancellation(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { adminNote } = req.body || {};
+
+      const order = await orderService.approveCancellation({
+        adminId,
+        idOrCode: id,
+        adminNote: String(adminNote || ""),
+      });
+
+      res.status(200).json({
+        message: "Cancellation request approved successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to approve cancellation request",
+      });
+      return;
+    }
+  },
+
+  async rejectCancellation(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { adminNote } = req.body || {};
+
+      const order = await orderService.rejectCancellation({
+        adminId,
+        idOrCode: id,
+        adminNote: String(adminNote || ""),
+      });
+
+      res.status(200).json({
+        message: "Cancellation request rejected successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to reject cancellation request",
+      });
+      return;
+    }
+  },
+
+  async approveReturn(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { adminNote } = req.body || {};
+
+      const order = await orderService.approveReturn({
+        adminId,
+        idOrCode: id,
+        adminNote: String(adminNote || ""),
+      });
+
+      res.status(200).json({
+        message: "Return/exchange request approved successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to approve return/exchange request",
+      });
+      return;
+    }
+  },
+
+  async rejectReturn(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { adminNote } = req.body || {};
+
+      const order = await orderService.rejectReturn({
+        adminId,
+        idOrCode: id,
+        adminNote: String(adminNote || ""),
+      });
+
+      res.status(200).json({
+        message: "Return/exchange request rejected successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to reject return/exchange request",
+      });
+      return;
+    }
+  },
+
+  async assignReturnPickup(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { deliveryManId, note } = req.body || {};
+
+      const order = await orderService.assignReturnPickup({
+        adminId,
+        idOrCode: id,
+        deliveryManId: String(deliveryManId || ""),
+        note: String(note || ""),
+      });
+
+      res.status(200).json({
+        message: "Return pickup rider assigned successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to assign return pickup rider",
+      });
+      return;
+    }
+  },
+
+  async assignExchangePickup(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { deliveryManId, note } = req.body || {};
+
+      const order = await orderService.assignExchangePickup({
+        adminId,
+        idOrCode: id,
+        deliveryManId: String(deliveryManId || ""),
+        note: String(note || ""),
+      });
+
+      res.status(200).json({
+        message: "Exchange pickup rider assigned successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to assign exchange pickup rider",
+      });
+      return;
+    }
+  },
+
+  async updateReturnOrExchangePickupByDelivery(
+    req: AuthRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      const deliveryManId = getAuthUserId(req, res);
+      if (!deliveryManId) return;
+
+      const { id } = req.params;
+      const { taskType, status, note, photo } = req.body || {};
+
+      const order = await orderService.updateReturnOrExchangePickupByDelivery({
+        deliveryManId,
+        idOrCode: id,
+        taskType,
+        status,
+        note: String(note || ""),
+        photo: String(photo || ""),
+      });
+
+      res.status(200).json({
+        message: "Pickup status updated successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to update pickup status",
+      });
+      return;
+    }
+  },
+
+  async markProductReceived(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { adminNote } = req.body || {};
+
+      const order = await orderService.markProductReceived({
+        adminId,
+        idOrCode: id,
+        adminNote: String(adminNote || ""),
+      });
+
+      res.status(200).json({
+        message: "Returned product marked as received successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to mark product as received",
+      });
+      return;
+    }
+  },
+
+  async requestRefundDetails(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { adminNote } = req.body || {};
+
+      const order = await orderService.requestRefundDetails({
+        adminId,
+        idOrCode: id,
+        adminNote: String(adminNote || ""),
+      });
+
+      res.status(200).json({
+        message: "Refund details requested successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to request refund details",
+      });
+      return;
+    }
+  },
+
+  async submitRefundDetails(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const userId = getAuthUserId(req, res);
+      if (!userId) return;
+
+      const { id } = req.params;
+      const {
+        method,
+        accountName,
+        accountNumber,
+        bankName,
+        walletNumber,
+        walletId,
+        customerNote,
+      } = req.body || {};
+
+      const order = await orderService.submitRefundDetails({
+        userId,
+        idOrCode: id,
+        method,
+        accountName: String(accountName || ""),
+        accountNumber: String(accountNumber || ""),
+        bankName: String(bankName || ""),
+        walletNumber: String(walletNumber || ""),
+        walletId: String(walletId || ""),
+        customerNote: String(customerNote || ""),
+      });
+
+      res.status(200).json({
+        message: "Refund details submitted successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to submit refund details",
+      });
+      return;
+    }
+  },
+
+  async markRefundProcessing(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { adminNote } = req.body || {};
+
+      const order = await orderService.markRefundProcessing({
+        adminId,
+        idOrCode: id,
+        adminNote: String(adminNote || ""),
+      });
+
+      res.status(200).json({
+        message: "Refund marked as processing successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to mark refund as processing",
+      });
+      return;
+    }
+  },
+
+  async markRefunded(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { adminNote, transactionRef } = req.body || {};
+
+      const order = await orderService.markRefunded({
+        adminId,
+        idOrCode: id,
+        adminNote: String(adminNote || ""),
+        transactionRef: String(transactionRef || ""),
+      });
+
+      res.status(200).json({
+        message: "Refund marked as completed successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to mark refund as completed",
+      });
+      return;
+    }
+  },
+
+  async assignReplacementDelivery(
+    req: AuthRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { deliveryManId, note } = req.body || {};
+
+      const order = await orderService.assignReplacementDelivery({
+        adminId,
+        idOrCode: id,
+        deliveryManId: String(deliveryManId || ""),
+        note: String(note || ""),
+      });
+
+      res.status(200).json({
+        message: "Replacement delivery rider assigned successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to assign replacement delivery rider",
+      });
+      return;
+    }
+  },
+
+  async updateReplacementDeliveryByDelivery(
+    req: AuthRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      const deliveryManId = getAuthUserId(req, res);
+      if (!deliveryManId) return;
+
+      const { id } = req.params;
+      const { status, note, photo } = req.body || {};
+
+      const order = await orderService.updateReplacementDeliveryByDelivery({
+        deliveryManId,
+        idOrCode: id,
+        taskType: "REPLACEMENT_DELIVERY",
+        status,
+        note: String(note || ""),
+        photo: String(photo || ""),
+      });
+
+      res.status(200).json({
+        message: "Replacement delivery status updated successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message:
+          err?.message || "Failed to update replacement delivery status",
+      });
+      return;
+    }
+  },
+
+  async completeExchange(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const adminId = getAuthUserId(req, res);
+      if (!adminId) return;
+
+      const { id } = req.params;
+      const { adminNote } = req.body || {};
+
+      const order = await orderService.completeExchange({
+        adminId,
+        idOrCode: id,
+        adminNote: String(adminNote || ""),
+      });
+
+      res.status(200).json({
+        message: "Exchange completed successfully.",
+        order,
+      });
+      return;
+    } catch (err: any) {
+      res.status(400).json({
+        message: err?.message || "Failed to complete exchange",
+      });
+      return;
+    }
+  },
+
   async downloadInvoice(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const userId = req.user?.userId;
-      const role = req.user?.role;
-      if (!userId) {
-        res.status(401).json({ message: "Unauthorized" });
-        return;
-      }
+      const userId = getAuthUserId(req, res);
+      if (!userId) return;
 
+      const role = req.user?.role;
       const { id } = req.params;
 
       const isObjId = mongoose.Types.ObjectId.isValid(id);
@@ -476,3 +1023,5 @@ export const orderController = {
     }
   },
 };
+
+export default orderController;

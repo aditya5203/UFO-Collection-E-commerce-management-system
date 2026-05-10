@@ -14,6 +14,8 @@ import {
   getCustomerContact,
   getCustomerName,
   getDeliveryStatusTone,
+  isDeliveryBlockedByOrderStatus,
+  normalizeOrderStatus,
   safeJson,
   safeStr,
 } from "@/app/lib/delivery";
@@ -29,6 +31,14 @@ const secondaryBtnClass =
 
 const primaryBtnClass =
   "inline-flex items-center justify-center rounded-full bg-white px-5 py-2.5 text-[12px] font-bold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+
+function getDisplayStatus(item: DeliveryOrder) {
+  const deliveryStatus = safeStr(item.deliveryAssignment?.status) || "Assigned";
+  const orderStatus = normalizeOrderStatus(item.orderStatus);
+  const blocked = isDeliveryBlockedByOrderStatus(item);
+
+  return blocked ? orderStatus : deliveryStatus;
+}
 
 function StatusPill({ children }: { children: React.ReactNode }) {
   const tone = getDeliveryStatusTone(String(children));
@@ -100,54 +110,57 @@ export default function DeliveryDashboardPage() {
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState("");
 
-  const loadDashboard = React.useCallback(async (mode: "initial" | "refresh") => {
-    try {
-      if (mode === "initial") setLoading(true);
-      if (mode === "refresh") setRefreshing(true);
+  const loadDashboard = React.useCallback(
+    async (mode: "initial" | "refresh") => {
+      try {
+        if (mode === "initial") setLoading(true);
+        if (mode === "refresh") setRefreshing(true);
 
-      setError("");
+        setError("");
 
-      let res = await fetch(DELIVERY_ENDPOINTS.dashboard, {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-      });
-
-      let json = await safeJson(res);
-
-      if (!res.ok) {
-        res = await fetch(DELIVERY_ENDPOINTS.orders, {
+        let res = await fetch(DELIVERY_ENDPOINTS.dashboard, {
           method: "GET",
           credentials: "include",
           cache: "no-store",
         });
 
-        json = await safeJson(res);
-      }
+        let json = await safeJson(res);
 
-      if (!res.ok) {
+        if (!res.ok) {
+          res = await fetch(DELIVERY_ENDPOINTS.orders, {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          });
+
+          json = await safeJson(res);
+        }
+
+        if (!res.ok) {
+          setRows([]);
+          setError((json as any)?.message || "Failed to load dashboard");
+          return;
+        }
+
+        const possibleData =
+          (json as any)?.data?.orders ??
+          (json as any)?.data?.rows ??
+          (json as any)?.orders ??
+          (json as any)?.rows ??
+          (json as any)?.data;
+
+        const data = Array.isArray(possibleData) ? possibleData : [];
+        setRows(data);
+      } catch {
         setRows([]);
-        setError((json as any)?.message || "Failed to load dashboard");
-        return;
+        setError("Network error while loading dashboard");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      const possibleData =
-        (json as any)?.data?.orders ??
-        (json as any)?.data?.rows ??
-        (json as any)?.orders ??
-        (json as any)?.rows ??
-        (json as any)?.data;
-
-      const data = Array.isArray(possibleData) ? possibleData : [];
-      setRows(data);
-    } catch {
-      setRows([]);
-      setError("Network error while loading dashboard");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   React.useEffect(() => {
     let mounted = true;
@@ -165,25 +178,32 @@ export default function DeliveryDashboardPage() {
   }, [loadDashboard]);
 
   const assignedCount = rows.filter((item) => {
-    const s = safeStr(item.deliveryAssignment?.status).toLowerCase();
-    return s === "assigned" || s === "picked up";
+    const displayStatus = getDisplayStatus(item).toLowerCase();
+    return displayStatus === "assigned" || displayStatus === "picked up";
   }).length;
 
   const outForDeliveryCount = rows.filter(
-    (item) =>
-      safeStr(item.deliveryAssignment?.status).toLowerCase() ===
-      "out for delivery"
+    (item) => getDisplayStatus(item).toLowerCase() === "out for delivery",
   ).length;
 
   const deliveredCount = rows.filter(
-    (item) =>
-      safeStr(item.deliveryAssignment?.status).toLowerCase() === "delivered"
+    (item) => getDisplayStatus(item).toLowerCase() === "delivered",
   ).length;
 
   const failedCount = rows.filter((item) => {
-    const s = safeStr(item.deliveryAssignment?.status).toLowerCase();
-    return s === "failed delivery" || s === "returned";
+    const displayStatus = getDisplayStatus(item).toLowerCase();
+
+    return (
+      displayStatus === "failed delivery" ||
+      displayStatus === "returned" ||
+      displayStatus === "cancelled" ||
+      displayStatus === "refunded"
+    );
   }).length;
+
+  const blockedCount = rows.filter((item) =>
+    isDeliveryBlockedByOrderStatus(item),
+  ).length;
 
   const activeCount = assignedCount + outForDeliveryCount;
   const totalCount = rows.length;
@@ -222,6 +242,7 @@ export default function DeliveryDashboardPage() {
                 <MiniMetric label="Total Orders" value={totalCount} />
                 <MiniMetric label="Active Tasks" value={activeCount} />
                 <MiniMetric label="Completed" value={deliveredCount} />
+                <MiniMetric label="Blocked" value={blockedCount} />
               </div>
             </div>
 
@@ -280,9 +301,9 @@ export default function DeliveryDashboardPage() {
 
           <StatCard
             index={3}
-            label="Failed / Returned"
+            label="Failed / Blocked"
             value={String(failedCount)}
-            hint="Needs follow-up"
+            hint="Failed, returned, cancelled, refunded"
             iconSrc="/images/admin/cancel.png"
           />
         </section>
@@ -341,8 +362,8 @@ export default function DeliveryDashboardPage() {
                 ) : recentOrders.length ? (
                   recentOrders.map((item, index) => {
                     const orderId = item.id || item._id || "";
-                    const status =
-                      safeStr(item.deliveryAssignment?.status) || "Assigned";
+                    const status = getDisplayStatus(item);
+                    const blocked = isDeliveryBlockedByOrderStatus(item);
 
                     return (
                       <motion.tr
@@ -360,12 +381,19 @@ export default function DeliveryDashboardPage() {
                           <div className="font-semibold text-white">
                             {item.orderCode || orderId || "N/A"}
                           </div>
+
+                          {blocked ? (
+                            <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-red-300">
+                              Delivery blocked
+                            </div>
+                          ) : null}
                         </td>
 
                         <td className="px-5 py-4">
                           <div className="font-medium text-white">
                             {getCustomerName(item)}
                           </div>
+
                           <div className="mt-1 text-[12px] text-[#7f879f]">
                             {getCustomerContact(item)}
                           </div>
@@ -373,6 +401,7 @@ export default function DeliveryDashboardPage() {
 
                         <td className="px-5 py-4">
                           <div className="text-white">{getArea(item)}</div>
+
                           <div className="mt-1 text-[12px] text-[#7f879f]">
                             {getCity(item)}
                           </div>
@@ -425,8 +454,8 @@ export default function DeliveryDashboardPage() {
             ) : recentOrders.length ? (
               recentOrders.map((item, index) => {
                 const orderId = item.id || item._id || "";
-                const status =
-                  safeStr(item.deliveryAssignment?.status) || "Assigned";
+                const status = getDisplayStatus(item);
+                const blocked = isDeliveryBlockedByOrderStatus(item);
 
                 return (
                   <motion.div
@@ -449,6 +478,12 @@ export default function DeliveryDashboardPage() {
                         <div className="mt-1 font-semibold text-white">
                           {item.orderCode || orderId || "N/A"}
                         </div>
+
+                        {blocked ? (
+                          <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-red-300">
+                            Delivery blocked
+                          </div>
+                        ) : null}
                       </div>
 
                       <StatusPill>{status}</StatusPill>
@@ -475,7 +510,7 @@ export default function DeliveryDashboardPage() {
                       <MobileInfo
                         label="Assigned"
                         value={formatDateShort(
-                          item.deliveryAssignment?.assignedAt
+                          item.deliveryAssignment?.assignedAt,
                         )}
                       />
                     </div>
@@ -502,6 +537,7 @@ export default function DeliveryDashboardPage() {
             <div className="grid gap-3">
               <SmallItem text="Check newly assigned orders and confirm pickup." />
               <SmallItem text="Update status to Out for Delivery when you start the trip." />
+              <SmallItem text="Do not continue delivery for cancelled, returned, or refunded orders." />
               <SmallItem text="Mark failed orders clearly with the reason in the delivery note." />
             </div>
           </InfoCard>
@@ -524,6 +560,7 @@ function MiniMetric({ label, value }: { label: string; value: React.ReactNode })
       <span className="text-[11px] uppercase tracking-[0.16em] text-[#8f98b3]">
         {label}
       </span>
+
       <span className="ml-2 text-sm font-bold text-white">{value}</span>
     </div>
   );

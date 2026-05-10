@@ -1,4 +1,3 @@
-// client/app/admin/orders/page.tsx
 "use client";
 
 import * as React from "react";
@@ -8,13 +7,17 @@ import { io, Socket } from "socket.io-client";
 import AdminPageGuard from "../_components/AdminPageGuard";
 
 type PaymentStatus = "Paid" | "Pending" | "Failed";
+
 type OrderStatus =
   | "Delivered"
   | "Transit"
   | "Shipped"
   | "Confirmed"
+  | "Processing"
   | "Pending"
-  | "Cancelled";
+  | "Cancelled"
+  | "Returned"
+  | "Refunded";
 
 type PaymentMethod =
   | "eSewa"
@@ -24,13 +27,51 @@ type PaymentMethod =
   | "BankTransfer"
   | "Other";
 
+type RequestStatus = "NONE" | "REQUESTED" | "APPROVED" | "REJECTED";
+
+type ReturnStatus =
+  | "NONE"
+  | "REQUESTED"
+  | "APPROVED"
+  | "REJECTED"
+  | "RECEIVED"
+  | "PICKUP_ASSIGNED"
+  | "PICKED_UP";
+
+type RefundStatus =
+  | "NONE"
+  | "PENDING"
+  | "PENDING_ACCOUNT_DETAILS"
+  | "READY_TO_REFUND"
+  | "PROCESSING"
+  | "REFUNDED"
+  | "FAILED";
+
+type ExchangeStatus =
+  | "NONE"
+  | "REQUESTED"
+  | "APPROVED"
+  | "REJECTED"
+  | "PICKUP_ASSIGNED"
+  | "PICKED_UP"
+  | "RECEIVED"
+  | "REPLACEMENT_ASSIGNED"
+  | "REPLACEMENT_DELIVERED"
+  | "COMPLETED";
+
 type DeliveryAssignment = {
+  taskType?: string;
   deliveryManId?: string;
   name?: string;
   phone?: string;
   email?: string;
   vehicleType?: string;
   status?: string;
+  assignedAt?: string | null;
+  pickedUpAt?: string | null;
+  outForDeliveryAt?: string | null;
+  deliveredAt?: string | null;
+  returnedToStoreAt?: string | null;
 };
 
 type OrderItem = {
@@ -68,7 +109,40 @@ type OrderRow = {
     gateway?: string;
   };
   paymentProvider?: string;
+
   deliveryAssignment?: DeliveryAssignment | null;
+  returnPickupAssignment?: DeliveryAssignment | null;
+  exchangePickupAssignment?: DeliveryAssignment | null;
+  replacementDeliveryAssignment?: DeliveryAssignment | null;
+
+  cancelRequest?: {
+    status?: RequestStatus | string;
+    reason?: string;
+    requestedAt?: string | null;
+    resolvedAt?: string | null;
+    adminNote?: string;
+  };
+  returnRequest?: {
+    status?: ReturnStatus | string;
+    type?: string;
+    preferredResolution?: string;
+    reason?: string;
+    requestedAt?: string | null;
+    receivedAt?: string | null;
+    adminNote?: string;
+  };
+  refund?: {
+    status?: RefundStatus | string;
+    amountPaisa?: number;
+    method?: string;
+    refundedAt?: string | null;
+  };
+  exchange?: {
+    status?: ExchangeStatus | string;
+    requestedAt?: string | null;
+    completedAt?: string | null;
+  };
+
   items: OrderItem[];
 };
 
@@ -104,7 +178,17 @@ type ApiOrder = {
     gateway?: string;
   };
   paymentProvider?: string;
+
   deliveryAssignment?: DeliveryAssignment | null;
+  returnPickupAssignment?: DeliveryAssignment | null;
+  exchangePickupAssignment?: DeliveryAssignment | null;
+  replacementDeliveryAssignment?: DeliveryAssignment | null;
+
+  cancelRequest?: OrderRow["cancelRequest"];
+  returnRequest?: OrderRow["returnRequest"];
+  refund?: OrderRow["refund"];
+  exchange?: OrderRow["exchange"];
+
   items?: OrderItem[];
 };
 
@@ -156,6 +240,10 @@ async function safeJson(res: Response) {
   }
 }
 
+function safeStr(value: unknown) {
+  return typeof value === "string" ? value : value == null ? "" : String(value);
+}
+
 function formatDateShort(iso?: string) {
   if (!iso) return "-";
 
@@ -191,10 +279,69 @@ function normalizeOrderStatus(status?: string): OrderStatus {
     return "Transit";
   }
   if (s === "shipped") return "Shipped";
+  if (s === "processing") return "Processing";
   if (s === "confirmed") return "Confirmed";
   if (s === "cancelled" || s === "canceled") return "Cancelled";
+  if (s === "returned") return "Returned";
+  if (s === "refunded") return "Refunded";
 
   return "Pending";
+}
+
+function normalizeRequestStatus(value?: string): RequestStatus {
+  const v = safeStr(value).toUpperCase();
+
+  if (v === "REQUESTED") return "REQUESTED";
+  if (v === "APPROVED") return "APPROVED";
+  if (v === "REJECTED") return "REJECTED";
+
+  return "NONE";
+}
+
+function normalizeReturnStatus(value?: string): ReturnStatus {
+  const v = safeStr(value).toUpperCase();
+
+  if (v === "REQUESTED") return "REQUESTED";
+  if (v === "APPROVED") return "APPROVED";
+  if (v === "REJECTED") return "REJECTED";
+  if (v === "RECEIVED") return "RECEIVED";
+  if (v === "PICKUP_ASSIGNED") return "PICKUP_ASSIGNED";
+  if (v === "PICKED_UP") return "PICKED_UP";
+
+  return "NONE";
+}
+
+function normalizeRefundStatus(value?: string): RefundStatus {
+  const v = safeStr(value).toUpperCase();
+
+  if (v === "PENDING") return "PENDING";
+  if (v === "PENDING_ACCOUNT_DETAILS") return "PENDING_ACCOUNT_DETAILS";
+  if (v === "READY_TO_REFUND") return "READY_TO_REFUND";
+  if (v === "PROCESSING") return "PROCESSING";
+  if (v === "REFUNDED") return "REFUNDED";
+  if (v === "FAILED") return "FAILED";
+
+  return "NONE";
+}
+
+function normalizeExchangeStatus(value?: string): ExchangeStatus {
+  const v = safeStr(value).toUpperCase();
+
+  if (v === "REQUESTED") return "REQUESTED";
+  if (v === "APPROVED") return "APPROVED";
+  if (v === "REJECTED") return "REJECTED";
+  if (v === "PICKUP_ASSIGNED") return "PICKUP_ASSIGNED";
+  if (v === "PICKED_UP") return "PICKED_UP";
+  if (v === "RECEIVED") return "RECEIVED";
+  if (v === "REPLACEMENT_ASSIGNED") return "REPLACEMENT_ASSIGNED";
+  if (v === "REPLACEMENT_DELIVERED") return "REPLACEMENT_DELIVERED";
+  if (v === "COMPLETED") return "COMPLETED";
+
+  return "NONE";
+}
+
+function prettyStatus(value?: string) {
+  return safeStr(value || "NONE").replaceAll("_", " ");
 }
 
 function normalizePaymentMethod(v?: string) {
@@ -267,17 +414,23 @@ function getOrderTotalPaisa(order: ApiOrder) {
 }
 
 function mapDeliveryAssignment(
-  deliveryAssignment?: DeliveryAssignment | null
+  deliveryAssignment?: DeliveryAssignment | null,
 ): DeliveryAssignment | null {
   if (!deliveryAssignment) return null;
 
   return {
-    deliveryManId: String(deliveryAssignment.deliveryManId || ""),
-    name: deliveryAssignment.name || "",
-    phone: deliveryAssignment.phone || "",
-    email: deliveryAssignment.email || "",
-    vehicleType: deliveryAssignment.vehicleType || "",
-    status: deliveryAssignment.status || "",
+    taskType: safeStr(deliveryAssignment.taskType),
+    deliveryManId: safeStr(deliveryAssignment.deliveryManId),
+    name: safeStr(deliveryAssignment.name),
+    phone: safeStr(deliveryAssignment.phone),
+    email: safeStr(deliveryAssignment.email),
+    vehicleType: safeStr(deliveryAssignment.vehicleType),
+    status: safeStr(deliveryAssignment.status),
+    assignedAt: deliveryAssignment.assignedAt || null,
+    pickedUpAt: deliveryAssignment.pickedUpAt || null,
+    outForDeliveryAt: deliveryAssignment.outForDeliveryAt || null,
+    deliveredAt: deliveryAssignment.deliveredAt || null,
+    returnedToStoreAt: deliveryAssignment.returnedToStoreAt || null,
   };
 }
 
@@ -307,9 +460,140 @@ function mapOrder(order: ApiOrder): OrderRow {
     paymentMethod: order.paymentMethod,
     payment: order.payment,
     paymentProvider: order.paymentProvider,
+
     deliveryAssignment: mapDeliveryAssignment(order.deliveryAssignment),
+    returnPickupAssignment: mapDeliveryAssignment(order.returnPickupAssignment),
+    exchangePickupAssignment: mapDeliveryAssignment(
+      order.exchangePickupAssignment,
+    ),
+    replacementDeliveryAssignment: mapDeliveryAssignment(
+      order.replacementDeliveryAssignment,
+    ),
+
+    cancelRequest: order.cancelRequest || { status: "NONE" },
+    returnRequest: order.returnRequest || { status: "NONE" },
+    refund: order.refund || { status: "NONE" },
+    exchange: order.exchange || { status: "NONE" },
+
     items: normalizeOrderItems(order.items),
   };
+}
+
+function getAfterSalesLabels(order: OrderRow) {
+  const labels: Array<{
+    label: string;
+    tone: "amber" | "blue" | "green" | "red" | "purple";
+  }> = [];
+
+  const cancelStatus = normalizeRequestStatus(order.cancelRequest?.status);
+  const returnStatus = normalizeReturnStatus(order.returnRequest?.status);
+  const refundStatus = normalizeRefundStatus(order.refund?.status);
+  const exchangeStatus = normalizeExchangeStatus(order.exchange?.status);
+
+  if (cancelStatus !== "NONE") {
+    labels.push({
+      label: `Cancel ${prettyStatus(cancelStatus)}`,
+      tone:
+        cancelStatus === "REQUESTED"
+          ? "amber"
+          : cancelStatus === "APPROVED"
+            ? "green"
+            : "red",
+    });
+  }
+
+  if (returnStatus !== "NONE") {
+    const isExchange =
+      safeStr(order.returnRequest?.preferredResolution).toUpperCase() ===
+        "EXCHANGE" ||
+      safeStr(order.returnRequest?.type).toUpperCase() === "EXCHANGE" ||
+      exchangeStatus !== "NONE";
+
+    labels.push({
+      label: `${isExchange ? "Exchange" : "Return"} ${prettyStatus(
+        returnStatus,
+      )}`,
+      tone:
+        returnStatus === "REQUESTED"
+          ? "blue"
+          : returnStatus === "REJECTED"
+            ? "red"
+            : "green",
+    });
+  }
+
+  if (exchangeStatus !== "NONE") {
+    labels.push({
+      label: `Exchange ${prettyStatus(exchangeStatus)}`,
+      tone:
+        exchangeStatus === "COMPLETED"
+          ? "green"
+          : exchangeStatus === "REJECTED"
+            ? "red"
+            : "purple",
+    });
+  }
+
+  if (refundStatus !== "NONE") {
+    labels.push({
+      label: `Refund ${prettyStatus(refundStatus)}`,
+      tone:
+        refundStatus === "REFUNDED"
+          ? "green"
+          : refundStatus === "FAILED"
+            ? "red"
+            : "amber",
+    });
+  }
+
+  return labels;
+}
+
+function getTaskCards(order: OrderRow) {
+  const cards: Array<{
+    title: string;
+    status: string;
+    name?: string;
+    tone: "blue" | "orange" | "purple" | "green";
+  }> = [];
+
+  if (order.deliveryAssignment) {
+    cards.push({
+      title: "Delivery",
+      status: order.deliveryAssignment.status || "Assigned",
+      name: order.deliveryAssignment.name,
+      tone: "blue",
+    });
+  }
+
+  if (order.returnPickupAssignment) {
+    cards.push({
+      title: "Return Pickup",
+      status: order.returnPickupAssignment.status || "Assigned",
+      name: order.returnPickupAssignment.name,
+      tone: "orange",
+    });
+  }
+
+  if (order.exchangePickupAssignment) {
+    cards.push({
+      title: "Exchange Pickup",
+      status: order.exchangePickupAssignment.status || "Assigned",
+      name: order.exchangePickupAssignment.name,
+      tone: "purple",
+    });
+  }
+
+  if (order.replacementDeliveryAssignment) {
+    cards.push({
+      title: "Replacement",
+      status: order.replacementDeliveryAssignment.status || "Assigned",
+      name: order.replacementDeliveryAssignment.name,
+      tone: "green",
+    });
+  }
+
+  return cards;
 }
 
 export default function OrdersPage() {
@@ -328,7 +612,7 @@ export default function OrdersPage() {
     (message: string, type: ToastType = "info") => {
       setToast({ message, type });
     },
-    []
+    [],
   );
 
   React.useEffect(() => {
@@ -352,7 +636,7 @@ export default function OrdersPage() {
           {
             credentials: "include",
             cache: "no-store",
-          }
+          },
         );
 
         const body = (await safeJson(res)) as OrderListResponse | ApiOrder[];
@@ -389,7 +673,7 @@ export default function OrdersPage() {
         setSearching(false);
       }
     },
-    [showToast]
+    [showToast],
   );
 
   React.useEffect(() => {
@@ -438,9 +722,7 @@ export default function OrdersPage() {
 
       if (!res.ok) {
         const body = await safeJson(res);
-        throw new Error(
-          (body as any)?.message || "Failed to download invoice"
-        );
+        throw new Error((body as any)?.message || "Failed to download invoice");
       }
 
       const blob = await res.blob();
@@ -470,6 +752,8 @@ export default function OrdersPage() {
 
   const paidCount = rows.filter((o) => o.paymentStatus === "Paid").length;
   const pendingCount = rows.filter((o) => o.orderStatus === "Pending").length;
+  const afterSalesCount = rows.filter((o) => getAfterSalesLabels(o).length > 0)
+    .length;
 
   const totalOrderValue = rows.reduce((sum, o) => {
     return sum + Number(o.totalPaisa || 0);
@@ -501,25 +785,31 @@ export default function OrdersPage() {
                   Orders
                 </h1>
 
-                <p className="mt-2 max-w-[660px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                <p className="mt-2 max-w-[700px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
                   Track customer orders, payment status, delivery progress,
-                  invoice downloads, and purchased product variants in real
-                  time.
+                  return pickup, exchange pickup, replacement delivery, refunds,
+                  and purchased product variants in real time.
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => load(q, "refresh")}
-                disabled={refreshing}
-                className={secondaryBtnClass}
-              >
-                {refreshing ? "Refreshing..." : "Refresh"}
-              </button>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/admin/returns-refunds" className={secondaryBtnClass}>
+                  Returns & Refunds
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={() => load(q, "refresh")}
+                  disabled={refreshing}
+                  className={secondaryBtnClass}
+                >
+                  {refreshing ? "Refreshing..." : "Refresh"}
+                </button>
+              </div>
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
             <MetricCard
               label="Total Orders"
               value={String(rows.length)}
@@ -533,9 +823,15 @@ export default function OrdersPage() {
             />
 
             <MetricCard
-              label="Items Sold"
-              value={String(itemCount)}
+              label="Pending Orders"
+              value={String(pendingCount)}
               iconSrc="/images/admin/pending.png"
+            />
+
+            <MetricCard
+              label="After Sales"
+              value={String(afterSalesCount)}
+              iconSrc="/images/admin/support.png"
             />
 
             <MetricCard
@@ -581,7 +877,7 @@ export default function OrdersPage() {
                   aria-label="Search order or customer"
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search order or customer"
+                  placeholder="Search order, customer, status, refund..."
                   className="w-full border-none bg-transparent text-[13px] text-white outline-none placeholder:text-[#7f879f]"
                 />
               </div>
@@ -591,17 +887,17 @@ export default function OrdersPage() {
               <OrderSkeleton />
             ) : rows.length ? (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[1520px] border-collapse text-[13px]">
+                <table className="w-full min-w-[1780px] border-collapse text-[13px]">
                   <thead>
                     <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
                       <th className="px-5 py-4 font-medium">Order ID</th>
                       <th className="px-5 py-4 font-medium">Customer</th>
                       <th className="px-5 py-4 font-medium">Items / Variants</th>
                       <th className="px-5 py-4 font-medium">Total</th>
-                      <th className="px-5 py-4 font-medium">Payment Method</th>
-                      <th className="px-5 py-4 font-medium">Payment Status</th>
+                      <th className="px-5 py-4 font-medium">Payment</th>
                       <th className="px-5 py-4 font-medium">Order Status</th>
-                      <th className="px-5 py-4 font-medium">Delivery Status</th>
+                      <th className="px-5 py-4 font-medium">Delivery Tasks</th>
+                      <th className="px-5 py-4 font-medium">After Sales</th>
                       <th className="px-5 py-4 font-medium">Created</th>
                       <th className="px-5 py-4 text-right font-medium">
                         Actions
@@ -625,6 +921,9 @@ export default function OrdersPage() {
 
                       const methodLabel = normalizePaymentMethod(methodRaw);
                       const downloading = downloadingId === o.id;
+
+                      const afterSalesLabels = getAfterSalesLabels(o);
+                      const taskCards = getTaskCards(o);
 
                       return (
                         <tr
@@ -656,13 +955,12 @@ export default function OrdersPage() {
                           </td>
 
                           <td className="px-5 py-4">
-                            <MethodBadge>{methodLabel}</MethodBadge>
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <PaymentBadge status={o.paymentStatus}>
-                              {o.paymentStatus}
-                            </PaymentBadge>
+                            <div className="space-y-2">
+                              <MethodBadge>{methodLabel}</MethodBadge>
+                              <PaymentBadge status={o.paymentStatus}>
+                                {o.paymentStatus}
+                              </PaymentBadge>
+                            </div>
                           </td>
 
                           <td className="px-5 py-4">
@@ -672,17 +970,42 @@ export default function OrdersPage() {
                           </td>
 
                           <td className="px-5 py-4">
-                            <DeliveryBadge
-                              status={o.deliveryAssignment?.status}
-                            >
-                              {o.deliveryAssignment?.status || "Not Assigned"}
-                            </DeliveryBadge>
-
-                            {o.deliveryAssignment?.name ? (
-                              <div className="mt-1 max-w-[160px] truncate text-[11px] text-[#7f879f]">
-                                {o.deliveryAssignment.name}
+                            {taskCards.length ? (
+                              <div className="flex max-w-[360px] flex-wrap gap-2">
+                                {taskCards.map((task, index) => (
+                                  <TaskBadge
+                                    key={`${task.title}-${index}`}
+                                    title={task.title}
+                                    status={task.status}
+                                    name={task.name}
+                                    tone={task.tone}
+                                  />
+                                ))}
                               </div>
-                            ) : null}
+                            ) : (
+                              <span className="text-[12px] text-[#7f879f]">
+                                No task assigned
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            {afterSalesLabels.length ? (
+                              <div className="flex max-w-[320px] flex-wrap gap-2">
+                                {afterSalesLabels.map((item, index) => (
+                                  <AfterSalesBadge
+                                    key={`${item.label}-${index}`}
+                                    tone={item.tone}
+                                  >
+                                    {item.label}
+                                  </AfterSalesBadge>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-[12px] text-[#7f879f]">
+                                —
+                              </span>
+                            )}
                           </td>
 
                           <td className="px-5 py-4 text-[#a7aec4]">
@@ -871,9 +1194,12 @@ function OrderBadge({
     Delivered: "border-emerald-400/20 bg-emerald-500/15 text-emerald-300",
     Transit: "border-violet-400/20 bg-violet-500/15 text-violet-300",
     Shipped: "border-blue-400/20 bg-blue-500/15 text-blue-300",
+    Processing: "border-purple-400/20 bg-purple-500/15 text-purple-300",
     Confirmed: "border-cyan-400/20 bg-cyan-500/15 text-cyan-300",
     Pending: "border-amber-400/20 bg-amber-500/15 text-amber-300",
     Cancelled: "border-red-400/20 bg-red-500/15 text-red-300",
+    Returned: "border-red-400/20 bg-red-500/15 text-red-300",
+    Refunded: "border-emerald-400/20 bg-emerald-500/15 text-emerald-300",
   };
 
   return (
@@ -888,33 +1214,60 @@ function OrderBadge({
   );
 }
 
-function DeliveryBadge({
+function TaskBadge({
+  title,
   status,
+  name,
+  tone,
+}: {
+  title: string;
+  status: string;
+  name?: string;
+  tone: "blue" | "orange" | "purple" | "green";
+}) {
+  const toneClass =
+    tone === "orange"
+      ? "border-orange-400/20 bg-orange-500/10 text-orange-200"
+      : tone === "purple"
+        ? "border-purple-400/20 bg-purple-500/10 text-purple-200"
+        : tone === "green"
+          ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+          : "border-blue-400/20 bg-blue-500/10 text-blue-200";
+
+  return (
+    <div
+      className={`rounded-[14px] border px-3 py-2 text-[11px] ${toneClass}`}
+    >
+      <div className="font-semibold">{title}</div>
+      <div className="mt-1 opacity-90">{status || "Assigned"}</div>
+      {name ? <div className="mt-1 max-w-[140px] truncate opacity-70">{name}</div> : null}
+    </div>
+  );
+}
+
+function AfterSalesBadge({
+  tone,
   children,
 }: {
-  status?: string;
+  tone: "amber" | "blue" | "green" | "red" | "purple";
   children: React.ReactNode;
 }) {
-  const s = String(status || "").trim().toLowerCase();
-
-  const tone =
-    s === "delivered"
-      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
-      : s === "out for delivery"
-        ? "border-violet-400/20 bg-violet-500/15 text-violet-300"
-        : s === "picked up"
-          ? "border-blue-400/20 bg-blue-500/15 text-blue-300"
-          : s === "assigned"
-            ? "border-cyan-400/20 bg-cyan-500/15 text-cyan-300"
-            : s === "failed delivery" || s === "returned"
-              ? "border-red-400/20 bg-red-500/15 text-red-300"
-              : "border-white/10 bg-white/5 text-[#a7aec4]";
+  const toneClass =
+    tone === "amber"
+      ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
+      : tone === "blue"
+        ? "border-blue-400/20 bg-blue-500/10 text-blue-200"
+        : tone === "green"
+          ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+          : tone === "purple"
+            ? "border-purple-400/20 bg-purple-500/10 text-purple-200"
+            : "border-red-400/20 bg-red-500/10 text-red-200";
 
   return (
     <span
       className={[
-        "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
-        tone,
+        "inline-flex rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]",
+        toneClass,
       ].join(" ")}
     >
       {children}
@@ -970,7 +1323,8 @@ function NoSearchResults() {
       </div>
 
       <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-7 text-[#a7aec4]">
-        Try searching by order code, customer name, or customer email.
+        Try searching by order code, customer name, customer email, return,
+        refund, exchange, or delivery status.
       </p>
     </div>
   );

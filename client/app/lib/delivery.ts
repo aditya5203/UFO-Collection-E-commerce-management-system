@@ -3,7 +3,7 @@
 export const DELIVERY_API_BASE =
   (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080").replace(
     /\/+$/,
-    ""
+    "",
   ) + "/api";
 
 export const DELIVERY_ENDPOINTS = {
@@ -16,6 +16,21 @@ export const DELIVERY_ENDPOINTS = {
   dashboard: `${DELIVERY_API_BASE}/admin/delivery-staff/me/dashboard`,
   orders: `${DELIVERY_API_BASE}/admin/delivery-staff/me/orders`,
 
+  /**
+   * Advanced return / exchange delivery task endpoints.
+   * These are NOT under /admin/delivery-staff/me/orders.
+   * They are public order routes protected by deliveryAuthMiddleware.
+   */
+  pickupTaskStatus: (orderId: string) =>
+    `${DELIVERY_API_BASE}/orders/delivery/${encodeURIComponent(
+      orderId,
+    )}/pickup-status`,
+
+  replacementTaskStatus: (orderId: string) =>
+    `${DELIVERY_API_BASE}/orders/delivery/${encodeURIComponent(
+      orderId,
+    )}/replacement-status`,
+
   notifications: `${DELIVERY_API_BASE}/notifications/delivery`,
   notificationUnreadCount: `${DELIVERY_API_BASE}/notifications/delivery/unread-count`,
   notificationReadAll: `${DELIVERY_API_BASE}/notifications/delivery/read-all`,
@@ -23,6 +38,7 @@ export const DELIVERY_ENDPOINTS = {
 
 export async function safeJson(res: Response) {
   const text = await res.text();
+
   try {
     return text ? JSON.parse(text) : {};
   } catch {
@@ -34,8 +50,9 @@ export function safeStr(v: any) {
   return typeof v === "string" ? v : v == null ? "" : String(v);
 }
 
-export function formatDateShort(iso?: string) {
+export function formatDateShort(iso?: string | null) {
   if (!iso) return "-";
+
   try {
     return new Date(iso).toLocaleDateString("en-US", {
       year: "numeric",
@@ -47,8 +64,9 @@ export function formatDateShort(iso?: string) {
   }
 }
 
-export function formatDateLong(iso?: string) {
+export function formatDateLong(iso?: string | null) {
   if (!iso) return "-";
+
   try {
     return new Date(iso).toLocaleDateString("en-US", {
       year: "numeric",
@@ -60,8 +78,9 @@ export function formatDateLong(iso?: string) {
   }
 }
 
-export function formatDateTime(iso?: string) {
+export function formatDateTime(iso?: string | null) {
   if (!iso) return "-";
+
   try {
     return new Date(iso).toLocaleString("en-US", {
       year: "numeric",
@@ -83,15 +102,62 @@ export function formatNPR(paisa?: number, total?: number) {
   return `Rs. ${(finalPaisa / 100).toFixed(2)}`;
 }
 
+export type DeliveryTaskType =
+  | "NORMAL_DELIVERY"
+  | "RETURN_PICKUP"
+  | "EXCHANGE_PICKUP"
+  | "REPLACEMENT_DELIVERY";
+
 export type DeliveryStatus =
   | "Assigned"
   | "Picked Up"
   | "Out for Delivery"
   | "Delivered"
   | "Failed Delivery"
-  | "Returned";
+  | "Returned"
+  | "Returned to Store";
 
 export type DeliveryOtpChannel = "phone" | "email";
+
+export function normalizeOrderStatus(status?: string) {
+  const s = safeStr(status).trim().toLowerCase();
+
+  if (s === "cancelled" || s === "canceled") return "Cancelled";
+  if (s === "returned") return "Returned";
+  if (s === "refunded") return "Refunded";
+  if (s === "delivered") return "Delivered";
+  if (s === "transit" || s === "in transit") return "Transit";
+  if (s === "shipped") return "Shipped";
+  if (s === "processing") return "Processing";
+  if (s === "confirmed") return "Confirmed";
+  if (s === "pending") return "Pending";
+
+  return safeStr(status) || "Pending";
+}
+
+export function isDeliveryBlockedByOrderStatus(order?: DeliveryOrder | null) {
+  const status = normalizeOrderStatus(order?.orderStatus);
+
+  return ["Cancelled", "Returned", "Refunded"].includes(status);
+}
+
+export function getDeliveryBlockedReason(order?: DeliveryOrder | null) {
+  const status = normalizeOrderStatus(order?.orderStatus);
+
+  if (status === "Cancelled") {
+    return "This order has been cancelled. Do not deliver this order.";
+  }
+
+  if (status === "Returned") {
+    return "This order has been marked as returned. Normal delivery actions are disabled.";
+  }
+
+  if (status === "Refunded") {
+    return "This order has been refunded. Delivery actions are disabled.";
+  }
+
+  return "";
+}
 
 export function getDeliveryStatusTone(status?: string) {
   const s = safeStr(status).toLowerCase();
@@ -104,12 +170,28 @@ export function getDeliveryStatusTone(status?: string) {
     return "border-sky-500/30 bg-sky-500/10 text-sky-200";
   }
 
-  if (s === "delivered") {
+  if (s === "delivered" || s === "returned to store") {
     return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
   }
 
-  if (s === "failed delivery" || s === "returned") {
+  if (
+    s === "failed delivery" ||
+    s === "returned" ||
+    s === "cancelled" ||
+    s === "canceled" ||
+    s === "refunded"
+  ) {
     return "border-red-500/30 bg-red-500/10 text-red-200";
+  }
+
+  if (
+    s === "pending" ||
+    s === "confirmed" ||
+    s === "processing" ||
+    s === "shipped" ||
+    s === "transit"
+  ) {
+    return "border-amber-500/30 bg-amber-500/10 text-amber-200";
   }
 
   return "border-slate-700/60 bg-slate-900/35 text-slate-300";
@@ -128,6 +210,33 @@ export type DeliveryOrderItem = {
   pricePaisa?: number;
 };
 
+export type DeliveryAssignment = {
+  taskType?: DeliveryTaskType;
+  deliveryManId?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  vehicleType?: string;
+  assignedAt?: string | null;
+  pickedUpAt?: string | null;
+  outForDeliveryAt?: string | null;
+  deliveredAt?: string | null;
+  failedAt?: string | null;
+  returnedAt?: string | null;
+  returnedToStoreAt?: string | null;
+  status?: DeliveryStatus | string;
+  note?: string;
+  pickupPhoto?: string;
+  deliveryPhoto?: string;
+
+  otpChannel?: DeliveryOtpChannel | "";
+  otpSentTo?: string;
+  otpExpiresAt?: string;
+  otpLastSentAt?: string;
+  otpVerifiedAt?: string;
+  isOtpVerified?: boolean;
+};
+
 export type DeliveryOrder = {
   id: string;
   _id?: string;
@@ -135,18 +244,27 @@ export type DeliveryOrder = {
   createdAt?: string;
   totalPaisa?: number;
   total?: number;
+  subtotalPaisa?: number;
   paymentMethod?: string;
   paymentRef?: string;
   shippingPaisa?: number;
   discountPaisa?: number;
   orderStatus?: string;
   paymentStatus?: string;
+
+  taskType?: DeliveryTaskType;
+  taskStatus?: string;
+  taskAssignedAt?: string | null;
+  taskRiderName?: string;
+  taskAssignment?: DeliveryAssignment | null;
+
   customer?: {
     id?: string;
     name?: string;
     email?: string;
     phone?: string;
   };
+
   address?: {
     label?: string;
     email?: string;
@@ -162,26 +280,57 @@ export type DeliveryOrder = {
     lat?: number;
     lng?: number;
   };
+
   items?: DeliveryOrderItem[];
-  deliveryAssignment?: {
-    deliveryManId?: string;
-    name?: string;
-    phone?: string;
-    email?: string;
-    assignedAt?: string;
-    pickedUpAt?: string;
-    outForDeliveryAt?: string;
-    deliveredAt?: string;
-    failedAt?: string;
-    returnedAt?: string;
-    status?: DeliveryStatus | string;
-    note?: string;
-    otpChannel?: DeliveryOtpChannel | "";
-    otpSentTo?: string;
-    otpExpiresAt?: string;
-    otpLastSentAt?: string;
-    otpVerifiedAt?: string;
-    isOtpVerified?: boolean;
+
+  deliveryAssignment?: DeliveryAssignment | null;
+  returnPickupAssignment?: DeliveryAssignment | null;
+  exchangePickupAssignment?: DeliveryAssignment | null;
+  replacementDeliveryAssignment?: DeliveryAssignment | null;
+
+  cancelRequest?: {
+    status?: string;
+    reason?: string;
+    requestedAt?: string | null;
+    resolvedAt?: string | null;
+    adminNote?: string;
+  };
+
+  returnRequest?: {
+    status?: string;
+    type?: string;
+    preferredResolution?: string;
+    reason?: string;
+    requestedAt?: string | null;
+    approvedAt?: string | null;
+    rejectedAt?: string | null;
+    pickedUpAt?: string | null;
+    receivedAt?: string | null;
+    adminNote?: string;
+  };
+
+  refund?: {
+    status?: string;
+    amountPaisa?: number;
+    method?: string;
+    refundedAt?: string | null;
+    adminNote?: string;
+    transactionRef?: string;
+  };
+
+  exchange?: {
+    status?: string;
+    reason?: string;
+    requestedAt?: string | null;
+    approvedAt?: string | null;
+    rejectedAt?: string | null;
+    pickupAssignedAt?: string | null;
+    pickedUpAt?: string | null;
+    receivedAt?: string | null;
+    replacementAssignedAt?: string | null;
+    replacementDeliveredAt?: string | null;
+    completedAt?: string | null;
+    adminNote?: string;
   };
 };
 
@@ -246,7 +395,9 @@ export function pickId(item: any) {
 }
 
 export function getCustomerName(order: DeliveryOrder) {
-  return safeStr(order.customer?.name) || safeStr(order.address?.fullName) || "-";
+  return (
+    safeStr(order.customer?.name) || safeStr(order.address?.fullName) || "-"
+  );
 }
 
 export function getCustomerContact(order: DeliveryOrder) {
@@ -287,5 +438,6 @@ export function hasLatLng(addr: any) {
 
 export function getGoogleMapsUrl(addr: any) {
   if (!hasLatLng(addr)) return "";
+
   return `https://www.google.com/maps?q=${addr.lat},${addr.lng}`;
 }

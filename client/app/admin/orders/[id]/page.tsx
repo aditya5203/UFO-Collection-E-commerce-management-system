@@ -25,17 +25,23 @@ const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
+const dangerBtnClass =
+  "rounded-full border border-red-400/30 bg-red-500/15 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-red-100 transition hover:-translate-y-0.5 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-60";
 const inputClass =
   "h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-[13px] text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60";
 
 type PaymentStatus = "Paid" | "Pending" | "Failed";
+
 type OrderStatus =
   | "Pending"
   | "Confirmed"
+  | "Processing"
   | "Shipped"
   | "Transit"
   | "Delivered"
-  | "Cancelled";
+  | "Cancelled"
+  | "Returned"
+  | "Refunded";
 
 type DeliveryAssignmentStatus =
   | "Assigned"
@@ -43,7 +49,51 @@ type DeliveryAssignmentStatus =
   | "Out for Delivery"
   | "Delivered"
   | "Failed Delivery"
-  | "Returned";
+  | "Returned"
+  | "Returned to Store";
+
+type RequestStatus = "NONE" | "REQUESTED" | "APPROVED" | "REJECTED";
+
+type ReturnStatus =
+  | "NONE"
+  | "REQUESTED"
+  | "APPROVED"
+  | "REJECTED"
+  | "RECEIVED"
+  | "PICKUP_ASSIGNED"
+  | "PICKED_UP";
+
+type RefundStatus =
+  | "NONE"
+  | "PENDING"
+  | "PENDING_ACCOUNT_DETAILS"
+  | "READY_TO_REFUND"
+  | "PROCESSING"
+  | "REFUNDED"
+  | "FAILED";
+
+type ExchangeStatus =
+  | "NONE"
+  | "REQUESTED"
+  | "APPROVED"
+  | "REJECTED"
+  | "PICKUP_ASSIGNED"
+  | "PICKED_UP"
+  | "RECEIVED"
+  | "REPLACEMENT_ASSIGNED"
+  | "REPLACEMENT_DELIVERED"
+  | "COMPLETED";
+
+type ReturnRequestType =
+  | "RETURN_REFUND"
+  | "EXCHANGE"
+  | "DAMAGED"
+  | "WRONG_ITEM"
+  | "SIZE_COLOR_ISSUE"
+  | "NOT_SATISFIED"
+  | "OTHER";
+
+type PreferredResolution = "REFUND" | "EXCHANGE" | "";
 
 type ToastType = "success" | "error" | "info";
 
@@ -98,28 +148,43 @@ type OrderAddress = {
 };
 
 type DeliveryAssignment = {
+  taskType?: string;
   deliveryManId?: string;
   name?: string;
   phone?: string;
   email?: string;
   vehicleType?: string;
   note?: string;
-  status?: DeliveryAssignmentStatus;
-  assignedAt?: string;
+  status?: DeliveryAssignmentStatus | string;
+  assignedAt?: string | null;
+  pickedUpAt?: string | null;
+  outForDeliveryAt?: string | null;
+  deliveredAt?: string | null;
+  failedAt?: string | null;
+  returnedAt?: string | null;
+  returnedToStoreAt?: string | null;
+  pickupPhoto?: string;
+  deliveryPhoto?: string;
   isOtpVerified?: boolean;
-  otpVerifiedAt?: string;
+  otpVerifiedAt?: string | null;
 };
 
 type AdminOrderDetail = {
   id: string;
+  _id?: string;
   orderCode?: string;
   createdAt?: string;
   confirmedAt?: string | null;
+  processingAt?: string | null;
   shippedAt?: string | null;
   inTransitAt?: string | null;
   deliveredAt?: string | null;
+  cancelledAt?: string | null;
+  returnedAt?: string | null;
+  refundedAt?: string | null;
   paymentStatus?: PaymentStatus | string;
   orderStatus?: OrderStatus | string;
+  status?: string;
   paymentMethod?: string;
   paymentRef?: string | null;
   customer?: {
@@ -131,16 +196,95 @@ type AdminOrderDetail = {
   };
   items?: OrderItem[];
   address?: OrderAddress | null;
+  shippingAddress?: string;
   subtotalPaisa?: number;
   shippingPaisa?: number;
   discountPaisa?: number;
   totalPaisa?: number;
+
   deliveryAssignment?: DeliveryAssignment | null;
+  returnPickupAssignment?: DeliveryAssignment | null;
+  exchangePickupAssignment?: DeliveryAssignment | null;
+  replacementDeliveryAssignment?: DeliveryAssignment | null;
+
+  cancelRequest?: {
+    status?: RequestStatus;
+    reason?: string;
+    requestedAt?: string | null;
+    resolvedAt?: string | null;
+    adminNote?: string;
+  };
+
+  returnRequest?: {
+    status?: ReturnStatus;
+    type?: ReturnRequestType | string;
+    preferredResolution?: PreferredResolution | string;
+    reason?: string;
+    images?: string[];
+    requestedAt?: string | null;
+    approvedAt?: string | null;
+    rejectedAt?: string | null;
+    pickedUpAt?: string | null;
+    receivedAt?: string | null;
+    resolvedAt?: string | null;
+    adminNote?: string;
+  };
+
+  refund?: {
+    status?: RefundStatus;
+    amountPaisa?: number;
+    method?: string;
+    accountName?: string;
+    accountNumber?: string;
+    bankName?: string;
+    walletNumber?: string;
+    walletId?: string;
+    requestedAt?: string | null;
+    requestedDetailsAt?: string | null;
+    detailsSubmittedAt?: string | null;
+    processedAt?: string | null;
+    refundedAt?: string | null;
+    adminNote?: string;
+    transactionRef?: string;
+    customerNote?: string;
+  };
+
+  exchange?: {
+    status?: ExchangeStatus;
+    reason?: string;
+    requestedAt?: string | null;
+    approvedAt?: string | null;
+    rejectedAt?: string | null;
+    pickupAssignedAt?: string | null;
+    pickedUpAt?: string | null;
+    receivedAt?: string | null;
+    replacementAssignedAt?: string | null;
+    replacementDeliveredAt?: string | null;
+    completedAt?: string | null;
+    adminNote?: string;
+  };
 };
+
+type AfterSalesAction =
+  | "approveCancel"
+  | "rejectCancel"
+  | "approveReturn"
+  | "rejectReturn"
+  | "assignReturnPickup"
+  | "assignExchangePickup"
+  | "markReceived"
+  | "requestRefundDetails"
+  | "markRefundProcessing"
+  | "markRefunded"
+  | "assignReplacement"
+  | "completeExchange";
 
 function formatNPR(paisa: number) {
   const safe = Number.isFinite(paisa) ? paisa : 0;
-  return `Rs. ${(safe / 100).toFixed(2)}`;
+  return `Rs. ${(safe / 100).toLocaleString("en-NP", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatDate(d: unknown) {
@@ -209,10 +353,13 @@ function normalizeOrderStatus(value?: string): OrderStatus {
   const v = safeStr(value).toLowerCase();
 
   if (v === "confirmed") return "Confirmed";
+  if (v === "processing") return "Processing";
   if (v === "shipped") return "Shipped";
   if (v === "transit" || v === "in transit") return "Transit";
   if (v === "delivered") return "Delivered";
   if (v === "cancelled" || v === "canceled") return "Cancelled";
+  if (v === "returned") return "Returned";
+  if (v === "refunded") return "Refunded";
 
   return "Pending";
 }
@@ -225,8 +372,81 @@ function normalizeDeliveryStatus(value?: string): DeliveryAssignmentStatus {
   if (v === "delivered") return "Delivered";
   if (v === "failed delivery") return "Failed Delivery";
   if (v === "returned") return "Returned";
+  if (v === "returned to store") return "Returned to Store";
 
   return "Assigned";
+}
+
+function normalizeRequestStatus(value?: string): RequestStatus {
+  const v = safeStr(value).toUpperCase();
+
+  if (v === "REQUESTED") return "REQUESTED";
+  if (v === "APPROVED") return "APPROVED";
+  if (v === "REJECTED") return "REJECTED";
+
+  return "NONE";
+}
+
+function normalizeReturnStatus(value?: string): ReturnStatus {
+  const v = safeStr(value).toUpperCase();
+
+  if (v === "REQUESTED") return "REQUESTED";
+  if (v === "APPROVED") return "APPROVED";
+  if (v === "REJECTED") return "REJECTED";
+  if (v === "RECEIVED") return "RECEIVED";
+  if (v === "PICKUP_ASSIGNED") return "PICKUP_ASSIGNED";
+  if (v === "PICKED_UP") return "PICKED_UP";
+
+  return "NONE";
+}
+
+function normalizeRefundStatus(value?: string): RefundStatus {
+  const v = safeStr(value).toUpperCase();
+
+  if (v === "PENDING") return "PENDING";
+  if (v === "PENDING_ACCOUNT_DETAILS") return "PENDING_ACCOUNT_DETAILS";
+  if (v === "READY_TO_REFUND") return "READY_TO_REFUND";
+  if (v === "PROCESSING") return "PROCESSING";
+  if (v === "REFUNDED") return "REFUNDED";
+  if (v === "FAILED") return "FAILED";
+
+  return "NONE";
+}
+
+function normalizeExchangeStatus(value?: string): ExchangeStatus {
+  const v = safeStr(value).toUpperCase();
+
+  if (v === "REQUESTED") return "REQUESTED";
+  if (v === "APPROVED") return "APPROVED";
+  if (v === "REJECTED") return "REJECTED";
+  if (v === "PICKUP_ASSIGNED") return "PICKUP_ASSIGNED";
+  if (v === "PICKED_UP") return "PICKED_UP";
+  if (v === "RECEIVED") return "RECEIVED";
+  if (v === "REPLACEMENT_ASSIGNED") return "REPLACEMENT_ASSIGNED";
+  if (v === "REPLACEMENT_DELIVERED") return "REPLACEMENT_DELIVERED";
+  if (v === "COMPLETED") return "COMPLETED";
+
+  return "NONE";
+}
+
+function prettyStatus(value?: string) {
+  return safeStr(value || "NONE").replaceAll("_", " ");
+}
+
+function prettyRequestType(value?: string) {
+  const v = safeStr(value).toUpperCase();
+
+  const map: Record<string, string> = {
+    RETURN_REFUND: "Return & Refund",
+    EXCHANGE: "Exchange",
+    DAMAGED: "Damaged Product",
+    WRONG_ITEM: "Wrong Item",
+    SIZE_COLOR_ISSUE: "Size / Color Issue",
+    NOT_SATISFIED: "Not Satisfied",
+    OTHER: "Other",
+  };
+
+  return map[v] || value || "-";
 }
 
 function getStatusTone(status?: string) {
@@ -238,7 +458,13 @@ function getStatusTone(status?: string) {
     s === "active" ||
     s === "assigned" ||
     s === "picked up" ||
-    s === "out for delivery"
+    s === "out for delivery" ||
+    s === "approved" ||
+    s === "refunded" ||
+    s === "received" ||
+    s === "returned to store" ||
+    s === "completed" ||
+    s === "replacement delivered"
   ) {
     return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
   }
@@ -246,8 +472,14 @@ function getStatusTone(status?: string) {
   if (
     s === "pending" ||
     s === "confirmed" ||
+    s === "processing" ||
     s === "shipped" ||
-    s === "transit"
+    s === "transit" ||
+    s === "requested" ||
+    s === "pickup assigned" ||
+    s === "replacement assigned" ||
+    s === "pending account details" ||
+    s === "ready to refund"
   ) {
     return "border-amber-400/20 bg-amber-500/15 text-amber-300";
   }
@@ -257,7 +489,8 @@ function getStatusTone(status?: string) {
     s === "cancelled" ||
     s === "inactive" ||
     s === "failed delivery" ||
-    s === "returned"
+    s === "returned" ||
+    s === "rejected"
   ) {
     return "border-red-400/20 bg-red-500/15 text-red-300";
   }
@@ -335,6 +568,21 @@ async function safeJson(res: Response) {
   }
 }
 
+function assignmentName(a?: DeliveryAssignment | null) {
+  if (!a) return "-";
+  return safeStr(a.name) || "Assigned rider";
+}
+
+function assignmentStatus(a?: DeliveryAssignment | null) {
+  if (!a) return "Not Assigned";
+  return safeStr(a.status) || "Assigned";
+}
+
+function assignmentContact(a?: DeliveryAssignment | null) {
+  if (!a) return "";
+  return [safeStr(a.phone), safeStr(a.vehicleType)].filter(Boolean).join(" • ");
+}
+
 function ColorSwatch({ color }: { color: string }) {
   const ref = React.useRef<HTMLSpanElement | null>(null);
 
@@ -382,13 +630,23 @@ export default function OrderDetailsPage() {
   const [deliveryStatus, setDeliveryStatus] =
     React.useState<DeliveryAssignmentStatus>("Assigned");
 
+  const [requestActionLoading, setRequestActionLoading] = React.useState(false);
+  const [adminNote, setAdminNote] = React.useState("");
+  const [transactionRef, setTransactionRef] = React.useState("");
+  const [selectedRiderId, setSelectedRiderId] = React.useState("");
+  const [activeRequestAction, setActiveRequestAction] =
+    React.useState<AfterSalesAction | null>(null);
+
   const canUpdate = hasPermission(role, permissions, "orderUpdate");
+  const canViewReturnsRefunds =
+    hasPermission(role, permissions, "returnsRefundsView") ||
+    hasPermission(role, permissions, "orderView");
 
   const showToast = React.useCallback(
     (message: string, type: ToastType = "info") => {
       setToast({ message, type });
     },
-    []
+    [],
   );
 
   React.useEffect(() => {
@@ -418,16 +676,14 @@ export default function OrderDetailsPage() {
 
         const nextPermissions = normalizeAdminPermissions(
           nextRole,
-          body?.profile?.permissions
+          body?.profile?.permissions,
         );
 
         if (!mounted) return;
 
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {
-        // AdminPageGuard handles auth.
-      }
+      } catch {}
     };
 
     loadAdminProfile();
@@ -492,11 +748,13 @@ export default function OrderDetailsPage() {
   const syncOrderState = React.useCallback((nextOrder: AdminOrderDetail) => {
     setOrder(nextOrder);
     setPaymentStatus(normalizePaymentStatus(nextOrder?.paymentStatus));
-    setOrderStatus(normalizeOrderStatus(nextOrder?.orderStatus));
+    setOrderStatus(
+      normalizeOrderStatus(nextOrder?.orderStatus || nextOrder?.status),
+    );
     setDeliveryManId(safeStr(nextOrder?.deliveryAssignment?.deliveryManId));
     setDeliveryNote(safeStr(nextOrder?.deliveryAssignment?.note));
     setDeliveryStatus(
-      normalizeDeliveryStatus(nextOrder?.deliveryAssignment?.status)
+      normalizeDeliveryStatus(nextOrder?.deliveryAssignment?.status),
     );
   }, []);
 
@@ -548,7 +806,7 @@ export default function OrderDetailsPage() {
         setRefreshing(false);
       }
     },
-    [id, showToast, syncOrderState]
+    [id, showToast, syncOrderState],
   );
 
   React.useEffect(() => {
@@ -588,11 +846,13 @@ export default function OrderDetailsPage() {
   }, [id, order?.id, order?.orderCode, loadOrder]);
 
   const originalPaymentStatus = normalizePaymentStatus(order?.paymentStatus);
-  const originalOrderStatus = normalizeOrderStatus(order?.orderStatus);
+  const originalOrderStatus = normalizeOrderStatus(
+    order?.orderStatus || order?.status,
+  );
   const originalDeliveryManId = safeStr(order?.deliveryAssignment?.deliveryManId);
   const originalDeliveryNote = safeStr(order?.deliveryAssignment?.note).trim();
   const originalDeliveryStatus = normalizeDeliveryStatus(
-    order?.deliveryAssignment?.status
+    order?.deliveryAssignment?.status,
   );
 
   const deliveryChanged =
@@ -607,6 +867,24 @@ export default function OrderDetailsPage() {
   const hasChanges = baseChanged || deliveryChanged;
 
   const otpVerified = Boolean(order?.deliveryAssignment?.isOtpVerified);
+
+  const cancelStatus = normalizeRequestStatus(order?.cancelRequest?.status);
+  const returnStatus = normalizeReturnStatus(order?.returnRequest?.status);
+  const refundStatus = normalizeRefundStatus(order?.refund?.status);
+  const exchangeStatus = normalizeExchangeStatus(order?.exchange?.status);
+
+  const returnRequestType = safeStr(order?.returnRequest?.type);
+  const preferredResolution = safeStr(order?.returnRequest?.preferredResolution);
+  const isExchangeRequest =
+    preferredResolution.toUpperCase() === "EXCHANGE" ||
+    returnRequestType.toUpperCase() === "EXCHANGE" ||
+    exchangeStatus !== "NONE";
+
+  const hasAfterSalesData =
+    cancelStatus !== "NONE" ||
+    returnStatus !== "NONE" ||
+    refundStatus !== "NONE" ||
+    exchangeStatus !== "NONE";
 
   const saveChanges = async () => {
     if (!order?.id) return;
@@ -624,7 +902,7 @@ export default function OrderDetailsPage() {
     if (deliveryChanged && !deliveryManId) {
       showToast(
         "Please select a delivery rider before updating delivery details.",
-        "error"
+        "error",
       );
       return;
     }
@@ -635,7 +913,7 @@ export default function OrderDetailsPage() {
     ) {
       showToast(
         "Delivered status requires delivery OTP verification. Use delivery OTP flow.",
-        "error"
+        "error",
       );
       return;
     }
@@ -695,6 +973,135 @@ export default function OrderDetailsPage() {
     }
   };
 
+  const openRequestAction = (action: AfterSalesAction) => {
+    if (!canViewReturnsRefunds) {
+      showToast(
+        "You do not have permission to manage returns and refunds.",
+        "error",
+      );
+      return;
+    }
+
+    setAdminNote("");
+    setTransactionRef("");
+    setSelectedRiderId("");
+    setActiveRequestAction(action);
+  };
+
+  const closeRequestActionModal = () => {
+    if (requestActionLoading) return;
+
+    setActiveRequestAction(null);
+    setAdminNote("");
+    setTransactionRef("");
+    setSelectedRiderId("");
+  };
+
+  const submitRequestAction = async () => {
+  if (!order || !activeRequestAction) return;
+
+  if (!canViewReturnsRefunds) {
+    showToast(
+      "You do not have permission to manage returns and refunds.",
+      "error",
+    );
+    return;
+  }
+
+  const orderId = safeStr(order.id || order._id || order.orderCode);
+
+  if (!orderId) {
+    showToast("Order ID is missing.", "error");
+    return;
+  }
+
+  const actualAction: AfterSalesAction = activeRequestAction;
+
+  const riderRequired =
+    actualAction === "assignReturnPickup" ||
+    actualAction === "assignExchangePickup" ||
+    actualAction === "assignReplacement";
+
+  if (riderRequired && !selectedRiderId) {
+    showToast("Please select a delivery rider.", "error");
+    return;
+  }
+
+  const encodedId = encodeURIComponent(orderId);
+
+  const map: Record<AfterSalesAction, string> = {
+    approveCancel: `${API_BASE}/api/admin/orders/${encodedId}/cancel/approve`,
+    rejectCancel: `${API_BASE}/api/admin/orders/${encodedId}/cancel/reject`,
+    approveReturn: `${API_BASE}/api/admin/orders/${encodedId}/return/approve`,
+    rejectReturn: `${API_BASE}/api/admin/orders/${encodedId}/return/reject`,
+    assignReturnPickup: `${API_BASE}/api/admin/orders/${encodedId}/return/assign-pickup`,
+    assignExchangePickup: `${API_BASE}/api/admin/orders/${encodedId}/exchange/assign-pickup`,
+    markReceived: `${API_BASE}/api/admin/orders/${encodedId}/return/mark-received`,
+    requestRefundDetails: `${API_BASE}/api/admin/orders/${encodedId}/refund/request-details`,
+    markRefundProcessing: `${API_BASE}/api/admin/orders/${encodedId}/refund/processing`,
+    markRefunded: `${API_BASE}/api/admin/orders/${encodedId}/refund/mark-refunded`,
+    assignReplacement: `${API_BASE}/api/admin/orders/${encodedId}/exchange/assign-replacement`,
+    completeExchange: `${API_BASE}/api/admin/orders/${encodedId}/exchange/complete`,
+  };
+
+  try {
+    setRequestActionLoading(true);
+
+    const body: Record<string, any> = {
+      adminNote: adminNote.trim(),
+    };
+
+    if (riderRequired) {
+      body.deliveryManId = selectedRiderId;
+      body.note = adminNote.trim();
+    }
+
+    if (actualAction === "markRefunded") {
+      body.transactionRef = transactionRef.trim();
+    }
+
+    let res = await fetch(map[actualAction], {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    let json = await safeJson(res);
+
+    const message = safeStr((json as any)?.message).toLowerCase();
+
+    if (
+      !res.ok &&
+      actualAction === "assignReturnPickup" &&
+      message.includes("exchange request")
+    ) {
+      res = await fetch(map.assignExchangePickup, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      json = await safeJson(res);
+    }
+
+    if (!res.ok) {
+      showToast((json as any)?.message || "Action failed.", "error");
+      return;
+    }
+
+    showToast("Request updated successfully.", "success");
+    closeRequestActionModal();
+    await loadOrder("silent");
+  } catch {
+    showToast("Action failed.", "error");
+  } finally {
+    setRequestActionLoading(false);
+  }
+};
+
+
   const downloadInvoice = async () => {
     if (!order?.id) return;
 
@@ -734,6 +1141,44 @@ export default function OrderDetailsPage() {
       setDownloadingInvoice(false);
     }
   };
+
+  const actionTitle =
+    activeRequestAction === "approveCancel"
+      ? "Approve Cancellation"
+      : activeRequestAction === "rejectCancel"
+        ? "Reject Cancellation"
+        : activeRequestAction === "approveReturn"
+          ? isExchangeRequest
+            ? "Approve Exchange"
+            : "Approve Return"
+          : activeRequestAction === "rejectReturn"
+            ? isExchangeRequest
+              ? "Reject Exchange"
+              : "Reject Return"
+            : activeRequestAction === "assignReturnPickup"
+  ? isExchangeRequest
+    ? "Assign Exchange Pickup Rider"
+    : "Assign Return Pickup Rider"
+  : activeRequestAction === "assignExchangePickup"
+                ? "Assign Exchange Pickup Rider"
+                : activeRequestAction === "markReceived"
+                  ? "Mark Product Received"
+                  : activeRequestAction === "requestRefundDetails"
+                    ? "Request Refund Details"
+                    : activeRequestAction === "markRefundProcessing"
+                      ? "Mark Refund Processing"
+                      : activeRequestAction === "markRefunded"
+                        ? "Mark Refund Completed"
+                        : activeRequestAction === "assignReplacement"
+                          ? "Assign Replacement Delivery"
+                          : activeRequestAction === "completeExchange"
+                            ? "Complete Exchange"
+                            : "Confirm Action";
+
+  const riderRequired =
+    activeRequestAction === "assignReturnPickup" ||
+    activeRequestAction === "assignExchangePickup" ||
+    activeRequestAction === "assignReplacement";
 
   if (loading) {
     return (
@@ -777,9 +1222,23 @@ export default function OrderDetailsPage() {
       label: "Order Confirmed",
       date: order.confirmedAt ? formatDate(order.confirmedAt) : "—",
       status:
-        orderStatus === "Confirmed"
+        orderStatus === "Confirmed" || orderStatus === "Processing"
           ? "current"
-          : ["Shipped", "Transit", "Delivered"].includes(orderStatus)
+          : ["Shipped", "Transit", "Delivered", "Returned", "Refunded"].includes(
+                orderStatus,
+              )
+            ? "done"
+            : "upcoming",
+    },
+    {
+      label: "Order Processing",
+      date: order.processingAt ? formatDate(order.processingAt) : "—",
+      status:
+        orderStatus === "Processing"
+          ? "current"
+          : ["Shipped", "Transit", "Delivered", "Returned", "Refunded"].includes(
+                orderStatus,
+              )
             ? "done"
             : "upcoming",
     },
@@ -789,7 +1248,7 @@ export default function OrderDetailsPage() {
       status:
         orderStatus === "Shipped"
           ? "current"
-          : orderStatus === "Transit" || orderStatus === "Delivered"
+          : ["Transit", "Delivered", "Returned", "Refunded"].includes(orderStatus)
             ? "done"
             : "upcoming",
     },
@@ -799,14 +1258,19 @@ export default function OrderDetailsPage() {
       status:
         orderStatus === "Transit"
           ? "current"
-          : orderStatus === "Delivered"
+          : ["Delivered", "Returned", "Refunded"].includes(orderStatus)
             ? "done"
             : "upcoming",
     },
     {
       label: "Order Delivered",
       date: order.deliveredAt ? formatDate(order.deliveredAt) : "—",
-      status: orderStatus === "Delivered" ? "current" : "upcoming",
+      status:
+        orderStatus === "Delivered"
+          ? "current"
+          : ["Returned", "Refunded"].includes(orderStatus)
+            ? "done"
+            : "upcoming",
     },
   ];
 
@@ -827,11 +1291,13 @@ export default function OrderDetailsPage() {
   const customerId = order?.customer?.id || order?.customer?._id || "";
   const items = Array.isArray(order.items) ? order.items : [];
 
-  const subtotalPaisa = items.reduce((sum: number, it: OrderItem) => {
-    const qty = Number(it?.qty || 0);
-    const pricePaisa = Number(it?.pricePaisa || 0);
-    return sum + qty * pricePaisa;
-  }, 0);
+  const subtotalPaisa =
+    Number(order?.subtotalPaisa || 0) ||
+    items.reduce((sum: number, it: OrderItem) => {
+      const qty = Number(it?.qty || 0);
+      const pricePaisa = Number(it?.pricePaisa || 0);
+      return sum + qty * pricePaisa;
+    }, 0);
 
   const shippingPaisa = Number(order?.shippingPaisa || 0);
   const discountPaisa = Number(order?.discountPaisa || 0);
@@ -872,6 +1338,20 @@ export default function OrderDetailsPage() {
 
                   {order?.deliveryAssignment?.status ? (
                     <StatusPill>{order.deliveryAssignment.status}</StatusPill>
+                  ) : null}
+
+                  {returnStatus !== "NONE" ? (
+                    <StatusPill>Return {prettyStatus(returnStatus)}</StatusPill>
+                  ) : null}
+
+                  {exchangeStatus !== "NONE" ? (
+                    <StatusPill>
+                      Exchange {prettyStatus(exchangeStatus)}
+                    </StatusPill>
+                  ) : null}
+
+                  {refundStatus !== "NONE" ? (
+                    <StatusPill>Refund {prettyStatus(refundStatus)}</StatusPill>
                   ) : null}
                 </div>
 
@@ -961,6 +1441,468 @@ export default function OrderDetailsPage() {
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
             <div className="space-y-6">
+              {canViewReturnsRefunds ? (
+                <section className={`${panelClass} p-5 sm:p-6`}>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                        After Sales
+                      </div>
+
+                      <h2 className="mt-1 text-[20px] font-semibold text-white">
+                        Returns, Refunds, Exchange & Cancellation
+                      </h2>
+
+                      <p className="mt-1 text-[13px] text-[#a7aec4]">
+                        Manage cancellation, return pickup, refund details,
+                        exchange pickup, and replacement delivery.
+                      </p>
+                    </div>
+
+                    <Link
+                      href="/admin/returns-refunds"
+                      className={secondaryBtnClass}
+                    >
+                      View All
+                    </Link>
+                  </div>
+
+                  <div className="mt-6 space-y-4">
+                    {cancelStatus !== "NONE" ? (
+                      <RequestCard
+                        title="Cancellation Request"
+                        status={cancelStatus}
+                        reason={order.cancelRequest?.reason}
+                        requestedAt={order.cancelRequest?.requestedAt}
+                        resolvedAt={order.cancelRequest?.resolvedAt}
+                        adminNote={order.cancelRequest?.adminNote}
+                        tone={
+                          cancelStatus === "REQUESTED"
+                            ? "amber"
+                            : cancelStatus === "APPROVED"
+                              ? "green"
+                              : "red"
+                        }
+                        actions={
+                          cancelStatus === "REQUESTED" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openRequestAction("approveCancel")
+                                }
+                                disabled={requestActionLoading}
+                                className={primaryBtnClass}
+                              >
+                                Approve
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openRequestAction("rejectCancel")
+                                }
+                                disabled={requestActionLoading}
+                                className={dangerBtnClass}
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : null
+                        }
+                      />
+                    ) : null}
+
+                    {returnStatus !== "NONE" ? (
+                      <RequestCard
+                        title={
+                          isExchangeRequest
+                            ? "Exchange Request"
+                            : "Return Request"
+                        }
+                        status={returnStatus}
+                        reason={order.returnRequest?.reason}
+                        requestedAt={order.returnRequest?.requestedAt}
+                        resolvedAt={
+                          order.returnRequest?.resolvedAt ||
+                          order.returnRequest?.receivedAt
+                        }
+                        adminNote={order.returnRequest?.adminNote}
+                        tone={
+                          returnStatus === "REQUESTED"
+                            ? "blue"
+                            : returnStatus === "REJECTED"
+                              ? "red"
+                              : "green"
+                        }
+                        extra={
+                          <>
+                            <LineItem
+                              label="Issue Type"
+                              value={prettyRequestType(order.returnRequest?.type)}
+                            />
+                            <LineItem
+                              label="Preferred Resolution"
+                              value={
+                                order.returnRequest?.preferredResolution || "-"
+                              }
+                            />
+
+                            {Array.isArray(order.returnRequest?.images) &&
+                            order.returnRequest.images.length ? (
+                              <div className="mt-3">
+                                <div className="mb-2 text-[12px] text-[#a7aec4]">
+                                  Evidence Images
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {order.returnRequest.images.map(
+                                    (img, index) => (
+                                      <a
+                                       key={`${img}-${index}`}
+                                      href={img}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      aria-label={`Open evidence image ${index + 1}`}
+                                      title={`Open evidence image ${index + 1}`}
+                                      className="relative h-16 w-16 overflow-hidden rounded-[14px] border border-white/10 bg-white/5"
+                                      >
+                                     <Image
+                                      src={getImageSrc(img)}
+                                      alt={`Evidence image ${index + 1}`}
+                                      fill
+                                      sizes="64px"
+                                      className="object-cover"
+                                      />
+                                     </a>
+                                    ),
+                                  )}
+                                </div>
+                              </div>
+                            ) : null}
+                          </>
+                        }
+                        actions={
+                          returnStatus === "REQUESTED" ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openRequestAction("approveReturn")
+                                }
+                                disabled={requestActionLoading}
+                                className={primaryBtnClass}
+                              >
+                                Approve
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openRequestAction("rejectReturn")
+                                }
+                                disabled={requestActionLoading}
+                                className={dangerBtnClass}
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : returnStatus === "APPROVED" &&
+                            !isExchangeRequest ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openRequestAction("assignReturnPickup")
+                              }
+                              disabled={requestActionLoading}
+                              className={primaryBtnClass}
+                            >
+                              Assign Return Pickup
+                            </button>
+                          ) : returnStatus === "APPROVED" &&
+                            isExchangeRequest ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openRequestAction("assignExchangePickup")
+                              }
+                              disabled={requestActionLoading}
+                              className={primaryBtnClass}
+                            >
+                              Assign Exchange Pickup
+                            </button>
+                          ) : ["PICKED_UP", "RECEIVED"].includes(
+                              returnStatus,
+                            ) ? (
+                            <button
+                              type="button"
+                              onClick={() => openRequestAction("markReceived")}
+                              disabled={requestActionLoading}
+                              className={primaryBtnClass}
+                            >
+                              Mark Product Received
+                            </button>
+                          ) : null
+                        }
+                      />
+                    ) : null}
+
+                    {order.returnPickupAssignment ? (
+                      <AssignmentCard
+                        title="Return Pickup Assignment"
+                        assignment={order.returnPickupAssignment}
+                      />
+                    ) : null}
+
+                    {order.exchangePickupAssignment ? (
+                      <AssignmentCard
+                        title="Exchange Pickup Assignment"
+                        assignment={order.exchangePickupAssignment}
+                      />
+                    ) : null}
+
+                    {exchangeStatus !== "NONE" ? (
+                      <RequestCard
+                        title="Exchange Flow"
+                        status={exchangeStatus}
+                        reason={order.exchange?.reason || order.returnRequest?.reason}
+                        requestedAt={
+                          order.exchange?.requestedAt ||
+                          order.returnRequest?.requestedAt
+                        }
+                        resolvedAt={
+                          order.exchange?.completedAt ||
+                          order.exchange?.replacementDeliveredAt
+                        }
+                        adminNote={order.exchange?.adminNote}
+                        tone={
+                          exchangeStatus === "REJECTED"
+                            ? "red"
+                            : exchangeStatus === "COMPLETED"
+                              ? "green"
+                              : "blue"
+                        }
+                        extra={
+                          <>
+                            <LineItem
+                              label="Pickup Assigned"
+                              value={formatDateTime(
+                                order.exchange?.pickupAssignedAt,
+                              )}
+                            />
+                            <LineItem
+                              label="Old Product Picked"
+                              value={formatDateTime(order.exchange?.pickedUpAt)}
+                            />
+                            <LineItem
+                              label="Received at Store"
+                              value={formatDateTime(order.exchange?.receivedAt)}
+                            />
+                            <LineItem
+                              label="Replacement Assigned"
+                              value={formatDateTime(
+                                order.exchange?.replacementAssignedAt,
+                              )}
+                            />
+                            <LineItem
+                              label="Replacement Delivered"
+                              value={formatDateTime(
+                                order.exchange?.replacementDeliveredAt,
+                              )}
+                            />
+                          </>
+                        }
+                        actions={
+                          exchangeStatus === "RECEIVED" ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openRequestAction("assignReplacement")
+                              }
+                              disabled={requestActionLoading}
+                              className={primaryBtnClass}
+                            >
+                              Assign Replacement Rider
+                            </button>
+                          ) : exchangeStatus === "REPLACEMENT_DELIVERED" ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openRequestAction("completeExchange")
+                              }
+                              disabled={requestActionLoading}
+                              className={primaryBtnClass}
+                            >
+                              Complete Exchange
+                            </button>
+                          ) : null
+                        }
+                      />
+                    ) : null}
+
+                    {order.replacementDeliveryAssignment ? (
+                      <AssignmentCard
+                        title="Replacement Delivery Assignment"
+                        assignment={order.replacementDeliveryAssignment}
+                      />
+                    ) : null}
+
+                    {refundStatus !== "NONE" ? (
+                      <div className="rounded-[20px] border border-emerald-400/20 bg-emerald-500/10 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="text-[14px] font-semibold text-emerald-100">
+                            Refund Status
+                          </div>
+
+                          <StatusPill>{prettyStatus(refundStatus)}</StatusPill>
+                        </div>
+
+                        <div className="mt-4 space-y-2 text-[13px] leading-6 text-emerald-100/80">
+                          <LineItem
+                            label="Amount"
+                            value={formatNPR(
+                              Number(order.refund?.amountPaisa || totalPaisa),
+                            )}
+                            valueClassName="text-emerald-100"
+                          />
+
+                          <LineItem
+                            label="Method"
+                            value={order.refund?.method || order.paymentMethod || "-"}
+                            valueClassName="text-emerald-100"
+                          />
+
+                          <LineItem
+                            label="Account Name"
+                            value={order.refund?.accountName || "-"}
+                            valueClassName="text-emerald-100"
+                          />
+
+                          <LineItem
+                            label="Account Number"
+                            value={order.refund?.accountNumber || "-"}
+                            valueClassName="text-emerald-100"
+                          />
+
+                          <LineItem
+                            label="Bank"
+                            value={order.refund?.bankName || "-"}
+                            valueClassName="text-emerald-100"
+                          />
+
+                          <LineItem
+                            label="Wallet Number"
+                            value={order.refund?.walletNumber || "-"}
+                            valueClassName="text-emerald-100"
+                          />
+
+                          <LineItem
+                            label="Wallet ID"
+                            value={order.refund?.walletId || "-"}
+                            valueClassName="text-emerald-100"
+                          />
+
+                          <LineItem
+                            label="Details Requested"
+                            value={formatDateTime(
+                              order.refund?.requestedDetailsAt,
+                            )}
+                            valueClassName="text-emerald-100"
+                          />
+
+                          <LineItem
+                            label="Details Submitted"
+                            value={formatDateTime(
+                              order.refund?.detailsSubmittedAt,
+                            )}
+                            valueClassName="text-emerald-100"
+                          />
+
+                          <LineItem
+                            label="Refunded At"
+                            value={formatDateTime(order.refund?.refundedAt)}
+                            valueClassName="text-emerald-100"
+                          />
+
+                          {order.refund?.transactionRef ? (
+                            <LineItem
+                              label="Transaction Ref"
+                              value={order.refund.transactionRef}
+                              valueClassName="text-emerald-100"
+                            />
+                          ) : null}
+
+                          {order.refund?.customerNote ? (
+                            <LineItem
+                              label="Customer Note"
+                              value={order.refund.customerNote}
+                              valueClassName="text-emerald-100"
+                            />
+                          ) : null}
+
+                          {order.refund?.adminNote ? (
+                            <LineItem
+                              label="Admin Note"
+                              value={order.refund.adminNote}
+                              valueClassName="text-emerald-100"
+                            />
+                          ) : null}
+                        </div>
+
+                        {refundStatus !== "REFUNDED" ? (
+                          <div className="mt-4 flex flex-wrap gap-3">
+                            {refundStatus === "PENDING_ACCOUNT_DETAILS" ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openRequestAction("requestRefundDetails")
+                                }
+                                disabled={requestActionLoading}
+                                className={secondaryBtnClass}
+                              >
+                                Request Details
+                              </button>
+                            ) : null}
+
+                            {[
+                              "PENDING",
+                              "PENDING_ACCOUNT_DETAILS",
+                              "READY_TO_REFUND",
+                            ].includes(refundStatus) ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openRequestAction("markRefundProcessing")
+                                }
+                                disabled={requestActionLoading}
+                                className={secondaryBtnClass}
+                              >
+                                Mark Processing
+                              </button>
+                            ) : null}
+
+                            <button
+                              type="button"
+                              onClick={() => openRequestAction("markRefunded")}
+                              disabled={requestActionLoading}
+                              className={primaryBtnClass}
+                            >
+                              Mark Refunded
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    {!hasAfterSalesData ? (
+                      <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-4 text-[13px] text-[#a7aec4]">
+                        No cancellation, return, exchange, or refund request
+                        found for this order.
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+              ) : null}
+
               <section className={`${panelClass} overflow-hidden`}>
                 <SectionHeader
                   eyebrow="Order Items"
@@ -1179,7 +2121,7 @@ export default function OrderDetailsPage() {
               <InfoPanel title={addrTitle} eyebrow="Delivery Address">
                 {!addr ? (
                   <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4 text-[13px] text-[#a7aec4]">
-                    No shipping address found.
+                    {order.shippingAddress || "No shipping address found."}
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -1213,7 +2155,7 @@ export default function OrderDetailsPage() {
                       >
                         {hasLatLng(addr)
                           ? `${Number(addr.lat).toFixed(6)}, ${Number(
-                              addr.lng
+                              addr.lng,
                             ).toFixed(6)}`
                           : "No map location saved in this order"}
                       </div>
@@ -1233,7 +2175,7 @@ export default function OrderDetailsPage() {
                 )}
               </InfoPanel>
 
-              <InfoPanel title="Delivery Assignment" eyebrow="Rider">
+              <InfoPanel title="Normal Delivery Assignment" eyebrow="Rider">
                 <div className="space-y-5">
                   <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
                     <div className="text-[13px] font-semibold text-white">
@@ -1317,7 +2259,7 @@ export default function OrderDetailsPage() {
                       value={deliveryStatus}
                       onChange={(e) =>
                         setDeliveryStatus(
-                          e.target.value as DeliveryAssignmentStatus
+                          e.target.value as DeliveryAssignmentStatus,
                         )
                       }
                       disabled={!canUpdate}
@@ -1451,6 +2393,9 @@ export default function OrderDetailsPage() {
                       <option value="Confirmed" className="bg-[#11121a]">
                         Confirmed
                       </option>
+                      <option value="Processing" className="bg-[#11121a]">
+                        Processing
+                      </option>
                       <option value="Shipped" className="bg-[#11121a]">
                         Shipped
                       </option>
@@ -1466,6 +2411,12 @@ export default function OrderDetailsPage() {
                       </option>
                       <option value="Cancelled" className="bg-[#11121a]">
                         Cancelled
+                      </option>
+                      <option value="Returned" className="bg-[#11121a]">
+                        Returned
+                      </option>
+                      <option value="Refunded" className="bg-[#11121a]">
+                        Refunded
                       </option>
                     </select>
                   </Field>
@@ -1508,6 +2459,143 @@ export default function OrderDetailsPage() {
             </div>
           </div>
         </div>
+
+        {activeRequestAction ? (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center px-4">
+            <button
+              type="button"
+              onClick={closeRequestActionModal}
+              className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+              aria-label="Close modal"
+            />
+
+            <div
+              className={`${panelClass} relative max-h-[90vh] w-full max-w-[580px] overflow-y-auto p-6`}
+            >
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[#8d96b3]">
+                Confirm Action
+              </p>
+
+              <h2 className="mt-2 text-2xl font-semibold text-white">
+                {actionTitle}
+              </h2>
+
+              <div className="mt-4 rounded-[18px] border border-[#26293a] bg-[#161824] p-4 text-sm text-[#a7aec4]">
+                <p>
+                  Order:{" "}
+                  <span className="font-semibold text-white">
+                    {order.orderCode || order.id}
+                  </span>
+                </p>
+
+                <p className="mt-1">
+                  Customer:{" "}
+                  <span className="font-semibold text-white">
+                    {order.customer?.name || "-"}
+                  </span>
+                </p>
+
+                {activeRequestAction === "markRefunded" ? (
+                  <p className="mt-1">
+                    Refund Amount:{" "}
+                    <span className="font-semibold text-white">
+                      {formatNPR(Number(order.refund?.amountPaisa || totalPaisa))}
+                    </span>
+                  </p>
+                ) : null}
+              </div>
+
+              {riderRequired ? (
+                <div className="mt-5">
+                  <label className="mb-2 block text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a7aec4]">
+                    Delivery Rider
+                  </label>
+
+                  <select
+                    id="request-action-delivery-rider"
+                    name="requestActionDeliveryRider"
+                    title="Select delivery rider"
+                    aria-label="Select delivery rider"
+                    value={selectedRiderId}
+                    onChange={(e) => setSelectedRiderId(e.target.value)}
+                    disabled={ridersLoading}
+                    className={inputClass}
+                  >
+                    <option value="" className="bg-[#11121a]">
+                      {ridersLoading ? "Loading riders..." : "Select rider"}
+                    </option>
+
+                    {riders.map((rider) => (
+                      <option
+                        key={rider.id}
+                        value={rider.id}
+                        className="bg-[#11121a]"
+                      >
+                        {rider.name || "Unnamed"}
+                        {rider.phone ? ` • ${rider.phone}` : ""}
+                        {rider.vehicleType ? ` • ${rider.vehicleType}` : ""}
+                      </option>
+                    ))}
+                  </select>
+
+                  {riders.length === 0 ? (
+                    <div className="mt-2 text-[12px] text-amber-200">
+                      No active rider found. Please activate delivery staff first.
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {activeRequestAction === "markRefunded" ? (
+                <input
+                  value={transactionRef}
+                  onChange={(e) => setTransactionRef(e.target.value)}
+                  maxLength={120}
+                  placeholder="Transaction reference e.g. KHALTI-REF-12345"
+                  className="mt-5 h-[48px] w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 text-sm text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
+                />
+              ) : null}
+
+              <textarea
+                value={adminNote}
+                onChange={(e) => setAdminNote(e.target.value)}
+                rows={4}
+                maxLength={500}
+                placeholder={
+                  riderRequired
+                    ? "Write pickup/delivery note for rider..."
+                    : "Write optional admin note..."
+                }
+                className="mt-5 w-full resize-none rounded-[18px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-sm text-white outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
+              />
+
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={requestActionLoading}
+                  onClick={closeRequestActionModal}
+                  className={secondaryBtnClass}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={requestActionLoading}
+                  onClick={submitRequestAction}
+                  className={
+                    activeRequestAction === "rejectCancel" ||
+                    activeRequestAction === "rejectReturn"
+                      ? dangerBtnClass
+                      : primaryBtnClass
+                  }
+                >
+                  {requestActionLoading ? "Updating..." : "Confirm"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </AdminPageGuard>
   );
@@ -1700,6 +2788,123 @@ function LineItem({
       <span className={`text-right text-[13px] ${valueClassName}`}>
         {value}
       </span>
+    </div>
+  );
+}
+
+function AssignmentCard({
+  title,
+  assignment,
+}: {
+  title: string;
+  assignment?: DeliveryAssignment | null;
+}) {
+  if (!assignment) return null;
+
+  return (
+    <div className="rounded-[20px] border border-purple-400/20 bg-purple-500/10 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[14px] font-semibold text-purple-100">{title}</div>
+        <StatusPill>{assignmentStatus(assignment)}</StatusPill>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        <LineItem
+          label="Rider"
+          value={assignmentName(assignment)}
+          valueClassName="text-purple-100"
+        />
+        <LineItem
+          label="Contact"
+          value={assignmentContact(assignment) || "-"}
+          valueClassName="text-purple-100"
+        />
+        <LineItem
+          label="Assigned At"
+          value={formatDateTime(assignment.assignedAt)}
+          valueClassName="text-purple-100"
+        />
+        <LineItem
+          label="Picked Up At"
+          value={formatDateTime(assignment.pickedUpAt)}
+          valueClassName="text-purple-100"
+        />
+        <LineItem
+          label="Returned To Store"
+          value={formatDateTime(assignment.returnedToStoreAt)}
+          valueClassName="text-purple-100"
+        />
+        <LineItem
+          label="Delivered At"
+          value={formatDateTime(assignment.deliveredAt)}
+          valueClassName="text-purple-100"
+        />
+        {assignment.note ? (
+          <LineItem
+            label="Note"
+            value={assignment.note}
+            valueClassName="text-purple-100"
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function RequestCard({
+  title,
+  status,
+  reason,
+  requestedAt,
+  resolvedAt,
+  adminNote,
+  actions,
+  extra,
+  tone = "neutral",
+}: {
+  title: string;
+  status: string;
+  reason?: string;
+  requestedAt?: string | null;
+  resolvedAt?: string | null;
+  adminNote?: string;
+  actions?: React.ReactNode;
+  extra?: React.ReactNode;
+  tone?: "neutral" | "amber" | "blue" | "green" | "red";
+}) {
+  const toneClass =
+    tone === "amber"
+      ? "border-amber-400/20 bg-amber-500/10"
+      : tone === "blue"
+        ? "border-blue-400/20 bg-blue-500/10"
+        : tone === "green"
+          ? "border-emerald-400/20 bg-emerald-500/10"
+          : tone === "red"
+            ? "border-red-400/20 bg-red-500/10"
+            : "border-[#26293a] bg-[#161824]";
+
+  return (
+    <div className={`rounded-[20px] border p-4 ${toneClass}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[14px] font-semibold text-white">{title}</div>
+
+        <StatusPill>{prettyStatus(status)}</StatusPill>
+      </div>
+
+      <div className="mt-4 space-y-2 text-[13px] leading-6 text-[#a7aec4]">
+        <LineItem label="Reason" value={reason || "—"} />
+        <LineItem label="Requested At" value={formatDateTime(requestedAt)} />
+
+        {resolvedAt ? (
+          <LineItem label="Resolved At" value={formatDateTime(resolvedAt)} />
+        ) : null}
+
+        {adminNote ? <LineItem label="Admin Note" value={adminNote} /> : null}
+
+        {extra}
+      </div>
+
+      {actions ? <div className="mt-4 flex flex-wrap gap-3">{actions}</div> : null}
     </div>
   );
 }

@@ -66,6 +66,8 @@ export interface IAdminPermissions {
   supportView: boolean;
   supportReply: boolean;
 
+  returnsRefundsView: boolean;
+
   advertisementView: boolean;
   advertisementCreate: boolean;
   advertisementEdit: boolean;
@@ -179,6 +181,8 @@ export const defaultAdminPermissions = (): IAdminPermissions => ({
   supportView: false,
   supportReply: false,
 
+  returnsRefundsView: false,
+
   advertisementView: false,
   advertisementCreate: false,
   advertisementEdit: false,
@@ -245,6 +249,8 @@ export const fullSuperadminPermissions = (): IAdminPermissions => ({
 
   supportView: true,
   supportReply: true,
+
+  returnsRefundsView: true,
 
   advertisementView: true,
   advertisementCreate: true,
@@ -313,6 +319,8 @@ const AdminPermissionsSchema = new Schema<IAdminPermissions>(
 
     supportView: { type: Boolean, default: false },
     supportReply: { type: Boolean, default: false },
+
+    returnsRefundsView: { type: Boolean, default: false },
 
     advertisementView: { type: Boolean, default: false },
     advertisementCreate: { type: Boolean, default: false },

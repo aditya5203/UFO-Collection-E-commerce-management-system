@@ -15,19 +15,28 @@ type ListInput = {
   orderStatus?: string;
 };
 
+type DeliveryStatus =
+  | "Assigned"
+  | "Picked Up"
+  | "Out for Delivery"
+  | "Delivered"
+  | "Failed Delivery"
+  | "Returned"
+  | "Returned to Store";
+
+type DeliveryTaskType =
+  | "NORMAL_DELIVERY"
+  | "RETURN_PICKUP"
+  | "EXCHANGE_PICKUP"
+  | "REPLACEMENT_DELIVERY";
+
 type UpdateInput = {
   paymentStatus?: string;
   orderStatus?: string;
   deliveryAssignment?: {
     deliveryManId?: string;
     note?: string;
-    status?:
-      | "Assigned"
-      | "Picked Up"
-      | "Out for Delivery"
-      | "Delivered"
-      | "Failed Delivery"
-      | "Returned";
+    status?: DeliveryStatus;
   };
 };
 
@@ -64,6 +73,110 @@ type CreateOrderBody = {
   };
 };
 
+type RequestCancellationInput = {
+  userId: string;
+  idOrCode: string;
+  reason: string;
+};
+
+type ReturnRequestType =
+  | "RETURN_REFUND"
+  | "EXCHANGE"
+  | "DAMAGED"
+  | "WRONG_ITEM"
+  | "SIZE_COLOR_ISSUE"
+  | "NOT_SATISFIED"
+  | "OTHER";
+
+type PreferredResolution = "REFUND" | "EXCHANGE";
+
+type RequestReturnInput = {
+  userId: string;
+  idOrCode: string;
+  reason: string;
+  type?: ReturnRequestType;
+  preferredResolution?: PreferredResolution;
+  images?: string[];
+};
+
+type AdminRequestActionInput = {
+  adminId: string;
+  idOrCode: string;
+  adminNote?: string;
+};
+
+type AssignPickupInput = {
+  adminId: string;
+  idOrCode: string;
+  deliveryManId: string;
+  note?: string;
+};
+
+type MarkPickupStatusInput = {
+  deliveryManId: string;
+  idOrCode: string;
+  taskType?: DeliveryTaskType;
+  status: DeliveryStatus;
+  note?: string;
+  photo?: string;
+};
+
+type MarkProductReceivedInput = {
+  adminId: string;
+  idOrCode: string;
+  adminNote?: string;
+};
+
+type RequestRefundDetailsInput = {
+  adminId: string;
+  idOrCode: string;
+  adminNote?: string;
+};
+
+type SubmitRefundDetailsInput = {
+  userId: string;
+  idOrCode: string;
+  method: "BANK" | "KHALTI" | "ESEWA" | "FONEPAY" | "Bank" | "Khalti" | "eSewa" | "Fonepay";
+  accountName?: string;
+  accountNumber?: string;
+  bankName?: string;
+  walletNumber?: string;
+  walletId?: string;
+  customerNote?: string;
+};
+
+type MarkRefundProcessingInput = {
+  adminId: string;
+  idOrCode: string;
+  adminNote?: string;
+};
+
+type MarkRefundedInput = {
+  adminId: string;
+  idOrCode: string;
+  adminNote?: string;
+  transactionRef?: string;
+};
+
+type AssignReplacementDeliveryInput = {
+  adminId: string;
+  idOrCode: string;
+  deliveryManId: string;
+  note?: string;
+};
+
+type CompleteExchangeInput = {
+  adminId: string;
+  idOrCode: string;
+  adminNote?: string;
+};
+
+type ListReturnsRefundsInput = {
+  type?: string;
+  status?: string;
+  search?: string;
+};
+
 function safeRegex(input: string) {
   return new RegExp(input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 }
@@ -84,6 +197,102 @@ function normalizeSize(value: any) {
 
 function getVariantId(variant: any) {
   return String(variant?._id || variant?.id || "").trim();
+}
+
+function norm(value: any) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isPaidLike(value: any) {
+  const v = norm(value);
+  return ["paid", "success", "successful", "completed"].includes(v);
+}
+
+function getRefundMethod(paymentMethod: any) {
+  const method = String(paymentMethod || "").trim();
+
+  if (["COD", "Khalti", "eSewa", "Fonepay"].includes(method)) {
+    return method;
+  }
+
+  return "Manual";
+}
+
+function orderDetailsLink(orderCode: string) {
+  const clean = String(orderCode || "").replace(/^#/, "").trim();
+  return clean ? `/customerorderdetails/${clean}` : "/profile/orders";
+}
+
+function deliveryOrderLink(orderId: string) {
+  return `/delivery/orders/${orderId}`;
+}
+
+function adminOrderLink(orderId: string) {
+  return `/admin/orders/${orderId}`;
+}
+
+function adminReturnsRefundsLink() {
+  return "/admin/returns-refunds";
+}
+
+function buildShippingAddressText(address: any) {
+  if (!address) return "";
+
+  return [
+    (
+      address.fullName ||
+      `${address.firstName || ""} ${address.lastName || ""}`.trim()
+    ).trim(),
+    address.phone || "",
+    `${address.cityOrMunicipality || ""}${
+      address.district ? ", " + address.district : ""
+    }`,
+    `${address.addressLine || ""}${address.street ? ", " + address.street : ""}`,
+    `${address.provinceId || ""}${
+      address.postalCode ? " " + address.postalCode : ""
+    }`,
+    address.country || "Nepal",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+function computeEstimatedDeliveryRange() {
+  const today = new Date();
+
+  const from = new Date(today);
+  from.setDate(today.getDate() + 3);
+
+  const to = new Date(today);
+  to.setDate(today.getDate() + 4);
+
+  const sameMonth =
+    from.getMonth() === to.getMonth() &&
+    from.getFullYear() === to.getFullYear();
+
+  if (sameMonth) {
+    const month = from.toLocaleDateString("en-US", { month: "long" });
+    return `${month} ${from.getDate()}–${to.getDate()}, ${to.getFullYear()}`;
+  }
+
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+
+  return `${fmt(from)} – ${fmt(to)}`;
+}
+
+async function generateUniqueOrderCode() {
+  for (let i = 0; i < 10; i++) {
+    const code = `#${Math.floor(100000 + Math.random() * 900000)}`;
+    const exists = await Order.findOne({ orderCode: code }).lean();
+    if (!exists) return code;
+  }
+
+  return `#${Date.now().toString().slice(-6)}`;
 }
 
 function findMatchingVariant(product: any, item: any) {
@@ -116,73 +325,102 @@ function findMatchingVariant(product: any, item: any) {
   );
 }
 
-async function generateUniqueOrderCode() {
-  for (let i = 0; i < 10; i++) {
-    const code = `#${Math.floor(100000 + Math.random() * 900000)}`;
-    const exists = await Order.findOne({ orderCode: code }).lean();
-    if (!exists) return code;
+async function findOrderByIdOrCodeRaw(idOrCode: string) {
+  const raw = String(idOrCode || "").trim();
+  if (!raw) return null;
+
+  if (mongoose.Types.ObjectId.isValid(raw)) {
+    const byId = await Order.findById(raw).lean();
+    if (byId) return byId;
   }
 
-  return `#${Date.now().toString().slice(-6)}`;
+  const normalizedCode = raw.startsWith("#") ? raw : `#${raw}`;
+
+  return Order.findOne({ orderCode: normalizedCode }).lean();
 }
 
-function computeEstimatedDeliveryRange() {
-  const today = new Date();
-
-  const from = new Date(today);
-  from.setDate(today.getDate() + 3);
-
-  const to = new Date(today);
-  to.setDate(today.getDate() + 4);
-
-  const sameMonth =
-    from.getMonth() === to.getMonth() &&
-    from.getFullYear() === to.getFullYear();
-
-  if (sameMonth) {
-    const month = from.toLocaleDateString("en-US", { month: "long" });
-    return `${month} ${from.getDate()}–${to.getDate()}, ${to.getFullYear()}`;
+async function findCustomerOrderRaw(userId: string, idOrCode: string) {
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new Error("Invalid user");
   }
 
-  const fmt = (d: Date) =>
-    d.toLocaleDateString("en-US", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
+  const raw = String(idOrCode || "").trim();
+  if (!raw) return null;
+
+  const normalizedCode = raw.startsWith("#") ? raw : `#${raw}`;
+
+  const filter: any = {
+    customer: new mongoose.Types.ObjectId(userId),
+    $or: [{ orderCode: normalizedCode }],
+  };
+
+  if (mongoose.Types.ObjectId.isValid(raw)) {
+    filter.$or.push({ _id: new mongoose.Types.ObjectId(raw) });
+  }
+
+  return Order.findOne(filter).lean();
+}
+
+async function notifyAdmin(payload: {
+  title: string;
+  message: string;
+  link?: string;
+  meta?: Record<string, any>;
+}) {
+  try {
+    await notificationService.createAdminForAll({
+      title: payload.title,
+      message: payload.message,
+      type: "order",
+      link: payload.link || adminReturnsRefundsLink(),
+      meta: payload.meta || {},
     });
-
-  return `${fmt(from)} – ${fmt(to)}`;
+  } catch (e: any) {
+    console.log("Admin notification failed (ignored):", e?.message);
+  }
 }
 
-function orderDetailsLink(orderCode: string) {
-  const clean = String(orderCode || "").replace(/^#/, "").trim();
-  return clean ? `/customerorderdetails/${clean}` : "/profile/orders";
+async function notifyCustomer(payload: {
+  userId: string;
+  title: string;
+  message: string;
+  link?: string;
+  meta?: Record<string, any>;
+  type?: "order" | "payment";
+}) {
+  try {
+    await notificationService.createCustomer({
+      userId: payload.userId,
+      title: payload.title,
+      message: payload.message,
+      type: payload.type || "order",
+      link: payload.link,
+      meta: payload.meta || {},
+    });
+  } catch (e: any) {
+    console.log("Customer notification failed (ignored):", e?.message);
+  }
 }
 
-function buildShippingAddressText(address: any) {
-  if (!address) return "";
-
-  return [
-    (
-      address.fullName ||
-      `${address.firstName || ""} ${address.lastName || ""}`.trim()
-    ).trim(),
-    address.phone || "",
-    `${address.cityOrMunicipality || ""}${
-      address.district ? ", " + address.district : ""
-    }`,
-    `${address.addressLine || ""}${address.street ? ", " + address.street : ""}`,
-    `${address.provinceId || ""}${
-      address.postalCode ? " " + address.postalCode : ""
-    }`,
-    address.country || "Nepal",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-function deliveryOrderLink(orderId: string) {
-  return `/delivery/orders/${orderId}`;
+async function notifyDelivery(payload: {
+  userId: string;
+  title: string;
+  message: string;
+  link?: string;
+  meta?: Record<string, any>;
+}) {
+  try {
+    await notificationService.createDelivery({
+      userId: payload.userId,
+      title: payload.title,
+      message: payload.message,
+      type: "order",
+      link: payload.link,
+      meta: payload.meta || {},
+    });
+  } catch (e: any) {
+    console.log("Delivery notification failed (ignored):", e?.message);
+  }
 }
 
 async function emitOrderUpdated(updated: any, fallbackCustomerId?: string) {
@@ -193,21 +431,33 @@ async function emitOrderUpdated(updated: any, fallbackCustomerId?: string) {
       updated?.customer?._id || updated?.customer || fallbackCustomerId || ""
     ).trim();
 
+    const normalizeAssignment = (assignment: any) =>
+      assignment
+        ? {
+            ...assignment,
+            deliveryManId: assignment.deliveryManId
+              ? String(assignment.deliveryManId)
+              : "",
+          }
+        : null;
+
     const payload = {
       orderId: String(updated._id),
       orderCode: String(updated.orderCode || ""),
       orderStatus: String(updated.orderStatus || ""),
       paymentStatus: String(updated.paymentStatus || ""),
-      deliveryAssignment: updated.deliveryAssignment
-        ? {
-            ...updated.deliveryAssignment,
-            deliveryManId: updated.deliveryAssignment.deliveryManId
-              ? String(updated.deliveryAssignment.deliveryManId)
-              : "",
-          }
-        : null,
+      cancelRequest: updated.cancelRequest || { status: "NONE" },
+      returnRequest: updated.returnRequest || { status: "NONE" },
+      refund: updated.refund || { status: "NONE" },
+      exchange: updated.exchange || { status: "NONE" },
+      deliveryAssignment: normalizeAssignment(updated.deliveryAssignment),
+      returnPickupAssignment: normalizeAssignment(updated.returnPickupAssignment),
+      exchangePickupAssignment: normalizeAssignment(updated.exchangePickupAssignment),
+      replacementDeliveryAssignment: normalizeAssignment(
+        updated.replacementDeliveryAssignment
+      ),
       updatedAt: new Date().toISOString(),
-      source: "admin",
+      source: "order-service",
     };
 
     io.to("admins").emit("order:updated", payload);
@@ -229,8 +479,351 @@ function buildOrderCreatedPayload(doc: any, userId: string) {
     paymentStatus: String(doc.paymentStatus || "Pending"),
     totalPaisa: Number(doc.totalPaisa || 0),
     customerId: userId,
+    cancelRequest: doc.cancelRequest || { status: "NONE" },
+    returnRequest: doc.returnRequest || { status: "NONE" },
+    refund: doc.refund || { status: "NONE" },
+    exchange: doc.exchange || { status: "NONE" },
     updatedAt: new Date().toISOString(),
     source: "customer-create",
+  };
+}
+
+async function restockOrderItems(order: any) {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  if (!items.length) return;
+
+  const bulkOps: any[] = [];
+
+  for (const item of items) {
+    const productId = String(item?.productId || "");
+    const variantId = String(item?.variantId || "");
+    const qty = Math.max(0, Number(item?.qty || 0));
+
+    if (!qty || !mongoose.Types.ObjectId.isValid(productId)) continue;
+
+    if (variantId && mongoose.Types.ObjectId.isValid(variantId)) {
+      bulkOps.push({
+        updateOne: {
+          filter: {
+            _id: new mongoose.Types.ObjectId(productId),
+            "variants._id": new mongoose.Types.ObjectId(variantId),
+          },
+          update: {
+            $inc: {
+              stock: qty,
+              "variants.$.stock": qty,
+            },
+          },
+        },
+      });
+    } else {
+      bulkOps.push({
+        updateOne: {
+          filter: { _id: new mongoose.Types.ObjectId(productId) },
+          update: { $inc: { stock: qty } },
+        },
+      });
+    }
+  }
+
+  if (bulkOps.length) {
+    await Product.bulkWrite(bulkOps);
+  }
+}
+
+function buildRefundAfterCancellation(order: any) {
+  const paid = isPaidLike(order?.paymentStatus);
+  const totalPaisa = Number(order?.totalPaisa || 0);
+
+  if (!paid || totalPaisa <= 0) {
+    return {
+      status: "NONE",
+      amountPaisa: 0,
+      method: "",
+      requestedAt: null,
+      requestedDetailsAt: null,
+      detailsSubmittedAt: null,
+      processedAt: null,
+      refundedAt: null,
+      failedAt: null,
+      adminNote: "",
+      customerNote: "",
+      processedBy: null,
+      transactionRef: "",
+    };
+  }
+
+  return {
+    status: "PENDING",
+    amountPaisa: totalPaisa,
+    method: getRefundMethod(order?.paymentMethod),
+    requestedAt: new Date(),
+    requestedDetailsAt: null,
+    detailsSubmittedAt: null,
+    processedAt: null,
+    refundedAt: null,
+    failedAt: null,
+    adminNote: "",
+    customerNote: "",
+    processedBy: null,
+    transactionRef: "",
+  };
+}
+
+function buildRefundAfterProductReceived(order: any) {
+  const paid = isPaidLike(order?.paymentStatus);
+  const totalPaisa = Number(order?.totalPaisa || 0);
+
+  if (!paid || totalPaisa <= 0) {
+    return {
+      status: "NONE",
+      amountPaisa: 0,
+      method: "",
+      requestedAt: null,
+      requestedDetailsAt: null,
+      detailsSubmittedAt: null,
+      processedAt: null,
+      refundedAt: null,
+      failedAt: null,
+      adminNote: "",
+      customerNote: "",
+      processedBy: null,
+      transactionRef: "",
+    };
+  }
+
+  return {
+    status: "PENDING_ACCOUNT_DETAILS",
+    amountPaisa: totalPaisa,
+    method: getRefundMethod(order?.paymentMethod),
+    requestedAt: new Date(),
+    requestedDetailsAt: null,
+    detailsSubmittedAt: null,
+    processedAt: null,
+    refundedAt: null,
+    failedAt: null,
+    adminNote: "",
+    customerNote: "",
+    processedBy: null,
+    transactionRef: "",
+  };
+}
+
+function isReturnWindowAllowed(order: any) {
+  if (String(order?.orderStatus || "") !== "Delivered") return false;
+
+  const deliveredAt = order?.deliveredAt;
+  if (!deliveredAt) return true;
+
+  const deliveredDate = new Date(deliveredAt);
+  if (Number.isNaN(deliveredDate.getTime())) return true;
+
+  const now = Date.now();
+  const diffDays = (now - deliveredDate.getTime()) / (1000 * 60 * 60 * 24);
+
+  return diffDays <= 7;
+}
+
+async function getActiveDeliveryRider(deliveryManId: string) {
+  if (!mongoose.Types.ObjectId.isValid(deliveryManId)) {
+    throw new Error("Invalid delivery staff id");
+  }
+
+  const rider: any = await User.findOne({
+    _id: new mongoose.Types.ObjectId(deliveryManId),
+    role: "delivery",
+  }).lean();
+
+  if (!rider) {
+    throw new Error("Delivery staff not found");
+  }
+
+  if (String(rider.status || "").toLowerCase() !== "active") {
+    throw new Error("Inactive delivery rider cannot be assigned");
+  }
+
+  return rider;
+}
+
+function buildAssignment(rider: any, taskType: DeliveryTaskType, note?: string) {
+  return {
+    taskType,
+    deliveryManId: rider._id,
+    name: rider.name || "",
+    phone: rider.phone || "",
+    email: rider.email || "",
+    vehicleType: rider.vehicleType || "",
+    note: String(note || "").trim(),
+    pickupPhoto: "",
+    deliveryPhoto: "",
+    assignedAt: new Date(),
+    pickedUpAt: null,
+    outForDeliveryAt: null,
+    deliveredAt: null,
+    failedAt: null,
+    returnedAt: null,
+    returnedToStoreAt: null,
+    otpCode: "",
+    otpChannel: "",
+    otpSentTo: "",
+    otpExpiresAt: null,
+    otpLastSentAt: null,
+    otpVerifiedAt: null,
+    isOtpVerified: false,
+    status: "Assigned",
+  };
+}
+
+function normalizeImages(images: any) {
+  if (!Array.isArray(images)) return [];
+  return images
+    .map((x) => String(x || "").trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function isExchangeResolution(order: any) {
+  const rr = order?.returnRequest || {};
+
+  const preferredResolution = String(
+    rr.preferredResolution || ""
+  ).toUpperCase();
+
+  const requestType = String(rr.type || "").toUpperCase();
+
+  const exchangeStatus = String(
+    order?.exchange?.status || "NONE"
+  ).toUpperCase();
+
+  return (
+    preferredResolution === "EXCHANGE" ||
+    requestType === "EXCHANGE" ||
+    (exchangeStatus !== "NONE" && exchangeStatus !== "")
+  );
+}
+
+function toRequestRow(
+  order: any,
+  type: "CANCELLATION" | "RETURN" | "REFUND" | "EXCHANGE"
+) {
+  const customer = order.customer || {};
+  const orderId = String(order._id || order.id || "");
+
+  if (type === "CANCELLATION") {
+    const req = order.cancelRequest || {};
+    return {
+      id: `${orderId}-cancel`,
+      orderId,
+      orderCode: order.orderCode || "",
+      customerName: customer.name || "",
+      customerEmail: customer.email || "",
+      customerPhone: customer.phone || "",
+      type,
+      status: req.status || "NONE",
+      reason: req.reason || "",
+      amountPaisa: Number(order.totalPaisa || 0),
+      paymentMethod: order.paymentMethod || "COD",
+      requestedAt: req.requestedAt || null,
+      resolvedAt: req.resolvedAt || null,
+      adminNote: req.adminNote || "",
+      requestType: "",
+      preferredResolution: "",
+      refundStatus: order.refund?.status || "NONE",
+      exchangeStatus: order.exchange?.status || "NONE",
+      assignedRider:
+        order.deliveryAssignment?.name ||
+        order.returnPickupAssignment?.name ||
+        order.exchangePickupAssignment?.name ||
+        order.replacementDeliveryAssignment?.name ||
+        "",
+    };
+  }
+
+  if (type === "RETURN") {
+    const req = order.returnRequest || {};
+    return {
+      id: `${orderId}-return`,
+      orderId,
+      orderCode: order.orderCode || "",
+      customerName: customer.name || "",
+      customerEmail: customer.email || "",
+      customerPhone: customer.phone || "",
+      type,
+      status: req.status || "NONE",
+      reason: req.reason || "",
+      amountPaisa: Number(order.totalPaisa || 0),
+      paymentMethod: order.paymentMethod || "COD",
+      requestedAt: req.requestedAt || null,
+      resolvedAt: req.resolvedAt || req.receivedAt || null,
+      adminNote: req.adminNote || "",
+      requestType: req.type || "RETURN_REFUND",
+      preferredResolution: req.preferredResolution || "REFUND",
+      refundStatus: order.refund?.status || "NONE",
+      exchangeStatus: order.exchange?.status || "NONE",
+      assignedRider:
+        order.returnPickupAssignment?.name ||
+        order.exchangePickupAssignment?.name ||
+        order.replacementDeliveryAssignment?.name ||
+        "",
+    };
+  }
+
+  if (type === "EXCHANGE") {
+    const ex = order.exchange || {};
+    return {
+      id: `${orderId}-exchange`,
+      orderId,
+      orderCode: order.orderCode || "",
+      customerName: customer.name || "",
+      customerEmail: customer.email || "",
+      customerPhone: customer.phone || "",
+      type,
+      status: ex.status || "NONE",
+      reason: ex.reason || order.returnRequest?.reason || "",
+      amountPaisa: Number(order.totalPaisa || 0),
+      paymentMethod: order.paymentMethod || "COD",
+      requestedAt: ex.requestedAt || order.returnRequest?.requestedAt || null,
+      resolvedAt: ex.completedAt || ex.replacementDeliveredAt || null,
+      adminNote: ex.adminNote || "",
+      requestType: order.returnRequest?.type || "EXCHANGE",
+      preferredResolution: "EXCHANGE",
+      refundStatus: order.refund?.status || "NONE",
+      exchangeStatus: ex.status || "NONE",
+      assignedRider:
+        order.exchangePickupAssignment?.name ||
+        order.replacementDeliveryAssignment?.name ||
+        "",
+    };
+  }
+
+  const refund = order.refund || {};
+  return {
+    id: `${orderId}-refund`,
+    orderId,
+    orderCode: order.orderCode || "",
+    customerName: customer.name || "",
+    customerEmail: customer.email || "",
+    customerPhone: customer.phone || "",
+    type,
+    status: refund.status || "NONE",
+    reason:
+      order.returnRequest?.reason ||
+      order.cancelRequest?.reason ||
+      "Refund request",
+    amountPaisa: Number(refund.amountPaisa || order.totalPaisa || 0),
+    paymentMethod: refund.method || order.paymentMethod || "COD",
+    requestedAt: refund.requestedAt || null,
+    resolvedAt: refund.refundedAt || refund.processedAt || null,
+    adminNote: refund.adminNote || "",
+    requestType: order.returnRequest?.type || "",
+    preferredResolution: order.returnRequest?.preferredResolution || "",
+    refundStatus: refund.status || "NONE",
+    exchangeStatus: order.exchange?.status || "NONE",
+    assignedRider:
+      order.returnPickupAssignment?.name ||
+      order.exchangePickupAssignment?.name ||
+      order.replacementDeliveryAssignment?.name ||
+      "",
   };
 }
 
@@ -678,22 +1271,94 @@ export const orderService = {
       totalPaisa,
       paymentMethod: body.paymentMethod,
       paymentStatus: initialPaymentStatus,
-
       orderStatus: "Confirmed",
-
       paymentRef: body.paymentRef || null,
       address: orderAddress,
       shipping: {
         method: "Standard Shipping",
         estimatedDelivery,
       },
+
       deliveryAssignment: null,
+      returnPickupAssignment: null,
+      exchangePickupAssignment: null,
+      replacementDeliveryAssignment: null,
+
+      cancelRequest: {
+        status: "NONE",
+        reason: "",
+        requestedAt: null,
+        resolvedAt: null,
+        adminNote: "",
+        resolvedBy: null,
+      },
+
+      returnRequest: {
+        status: "NONE",
+        type: "RETURN_REFUND",
+        preferredResolution: "REFUND",
+        reason: "",
+        images: [],
+        requestedAt: null,
+        approvedAt: null,
+        rejectedAt: null,
+        resolvedAt: null,
+        pickedUpAt: null,
+        receivedAt: null,
+        adminNote: "",
+        resolvedBy: null,
+      },
+
+      refund: {
+        status: "NONE",
+        amountPaisa: 0,
+        method: "",
+        accountName: "",
+        accountNumber: "",
+        bankName: "",
+        walletNumber: "",
+        walletId: "",
+        requestedAt: null,
+        requestedDetailsAt: null,
+        detailsSubmittedAt: null,
+        processedAt: null,
+        refundedAt: null,
+        failedAt: null,
+        adminNote: "",
+        customerNote: "",
+        processedBy: null,
+        transactionRef: "",
+      },
+
+      exchange: {
+        status: "NONE",
+        reason: "",
+        images: [],
+        replacementItems: [],
+        pickupDeliveryManId: null,
+        replacementDeliveryManId: null,
+        requestedAt: null,
+        approvedAt: null,
+        rejectedAt: null,
+        pickupAssignedAt: null,
+        pickedUpAt: null,
+        receivedAt: null,
+        replacementAssignedAt: null,
+        replacementDeliveredAt: null,
+        completedAt: null,
+        adminNote: "",
+        resolvedBy: null,
+      },
 
       confirmedAt: now,
-
+      processingAt: null,
       shippedAt: null,
       inTransitAt: null,
       deliveredAt: null,
+      cancelledAt: null,
+      returnedAt: null,
+      refundedAt: null,
+
       invoiceNo: null,
       invoiceSentAt: null,
     };
@@ -803,51 +1468,7 @@ export const orderService = {
       .sort({ createdAt: -1 })
       .lean();
 
-    return (orders as any[]).map((o: any) => ({
-      id: String(o._id),
-      orderCode: o.orderCode || "",
-      subtotalPaisa: Number(o.subtotalPaisa || 0),
-      shippingPaisa: Number(o.shippingPaisa || 0),
-      totalPaisa: Number(o.totalPaisa || 0),
-      discountPaisa: Number(o.discountPaisa || 0),
-      coupon: o.coupon || null,
-      paymentMethod: o.paymentMethod || "COD",
-      paymentStatus: o.paymentStatus,
-      orderStatus: o.orderStatus,
-      paymentRef: o.paymentRef || null,
-      createdAt: o.createdAt,
-      customer: o.customer
-        ? {
-            id: String(o.customer._id),
-            name: o.customer.name || "",
-            email: o.customer.email || "",
-            phone: o.customer.phone || "",
-          }
-        : { id: "", name: "", email: "", phone: "" },
-      shipping: o.shipping || null,
-      address: o.address || null,
-      items: Array.isArray(o.items)
-        ? o.items.map((it: any) => ({
-            ...it,
-            productId: it?.productId ? String(it.productId) : "",
-            variantId: it?.variantId ? String(it.variantId) : "",
-            size: it?.size || "",
-            color: it?.color || "",
-            colorLabel: it?.colorLabel || "",
-            sku: it?.sku || "",
-          }))
-        : [],
-      deliveryAssignment: o.deliveryAssignment
-        ? {
-            ...o.deliveryAssignment,
-            deliveryManId: o.deliveryAssignment.deliveryManId
-              ? String(o.deliveryAssignment.deliveryManId)
-              : "",
-          }
-        : null,
-      invoiceNo: o.invoiceNo || null,
-      invoiceSentAt: o.invoiceSentAt || null,
-    }));
+    return (orders as any[]).map((o: any) => this.mapOrder(o));
   },
 
   async getMyOrdersSummary(userId: string) {
@@ -858,7 +1479,9 @@ export const orderService = {
     const orders = await Order.find({
       customer: new mongoose.Types.ObjectId(userId),
     })
-      .select("orderCode createdAt orderStatus totalPaisa items")
+      .select(
+        "orderCode createdAt orderStatus totalPaisa items cancelRequest returnRequest refund exchange"
+      )
       .sort({ createdAt: -1 })
       .lean();
 
@@ -876,6 +1499,10 @@ export const orderService = {
         total: Math.round(Number(o.totalPaisa || 0) / 100),
         itemsCount: items.length,
         items: previewImage ? [{ image: previewImage }] : [],
+        cancelRequest: o.cancelRequest || { status: "NONE" },
+        returnRequest: o.returnRequest || { status: "NONE" },
+        refund: o.refund || { status: "NONE" },
+        exchange: o.exchange || { status: "NONE" },
       };
     });
   },
@@ -941,52 +1568,59 @@ export const orderService = {
       }
     }
 
+    const now = new Date();
+
     if (nextStatus === "Confirmed" && !found.confirmedAt) {
-      update.confirmedAt = new Date();
+      update.confirmedAt = now;
+    }
+
+    if (nextStatus === "Processing" && !found.processingAt) {
+      update.processingAt = now;
+      if (!found.confirmedAt) update.confirmedAt = now;
     }
 
     if (nextStatus === "Shipped" && !found.shippedAt) {
-      update.shippedAt = new Date();
-      if (!found.confirmedAt) update.confirmedAt = new Date();
+      update.shippedAt = now;
+      if (!found.processingAt) update.processingAt = now;
+      if (!found.confirmedAt) update.confirmedAt = now;
     }
 
     if (nextStatus === "Transit" && !found.inTransitAt) {
-      update.inTransitAt = new Date();
-      if (!found.shippedAt) update.shippedAt = new Date();
-      if (!found.confirmedAt) update.confirmedAt = new Date();
+      update.inTransitAt = now;
+      if (!found.shippedAt) update.shippedAt = now;
+      if (!found.processingAt) update.processingAt = now;
+      if (!found.confirmedAt) update.confirmedAt = now;
     }
 
     if (nextStatus === "Delivered" && !found.deliveredAt) {
-      update.deliveredAt = new Date();
-      if (!found.shippedAt) update.shippedAt = new Date();
-      if (!found.inTransitAt) update.inTransitAt = new Date();
-      if (!found.confirmedAt) update.confirmedAt = new Date();
+      update.deliveredAt = now;
+      if (!found.shippedAt) update.shippedAt = now;
+      if (!found.inTransitAt) update.inTransitAt = now;
+      if (!found.processingAt) update.processingAt = now;
+      if (!found.confirmedAt) update.confirmedAt = now;
+    }
+
+    if (nextStatus === "Cancelled" && !found.cancelledAt) {
+      update.cancelledAt = now;
+    }
+
+    if (nextStatus === "Returned" && !found.returnedAt) {
+      update.returnedAt = now;
+    }
+
+    if (nextStatus === "Refunded" && !found.refundedAt) {
+      update.refundedAt = now;
     }
 
     if (input.deliveryAssignment) {
       const nextDeliveryAssignment = { ...(found.deliveryAssignment || {}) };
-      const now = new Date();
 
       if (input.deliveryAssignment.deliveryManId) {
-        const deliveryManId = String(input.deliveryAssignment.deliveryManId);
+        const rider = await getActiveDeliveryRider(
+          String(input.deliveryAssignment.deliveryManId)
+        );
 
-        if (!mongoose.Types.ObjectId.isValid(deliveryManId)) {
-          throw new Error("Invalid delivery staff id");
-        }
-
-        const rider: any = await User.findOne({
-          _id: new mongoose.Types.ObjectId(deliveryManId),
-          role: "delivery",
-        }).lean();
-
-        if (!rider) {
-          throw new Error("Delivery staff not found");
-        }
-
-        if (String(rider.status || "").toLowerCase() !== "active") {
-          throw new Error("Inactive delivery rider cannot be assigned");
-        }
-
+        nextDeliveryAssignment.taskType = "NORMAL_DELIVERY";
         nextDeliveryAssignment.deliveryManId = rider._id;
         nextDeliveryAssignment.name = rider.name || "";
         nextDeliveryAssignment.phone = rider.phone || "";
@@ -994,7 +1628,7 @@ export const orderService = {
         nextDeliveryAssignment.vehicleType = rider.vehicleType || "";
 
         if (!nextDeliveryAssignment.assignedAt) {
-          nextDeliveryAssignment.assignedAt = new Date();
+          nextDeliveryAssignment.assignedAt = now;
         }
 
         if (!nextDeliveryAssignment.status) {
@@ -1019,6 +1653,10 @@ export const orderService = {
 
         if (nextDeliveryAssignment.returnedAt === undefined) {
           nextDeliveryAssignment.returnedAt = null;
+        }
+
+        if (nextDeliveryAssignment.returnedToStoreAt === undefined) {
+          nextDeliveryAssignment.returnedToStoreAt = null;
         }
       }
 
@@ -1061,6 +1699,7 @@ export const orderService = {
 
           if (!found.inTransitAt) update.inTransitAt = now;
           if (!found.shippedAt) update.shippedAt = now;
+          if (!found.processingAt) update.processingAt = now;
           if (!found.confirmedAt) update.confirmedAt = now;
           if (!update.orderStatus) update.orderStatus = "Transit";
         }
@@ -1082,6 +1721,7 @@ export const orderService = {
           if (!found.deliveredAt) update.deliveredAt = now;
           if (!found.inTransitAt) update.inTransitAt = now;
           if (!found.shippedAt) update.shippedAt = now;
+          if (!found.processingAt) update.processingAt = now;
           if (!found.confirmedAt) update.confirmedAt = now;
           if (!update.orderStatus) update.orderStatus = "Delivered";
         }
@@ -1098,6 +1738,13 @@ export const orderService = {
           !nextDeliveryAssignment.returnedAt
         ) {
           nextDeliveryAssignment.returnedAt = now;
+        }
+
+        if (
+          input.deliveryAssignment.status === "Returned to Store" &&
+          !nextDeliveryAssignment.returnedToStoreAt
+        ) {
+          nextDeliveryAssignment.returnedToStoreAt = now;
         }
       }
 
@@ -1174,7 +1821,9 @@ export const orderService = {
       if (nextDeliveryManId && nextDeliveryManId !== prevDeliveryManId) {
         await notificationService.createDelivery({
           userId: nextDeliveryManId,
-          title: prevDeliveryManId ? "Order Reassigned" : "New Delivery Assigned",
+          title: prevDeliveryManId
+            ? "Order Reassigned"
+            : "New Delivery Assigned",
           message: prevDeliveryManId
             ? `Order ${orderCode} has been reassigned to you.`
             : `Order ${orderCode} has been assigned to you for delivery.`,
@@ -1233,74 +1882,36 @@ export const orderService = {
         nextDeliveryStatus !== prevDeliveryStatus &&
         customerId
       ) {
-        if (nextDeliveryStatus === "Picked Up") {
+        const titleMap: Record<string, string> = {
+          "Picked Up": "Order Picked Up",
+          "Out for Delivery": "Out for Delivery",
+          Delivered: "Order Delivered",
+          "Failed Delivery": "Delivery Failed",
+          Returned: "Order Returned",
+          "Returned to Store": "Returned to Store",
+        };
+
+        const messageMap: Record<string, string> = {
+          "Picked Up": `Your order ${orderCode} has been picked up by the delivery rider.`,
+          "Out for Delivery": `Your order ${orderCode} is out for delivery.`,
+          Delivered: `Your order ${orderCode} has been delivered. Thank you for shopping with us!`,
+          "Failed Delivery": `Delivery attempt failed for order ${orderCode}.`,
+          Returned: `Your order ${orderCode} has been returned.`,
+          "Returned to Store": `Your order ${orderCode} has been returned to store.`,
+        };
+
+        if (titleMap[nextDeliveryStatus]) {
           await notificationService.createCustomer({
             userId: customerId,
-            title: "Order Picked Up",
-            message: `Your order ${orderCode} has been picked up by the delivery rider.`,
+            title: titleMap[nextDeliveryStatus],
+            message: messageMap[nextDeliveryStatus],
             type: "order",
             link: orderDetailsLink(orderCode),
             meta: {
               orderId: updatedOrderId,
               orderCode,
               deliveryStatus: nextDeliveryStatus,
-              action: "delivery_picked_up",
-            },
-          });
-        } else if (nextDeliveryStatus === "Out for Delivery") {
-          await notificationService.createCustomer({
-            userId: customerId,
-            title: "Out for Delivery",
-            message: `Your order ${orderCode} is out for delivery.`,
-            type: "order",
-            link: orderDetailsLink(orderCode),
-            meta: {
-              orderId: updatedOrderId,
-              orderCode,
-              deliveryStatus: nextDeliveryStatus,
-              action: "delivery_out_for_delivery",
-            },
-          });
-        } else if (nextDeliveryStatus === "Delivered") {
-          await notificationService.createCustomer({
-            userId: customerId,
-            title: "Order Delivered",
-            message: `Your order ${orderCode} has been delivered. Thank you for shopping with us!`,
-            type: "order",
-            link: orderDetailsLink(orderCode),
-            meta: {
-              orderId: updatedOrderId,
-              orderCode,
-              deliveryStatus: nextDeliveryStatus,
-              action: "delivery_delivered",
-            },
-          });
-        } else if (nextDeliveryStatus === "Failed Delivery") {
-          await notificationService.createCustomer({
-            userId: customerId,
-            title: "Delivery Failed",
-            message: `Delivery attempt failed for order ${orderCode}.`,
-            type: "order",
-            link: orderDetailsLink(orderCode),
-            meta: {
-              orderId: updatedOrderId,
-              orderCode,
-              deliveryStatus: nextDeliveryStatus,
-              action: "delivery_failed",
-            },
-          });
-        } else if (nextDeliveryStatus === "Returned") {
-          await notificationService.createCustomer({
-            userId: customerId,
-            title: "Order Returned",
-            message: `Your order ${orderCode} has been returned.`,
-            type: "order",
-            link: orderDetailsLink(orderCode),
-            meta: {
-              orderId: updatedOrderId,
-              orderCode,
-              deliveryStatus: nextDeliveryStatus,
-              action: "delivery_returned",
+              action: `delivery_${nextDeliveryStatus.toLowerCase().replace(/\s+/g, "_")}`,
             },
           });
         }
@@ -1323,7 +1934,1759 @@ export const orderService = {
     return this.mapOrder(updated);
   },
 
+  async requestCancellation(input: RequestCancellationInput) {
+    const userId = String(input.userId || "");
+    const reason = String(input.reason || "").trim();
+
+    if (!reason) {
+      throw new Error("Cancellation reason is required");
+    }
+
+    if (reason.length < 3) {
+      throw new Error("Cancellation reason must be at least 3 characters");
+    }
+
+    const found: any = await findCustomerOrderRaw(userId, input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    const orderStatus = String(found.orderStatus || "");
+    const blockedStatuses = [
+      "Shipped",
+      "Transit",
+      "Delivered",
+      "Cancelled",
+      "Returned",
+      "Refunded",
+    ];
+
+    if (blockedStatuses.includes(orderStatus)) {
+      throw new Error("This order can no longer be cancelled");
+    }
+
+    if (found.cancelRequest?.status === "REQUESTED") {
+      throw new Error("Cancellation request already submitted");
+    }
+
+    if (found.cancelRequest?.status === "APPROVED") {
+      throw new Error("Cancellation request already approved");
+    }
+
+    const now = new Date();
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      {
+        $set: {
+          cancelRequest: {
+            status: "REQUESTED",
+            reason,
+            requestedAt: now,
+            resolvedAt: null,
+            adminNote: "",
+            resolvedBy: null,
+          },
+        },
+      },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyAdmin({
+      title: "Cancellation Request Received",
+      message: `Customer requested cancellation for order ${orderCode}.`,
+      link: adminReturnsRefundsLink(),
+      meta: {
+        orderId,
+        orderCode,
+        customerId: userId,
+        action: "cancel_request_received",
+      },
+    });
+
+    await notifyCustomer({
+      userId,
+      title: "Cancellation Request Submitted",
+      message: `Your cancellation request for order ${orderCode} has been submitted and is waiting for admin review.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action: "cancel_request_submitted",
+      },
+    });
+
+    await emitOrderUpdated(updated, userId);
+
+    return this.mapOrder(updated);
+  },
+
+  async requestReturn(input: RequestReturnInput) {
+    const userId = String(input.userId || "");
+    const reason = String(input.reason || "").trim();
+
+    if (!reason) {
+      throw new Error("Return/exchange reason is required");
+    }
+
+    if (reason.length < 3) {
+      throw new Error("Return/exchange reason must be at least 3 characters");
+    }
+
+    const requestType = String(input.type || "RETURN_REFUND").toUpperCase();
+    const allowedTypes = [
+      "RETURN_REFUND",
+      "EXCHANGE",
+      "DAMAGED",
+      "WRONG_ITEM",
+      "SIZE_COLOR_ISSUE",
+      "NOT_SATISFIED",
+      "OTHER",
+    ];
+
+    if (!allowedTypes.includes(requestType)) {
+      throw new Error("Invalid request type");
+    }
+
+    const preferredResolution = String(
+      input.preferredResolution ||
+        (requestType === "EXCHANGE" ? "EXCHANGE" : "REFUND")
+    ).toUpperCase();
+
+    if (!["REFUND", "EXCHANGE"].includes(preferredResolution)) {
+      throw new Error("Invalid preferred resolution");
+    }
+
+    const found: any = await findCustomerOrderRaw(userId, input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (String(found.orderStatus || "") !== "Delivered") {
+      throw new Error("Return/exchange request is available only after delivery");
+    }
+
+    if (!isReturnWindowAllowed(found)) {
+      throw new Error("Return/exchange request period has expired");
+    }
+
+    const existingReturnStatus = String(found.returnRequest?.status || "NONE");
+    const existingExchangeStatus = String(found.exchange?.status || "NONE");
+
+    if (
+      !["NONE", "REJECTED"].includes(existingReturnStatus) ||
+      !["NONE", "REJECTED"].includes(existingExchangeStatus)
+    ) {
+      throw new Error("Return/exchange request already submitted");
+    }
+
+    const now = new Date();
+    const images = normalizeImages(input.images);
+
+    const setPayload: any = {
+      returnRequest: {
+        status: "REQUESTED",
+        type: requestType,
+        preferredResolution,
+        reason,
+        images,
+        requestedAt: now,
+        approvedAt: null,
+        rejectedAt: null,
+        resolvedAt: null,
+        pickedUpAt: null,
+        receivedAt: null,
+        adminNote: "",
+        resolvedBy: null,
+      },
+    };
+
+    if (preferredResolution === "EXCHANGE") {
+      setPayload.exchange = {
+        status: "REQUESTED",
+        reason,
+        images,
+        replacementItems: [],
+        pickupDeliveryManId: null,
+        replacementDeliveryManId: null,
+        requestedAt: now,
+        approvedAt: null,
+        rejectedAt: null,
+        pickupAssignedAt: null,
+        pickedUpAt: null,
+        receivedAt: null,
+        replacementAssignedAt: null,
+        replacementDeliveredAt: null,
+        completedAt: null,
+        adminNote: "",
+        resolvedBy: null,
+      };
+    }
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      { $set: setPayload },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+    const label =
+      preferredResolution === "EXCHANGE" ? "exchange" : "return/refund";
+
+    await notifyAdmin({
+      title:
+        preferredResolution === "EXCHANGE"
+          ? "Exchange Request Received"
+          : "Return / Refund Request Received",
+      message: `Customer requested ${label} for order ${orderCode}.`,
+      link: adminReturnsRefundsLink(),
+      meta: {
+        orderId,
+        orderCode,
+        customerId: userId,
+        action:
+          preferredResolution === "EXCHANGE"
+            ? "exchange_request_received"
+            : "return_request_received",
+        requestType,
+        preferredResolution,
+      },
+    });
+
+    await notifyCustomer({
+      userId,
+      title:
+        preferredResolution === "EXCHANGE"
+          ? "Exchange Request Submitted"
+          : "Return / Refund Request Submitted",
+      message: `Your ${label} request for order ${orderCode} has been submitted and is waiting for admin review.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action:
+          preferredResolution === "EXCHANGE"
+            ? "exchange_request_submitted"
+            : "return_request_submitted",
+        requestType,
+        preferredResolution,
+      },
+    });
+
+    await emitOrderUpdated(updated, userId);
+
+    return this.mapOrder(updated);
+  },
+
+  async approveCancellation(input: AdminRequestActionInput) {
+    const adminId = String(input.adminId || "");
+    const adminNote = String(input.adminNote || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (found.cancelRequest?.status !== "REQUESTED") {
+      throw new Error("No pending cancellation request found");
+    }
+
+    if (
+      ["Shipped", "Transit", "Delivered", "Returned", "Refunded"].includes(
+        String(found.orderStatus || "")
+      )
+    ) {
+      throw new Error("This order can no longer be cancelled");
+    }
+
+    const now = new Date();
+    const refund = buildRefundAfterCancellation(found);
+
+    await restockOrderItems(found);
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      {
+        $set: {
+          orderStatus: "Cancelled",
+          cancelledAt: now,
+          cancelRequest: {
+            status: "APPROVED",
+            reason: found.cancelRequest?.reason || "",
+            requestedAt: found.cancelRequest?.requestedAt || null,
+            resolvedAt: now,
+            adminNote,
+            resolvedBy: mongoose.Types.ObjectId.isValid(adminId)
+              ? new mongoose.Types.ObjectId(adminId)
+              : null,
+          },
+          refund,
+        },
+      },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Cancellation Approved",
+      message:
+        updated.refund?.status === "PENDING"
+          ? `Your cancellation request for order ${orderCode} was approved. Refund is now pending.`
+          : `Your cancellation request for order ${orderCode} was approved.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action: "cancel_request_approved",
+        refundStatus: updated.refund?.status || "NONE",
+      },
+    });
+
+    await notifyAdmin({
+      title: "Cancellation Approved",
+      message: `Cancellation request for order ${orderCode} has been approved.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        action: "cancel_request_approved",
+        adminId,
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async rejectCancellation(input: AdminRequestActionInput) {
+    const adminId = String(input.adminId || "");
+    const adminNote = String(input.adminNote || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (found.cancelRequest?.status !== "REQUESTED") {
+      throw new Error("No pending cancellation request found");
+    }
+
+    const now = new Date();
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      {
+        $set: {
+          cancelRequest: {
+            status: "REJECTED",
+            reason: found.cancelRequest?.reason || "",
+            requestedAt: found.cancelRequest?.requestedAt || null,
+            resolvedAt: now,
+            adminNote,
+            resolvedBy: mongoose.Types.ObjectId.isValid(adminId)
+              ? new mongoose.Types.ObjectId(adminId)
+              : null,
+          },
+        },
+      },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Cancellation Rejected",
+      message: `Your cancellation request for order ${orderCode} was rejected.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action: "cancel_request_rejected",
+        adminNote,
+      },
+    });
+
+    await notifyAdmin({
+      title: "Cancellation Rejected",
+      message: `Cancellation request for order ${orderCode} has been rejected.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        action: "cancel_request_rejected",
+        adminId,
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async approveReturn(input: AdminRequestActionInput) {
+    const adminId = String(input.adminId || "");
+    const adminNote = String(input.adminNote || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (found.returnRequest?.status !== "REQUESTED") {
+      throw new Error("No pending return/exchange request found");
+    }
+
+    const now = new Date();
+    const exchangeFlow =
+      String(found.returnRequest?.preferredResolution || "").toUpperCase() ===
+      "EXCHANGE";
+
+    const update: any = {
+      "returnRequest.status": "APPROVED",
+      "returnRequest.approvedAt": now,
+      "returnRequest.resolvedAt": now,
+      "returnRequest.adminNote": adminNote,
+      "returnRequest.resolvedBy": mongoose.Types.ObjectId.isValid(adminId)
+        ? new mongoose.Types.ObjectId(adminId)
+        : null,
+    };
+
+    if (exchangeFlow) {
+      update["exchange.status"] = "APPROVED";
+      update["exchange.approvedAt"] = now;
+      update["exchange.adminNote"] = adminNote;
+      update["exchange.resolvedBy"] = mongoose.Types.ObjectId.isValid(adminId)
+        ? new mongoose.Types.ObjectId(adminId)
+        : null;
+    }
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      { $set: update },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyCustomer({
+      userId: customerId,
+      title: exchangeFlow ? "Exchange Approved" : "Return Approved",
+      message: exchangeFlow
+        ? `Your exchange request for order ${orderCode} was approved. A pickup rider will be assigned soon.`
+        : `Your return request for order ${orderCode} was approved. A pickup rider will be assigned soon.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action: exchangeFlow
+          ? "exchange_request_approved"
+          : "return_request_approved",
+      },
+    });
+
+    await notifyAdmin({
+      title: exchangeFlow ? "Exchange Approved" : "Return Approved",
+      message: exchangeFlow
+        ? `Exchange request for order ${orderCode} has been approved.`
+        : `Return request for order ${orderCode} has been approved.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        action: exchangeFlow
+          ? "exchange_request_approved"
+          : "return_request_approved",
+        adminId,
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async rejectReturn(input: AdminRequestActionInput) {
+    const adminId = String(input.adminId || "");
+    const adminNote = String(input.adminNote || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (found.returnRequest?.status !== "REQUESTED") {
+      throw new Error("No pending return/exchange request found");
+    }
+
+    const now = new Date();
+    const exchangeFlow =
+      String(found.returnRequest?.preferredResolution || "").toUpperCase() ===
+      "EXCHANGE";
+
+    const update: any = {
+      "returnRequest.status": "REJECTED",
+      "returnRequest.rejectedAt": now,
+      "returnRequest.resolvedAt": now,
+      "returnRequest.adminNote": adminNote,
+      "returnRequest.resolvedBy": mongoose.Types.ObjectId.isValid(adminId)
+        ? new mongoose.Types.ObjectId(adminId)
+        : null,
+    };
+
+    if (exchangeFlow) {
+      update["exchange.status"] = "REJECTED";
+      update["exchange.rejectedAt"] = now;
+      update["exchange.adminNote"] = adminNote;
+      update["exchange.resolvedBy"] = mongoose.Types.ObjectId.isValid(adminId)
+        ? new mongoose.Types.ObjectId(adminId)
+        : null;
+    }
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      { $set: update },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyCustomer({
+      userId: customerId,
+      title: exchangeFlow ? "Exchange Rejected" : "Return Rejected",
+      message: exchangeFlow
+        ? `Your exchange request for order ${orderCode} was rejected.`
+        : `Your return request for order ${orderCode} was rejected.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action: exchangeFlow
+          ? "exchange_request_rejected"
+          : "return_request_rejected",
+        adminNote,
+      },
+    });
+
+    await notifyAdmin({
+      title: exchangeFlow ? "Exchange Rejected" : "Return Rejected",
+      message: exchangeFlow
+        ? `Exchange request for order ${orderCode} has been rejected.`
+        : `Return request for order ${orderCode} has been rejected.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        action: exchangeFlow
+          ? "exchange_request_rejected"
+          : "return_request_rejected",
+        adminId,
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async assignReturnPickup(input: AssignPickupInput) {
+    const adminId = String(input.adminId || "");
+    const deliveryManId = String(input.deliveryManId || "");
+    const note = String(input.note || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (found.returnRequest?.status !== "APPROVED") {
+      throw new Error("Return request must be approved before assigning pickup");
+    }
+
+    if (isExchangeResolution(found)) {
+      throw new Error("This is an exchange request. Use exchange pickup assignment.");
+    }
+
+    const rider = await getActiveDeliveryRider(deliveryManId);
+    const now = new Date();
+    const assignment = buildAssignment(rider, "RETURN_PICKUP", note);
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      {
+        $set: {
+          returnPickupAssignment: assignment,
+          "returnRequest.status": "PICKUP_ASSIGNED",
+          "returnRequest.resolvedBy": mongoose.Types.ObjectId.isValid(adminId)
+            ? new mongoose.Types.ObjectId(adminId)
+            : null,
+        },
+      },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+    const customerId = String(updated.customer?._id || updated.customer || "");
+
+    await notifyDelivery({
+      userId: String(rider._id),
+      title: "Return Pickup Assigned",
+      message: `Return pickup for order ${orderCode} has been assigned to you.`,
+      link: deliveryOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        taskType: "RETURN_PICKUP",
+        action: "return_pickup_assigned",
+      },
+    });
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Return Pickup Assigned",
+      message: `A delivery rider has been assigned to collect your return product for order ${orderCode}.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        taskType: "RETURN_PICKUP",
+        action: "return_pickup_assigned",
+      },
+    });
+
+    await notifyAdmin({
+      title: "Return Pickup Assigned",
+      message: `Return pickup rider has been assigned for order ${orderCode}.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        adminId,
+        deliveryManId,
+        assignedAt: now,
+        action: "return_pickup_assigned",
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async assignExchangePickup(input: AssignPickupInput) {
+  const adminId = String(input.adminId || "");
+  const deliveryManId = String(input.deliveryManId || "");
+  const note = String(input.note || "").trim();
+
+  const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+  if (!found) {
+    throw new Error("Order not found");
+  }
+
+  const returnStatus = String(
+    found?.returnRequest?.status || "NONE"
+  ).toUpperCase();
+
+  const exchangeStatus = String(
+    found?.exchange?.status || "NONE"
+  ).toUpperCase();
+
+  const preferredResolution = String(
+    found?.returnRequest?.preferredResolution || ""
+  ).toUpperCase();
+
+  const requestType = String(
+    found?.returnRequest?.type || ""
+  ).toUpperCase();
+
+  const exchangeFlow =
+    preferredResolution === "EXCHANGE" ||
+    requestType === "EXCHANGE" ||
+    exchangeStatus !== "NONE";
+
+  if (!exchangeFlow) {
+    throw new Error("This is not an exchange request");
+  }
+
+  if (exchangeStatus !== "APPROVED" && returnStatus !== "APPROVED") {
+    throw new Error(
+      "Exchange request must be approved before assigning pickup"
+    );
+  }
+
+  const rider = await getActiveDeliveryRider(deliveryManId);
+  const now = new Date();
+  const assignment = buildAssignment(rider, "EXCHANGE_PICKUP", note);
+
+  const updated: any = await Order.findByIdAndUpdate(
+    found._id,
+    {
+      $set: {
+  exchangePickupAssignment: assignment,
+
+  "returnRequest.status": "PICKUP_ASSIGNED",
+  "returnRequest.adminNote":
+    note || found.returnRequest?.adminNote || "",
+
+  "exchange.status": "PICKUP_ASSIGNED",
+  "exchange.reason": found.exchange?.reason || found.returnRequest?.reason || "",
+  "exchange.requestedAt":
+    found.exchange?.requestedAt || found.returnRequest?.requestedAt || now,
+  "exchange.approvedAt":
+    found.exchange?.approvedAt || found.returnRequest?.approvedAt || now,
+  "exchange.pickupDeliveryManId": rider._id,
+  "exchange.pickupAssignedAt": now,
+  "exchange.adminNote": note || found.exchange?.adminNote || "",
+  "exchange.resolvedBy": mongoose.Types.ObjectId.isValid(adminId)
+    ? new mongoose.Types.ObjectId(adminId)
+    : null,
+},
+    },
+    { new: true }
+  )
+    .populate("customer", "name email phone")
+    .lean();
+
+  if (!updated) {
+    throw new Error("Order not found");
+  }
+
+  const orderId = String(updated._id);
+  const orderCode = String(updated.orderCode || "");
+  const customerId = String(updated.customer?._id || updated.customer || "");
+
+  await notifyDelivery({
+    userId: String(rider._id),
+    title: "Exchange Pickup Assigned",
+    message: `Exchange pickup for order ${orderCode} has been assigned to you.`,
+    link: deliveryOrderLink(orderId),
+    meta: {
+      orderId,
+      orderCode,
+      taskType: "EXCHANGE_PICKUP",
+      action: "exchange_pickup_assigned",
+    },
+  });
+
+  await notifyCustomer({
+    userId: customerId,
+    title: "Exchange Pickup Assigned",
+    message: `A delivery rider has been assigned to collect your exchange product for order ${orderCode}.`,
+    link: orderDetailsLink(orderCode),
+    meta: {
+      orderId,
+      orderCode,
+      taskType: "EXCHANGE_PICKUP",
+      action: "exchange_pickup_assigned",
+    },
+  });
+
+  await notifyAdmin({
+    title: "Exchange Pickup Assigned",
+    message: `Exchange pickup rider has been assigned for order ${orderCode}.`,
+    link: adminOrderLink(orderId),
+    meta: {
+      orderId,
+      orderCode,
+      adminId,
+      deliveryManId,
+      assignedAt: now,
+      action: "exchange_pickup_assigned",
+    },
+  });
+
+  await emitOrderUpdated(updated, customerId);
+
+  return this.mapOrder(updated);
+},
+
+  async updateReturnOrExchangePickupByDelivery(input: MarkPickupStatusInput) {
+    const deliveryManId = String(input.deliveryManId || "");
+    const status = input.status;
+    const note = String(input.note || "").trim();
+    const photo = String(input.photo || "").trim();
+
+    if (!mongoose.Types.ObjectId.isValid(deliveryManId)) {
+      throw new Error("Invalid delivery user");
+    }
+
+    if (!["Picked Up", "Returned to Store", "Failed Delivery"].includes(status)) {
+      throw new Error("Invalid return/exchange pickup status");
+    }
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    const taskType =
+      input.taskType ||
+      (found.exchangePickupAssignment?.deliveryManId &&
+      String(found.exchangePickupAssignment.deliveryManId) === deliveryManId
+        ? "EXCHANGE_PICKUP"
+        : "RETURN_PICKUP");
+
+    const assignmentKey =
+      taskType === "EXCHANGE_PICKUP"
+        ? "exchangePickupAssignment"
+        : "returnPickupAssignment";
+
+    const assignment = found[assignmentKey];
+
+    if (!assignment?.deliveryManId) {
+      throw new Error("Pickup task is not assigned");
+    }
+
+    if (String(assignment.deliveryManId) !== deliveryManId) {
+      throw new Error("This pickup task is not assigned to you");
+    }
+
+    const now = new Date();
+    const nextAssignment = { ...assignment, status };
+
+    if (note) nextAssignment.note = note;
+    if (photo) nextAssignment.pickupPhoto = photo;
+
+    if (status === "Picked Up" && !nextAssignment.pickedUpAt) {
+      nextAssignment.pickedUpAt = now;
+    }
+
+    if (status === "Returned to Store" && !nextAssignment.returnedToStoreAt) {
+      nextAssignment.returnedToStoreAt = now;
+      if (!nextAssignment.pickedUpAt) nextAssignment.pickedUpAt = now;
+    }
+
+    if (status === "Failed Delivery" && !nextAssignment.failedAt) {
+      nextAssignment.failedAt = now;
+    }
+
+    const update: any = {
+      [assignmentKey]: nextAssignment,
+    };
+
+    if (taskType === "EXCHANGE_PICKUP") {
+      if (status === "Picked Up") {
+        update["returnRequest.status"] = "PICKED_UP";
+        update["returnRequest.pickedUpAt"] = now;
+        update["exchange.status"] = "PICKED_UP";
+        update["exchange.pickedUpAt"] = now;
+      }
+
+      if (status === "Returned to Store") {
+        update["returnRequest.status"] = "RECEIVED";
+        update["returnRequest.receivedAt"] = now;
+        update["exchange.status"] = "RECEIVED";
+        update["exchange.receivedAt"] = now;
+      }
+    } else {
+      if (status === "Picked Up") {
+        update["returnRequest.status"] = "PICKED_UP";
+        update["returnRequest.pickedUpAt"] = now;
+      }
+
+      if (status === "Returned to Store") {
+        update["returnRequest.status"] = "RECEIVED";
+        update["returnRequest.receivedAt"] = now;
+      }
+    }
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      { $set: update },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+    const readableTask =
+      taskType === "EXCHANGE_PICKUP" ? "exchange pickup" : "return pickup";
+
+    await notifyAdmin({
+      title: "Pickup Status Updated",
+      message: `Rider updated ${readableTask} for order ${orderCode} to ${status}.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        deliveryManId,
+        taskType,
+        status,
+        action: "pickup_status_updated",
+      },
+    });
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Pickup Status Updated",
+      message: `Your ${readableTask} for order ${orderCode} is now ${status}.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        taskType,
+        status,
+        action: "pickup_status_updated",
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async markProductReceived(input: MarkProductReceivedInput) {
+    const adminId = String(input.adminId || "");
+    const adminNote = String(input.adminNote || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (!["PICKED_UP", "RECEIVED"].includes(String(found.returnRequest?.status || ""))) {
+      throw new Error("Product must be picked up before marking received");
+    }
+
+    const now = new Date();
+    const exchangeFlow = isExchangeResolution(found);
+    const update: any = {
+      "returnRequest.status": "RECEIVED",
+      "returnRequest.receivedAt": now,
+      "returnRequest.adminNote": adminNote,
+      "returnRequest.resolvedBy": mongoose.Types.ObjectId.isValid(adminId)
+        ? new mongoose.Types.ObjectId(adminId)
+        : null,
+      returnedAt: now,
+    };
+
+    if (exchangeFlow) {
+      update["exchange.status"] = "RECEIVED";
+      update["exchange.receivedAt"] = now;
+      update["exchange.adminNote"] = adminNote;
+      update["exchange.resolvedBy"] = mongoose.Types.ObjectId.isValid(adminId)
+        ? new mongoose.Types.ObjectId(adminId)
+        : null;
+    } else {
+      update.orderStatus = "Returned";
+      update.refund = buildRefundAfterProductReceived(found);
+    }
+
+    await restockOrderItems(found);
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      { $set: update },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Returned Product Received",
+      message: exchangeFlow
+        ? `Your returned product for exchange order ${orderCode} has been received. Replacement delivery will be arranged soon.`
+        : `Your returned product for order ${orderCode} has been received. Refund process will continue now.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action: "returned_product_received",
+        exchangeFlow,
+        refundStatus: updated.refund?.status || "NONE",
+      },
+    });
+
+    await notifyAdmin({
+      title: "Returned Product Received",
+      message: `Returned product for order ${orderCode} has been marked as received.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        action: "returned_product_received",
+        adminId,
+        exchangeFlow,
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async requestRefundDetails(input: RequestRefundDetailsInput) {
+    const adminId = String(input.adminId || "");
+    const adminNote = String(input.adminNote || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (found.returnRequest?.status !== "RECEIVED") {
+      throw new Error("Returned product must be received before requesting refund details");
+    }
+
+    if (!found.refund || found.refund.status === "NONE") {
+      throw new Error("No refund is available for this order");
+    }
+
+    if (found.refund.status === "REFUNDED") {
+      throw new Error("Refund already completed");
+    }
+
+    const now = new Date();
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      {
+        $set: {
+          "refund.status": "PENDING_ACCOUNT_DETAILS",
+          "refund.requestedDetailsAt": now,
+          "refund.adminNote": adminNote,
+          "refund.processedBy": mongoose.Types.ObjectId.isValid(adminId)
+            ? new mongoose.Types.ObjectId(adminId)
+            : null,
+        },
+      },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Submit Refund Details",
+      message: `Please submit your refund account details for order ${orderCode}.`,
+      type: "payment",
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action: "refund_details_requested",
+      },
+    });
+
+    await notifyAdmin({
+      title: "Refund Details Requested",
+      message: `Refund account details requested from customer for order ${orderCode}.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        adminId,
+        action: "refund_details_requested",
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async submitRefundDetails(input: SubmitRefundDetailsInput) {
+    const userId = String(input.userId || "");
+    const method = String(input.method || "").trim();
+
+    if (!method) {
+      throw new Error("Refund method is required");
+    }
+
+    const normalizedMethod =
+      method === "Bank"
+        ? "BANK"
+        : method === "Khalti"
+          ? "KHALTI"
+          : method === "eSewa"
+            ? "ESEWA"
+            : method === "Fonepay"
+              ? "FONEPAY"
+              : method.toUpperCase();
+
+    if (!["BANK", "KHALTI", "ESEWA", "FONEPAY"].includes(normalizedMethod)) {
+      throw new Error("Invalid refund method");
+    }
+
+    const found: any = await findCustomerOrderRaw(userId, input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (found.refund?.status !== "PENDING_ACCOUNT_DETAILS") {
+      throw new Error("Refund details are not requested for this order");
+    }
+
+    const accountName = String(input.accountName || "").trim();
+    const accountNumber = String(input.accountNumber || "").trim();
+    const bankName = String(input.bankName || "").trim();
+    const walletNumber = String(input.walletNumber || "").trim();
+    const walletId = String(input.walletId || "").trim();
+    const customerNote = String(input.customerNote || "").trim();
+
+    if (normalizedMethod === "BANK") {
+      if (!accountName || !accountNumber || !bankName) {
+        throw new Error("Bank name, account holder name, and account number are required");
+      }
+    } else {
+      if (!walletNumber && !walletId) {
+        throw new Error("Wallet number or wallet ID is required");
+      }
+    }
+
+    const now = new Date();
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      {
+        $set: {
+          "refund.status": "READY_TO_REFUND",
+          "refund.method": normalizedMethod,
+          "refund.accountName": accountName,
+          "refund.accountNumber": accountNumber,
+          "refund.bankName": bankName,
+          "refund.walletNumber": walletNumber,
+          "refund.walletId": walletId,
+          "refund.customerNote": customerNote,
+          "refund.detailsSubmittedAt": now,
+        },
+      },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyAdmin({
+      title: "Refund Details Submitted",
+      message: `Customer submitted refund details for order ${orderCode}.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        customerId: userId,
+        method: normalizedMethod,
+        action: "refund_details_submitted",
+      },
+    });
+
+    await notifyCustomer({
+      userId,
+      title: "Refund Details Submitted",
+      message: `Your refund details for order ${orderCode} have been submitted.`,
+      type: "payment",
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        method: normalizedMethod,
+        action: "refund_details_submitted",
+      },
+    });
+
+    await emitOrderUpdated(updated, userId);
+
+    return this.mapOrder(updated);
+  },
+
+  async markRefundProcessing(input: MarkRefundProcessingInput) {
+    const adminId = String(input.adminId || "");
+    const adminNote = String(input.adminNote || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (!["PENDING", "READY_TO_REFUND", "PENDING_ACCOUNT_DETAILS"].includes(String(found.refund?.status || ""))) {
+      throw new Error("Refund is not ready for processing");
+    }
+
+    const now = new Date();
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      {
+        $set: {
+          "refund.status": "PROCESSING",
+          "refund.processedAt": now,
+          "refund.adminNote": adminNote,
+          "refund.processedBy": mongoose.Types.ObjectId.isValid(adminId)
+            ? new mongoose.Types.ObjectId(adminId)
+            : null,
+        },
+      },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Refund Processing",
+      message: `Refund for order ${orderCode} is now processing.`,
+      type: "payment",
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action: "refund_processing",
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async markRefunded(input: MarkRefundedInput) {
+    const adminId = String(input.adminId || "");
+    const adminNote = String(input.adminNote || "").trim();
+    const transactionRef = String(input.transactionRef || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (!found.refund || found.refund.status === "NONE") {
+      throw new Error("No refund is pending for this order");
+    }
+
+    if (found.refund.status === "REFUNDED") {
+      throw new Error("Refund already completed");
+    }
+
+    const now = new Date();
+
+    const update: any = {
+      "refund.status": "REFUNDED",
+      "refund.processedAt": found.refund?.processedAt || now,
+      "refund.refundedAt": now,
+      "refund.failedAt": null,
+      "refund.adminNote": adminNote,
+      "refund.processedBy": mongoose.Types.ObjectId.isValid(adminId)
+        ? new mongoose.Types.ObjectId(adminId)
+        : null,
+      refundedAt: now,
+    };
+
+    if (transactionRef) {
+      update["refund.transactionRef"] = transactionRef;
+    }
+
+    if (
+      String(found.orderStatus || "") === "Cancelled" ||
+      String(found.orderStatus || "") === "Returned"
+    ) {
+      update.orderStatus = "Refunded";
+    }
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      { $set: update },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Refund Completed",
+      message: `Refund for order ${orderCode} has been marked as completed.`,
+      type: "payment",
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action: "refund_completed",
+        refundStatus: "REFUNDED",
+        transactionRef,
+      },
+    });
+
+    await notifyAdmin({
+      title: "Refund Completed",
+      message: `Refund for order ${orderCode} has been marked as completed.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        action: "refund_completed",
+        adminId,
+        transactionRef,
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async assignReplacementDelivery(input: AssignReplacementDeliveryInput) {
+    const adminId = String(input.adminId || "");
+    const deliveryManId = String(input.deliveryManId || "");
+    const note = String(input.note || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (found.exchange?.status !== "RECEIVED") {
+      throw new Error("Returned exchange product must be received before assigning replacement delivery");
+    }
+
+    const rider = await getActiveDeliveryRider(deliveryManId);
+    const now = new Date();
+    const assignment = buildAssignment(rider, "REPLACEMENT_DELIVERY", note);
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      {
+        $set: {
+          replacementDeliveryAssignment: assignment,
+          "exchange.status": "REPLACEMENT_ASSIGNED",
+          "exchange.replacementDeliveryManId": rider._id,
+          "exchange.replacementAssignedAt": now,
+          "exchange.resolvedBy": mongoose.Types.ObjectId.isValid(adminId)
+            ? new mongoose.Types.ObjectId(adminId)
+            : null,
+        },
+      },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+    const customerId = String(updated.customer?._id || updated.customer || "");
+
+    await notifyDelivery({
+      userId: String(rider._id),
+      title: "Replacement Delivery Assigned",
+      message: `Replacement delivery for exchange order ${orderCode} has been assigned to you.`,
+      link: deliveryOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        taskType: "REPLACEMENT_DELIVERY",
+        action: "replacement_delivery_assigned",
+      },
+    });
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Replacement Delivery Assigned",
+      message: `Replacement delivery has been assigned for your exchange order ${orderCode}.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        taskType: "REPLACEMENT_DELIVERY",
+        action: "replacement_delivery_assigned",
+      },
+    });
+
+    await notifyAdmin({
+      title: "Replacement Delivery Assigned",
+      message: `Replacement delivery rider has been assigned for order ${orderCode}.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        adminId,
+        deliveryManId,
+        assignedAt: now,
+        action: "replacement_delivery_assigned",
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async updateReplacementDeliveryByDelivery(input: MarkPickupStatusInput) {
+    const deliveryManId = String(input.deliveryManId || "");
+    const status = input.status;
+    const note = String(input.note || "").trim();
+    const photo = String(input.photo || "").trim();
+
+    if (!mongoose.Types.ObjectId.isValid(deliveryManId)) {
+      throw new Error("Invalid delivery user");
+    }
+
+    if (!["Picked Up", "Out for Delivery", "Delivered", "Failed Delivery"].includes(status)) {
+      throw new Error("Invalid replacement delivery status");
+    }
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    const assignment = found.replacementDeliveryAssignment;
+
+    if (!assignment?.deliveryManId) {
+      throw new Error("Replacement delivery task is not assigned");
+    }
+
+    if (String(assignment.deliveryManId) !== deliveryManId) {
+      throw new Error("This replacement delivery task is not assigned to you");
+    }
+
+    const now = new Date();
+    const nextAssignment = { ...assignment, status };
+
+    if (note) nextAssignment.note = note;
+    if (photo) nextAssignment.deliveryPhoto = photo;
+
+    if (status === "Picked Up" && !nextAssignment.pickedUpAt) {
+      nextAssignment.pickedUpAt = now;
+    }
+
+    if (status === "Out for Delivery" && !nextAssignment.outForDeliveryAt) {
+      nextAssignment.outForDeliveryAt = now;
+      if (!nextAssignment.pickedUpAt) nextAssignment.pickedUpAt = now;
+    }
+
+    if (status === "Delivered" && !nextAssignment.deliveredAt) {
+      nextAssignment.deliveredAt = now;
+      if (!nextAssignment.pickedUpAt) nextAssignment.pickedUpAt = now;
+      if (!nextAssignment.outForDeliveryAt) nextAssignment.outForDeliveryAt = now;
+    }
+
+    if (status === "Failed Delivery" && !nextAssignment.failedAt) {
+      nextAssignment.failedAt = now;
+    }
+
+    const update: any = {
+      replacementDeliveryAssignment: nextAssignment,
+    };
+
+    if (status === "Delivered") {
+      update["exchange.status"] = "REPLACEMENT_DELIVERED";
+      update["exchange.replacementDeliveredAt"] = now;
+    }
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      { $set: update },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyAdmin({
+      title: "Replacement Delivery Updated",
+      message: `Replacement delivery for order ${orderCode} is now ${status}.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        deliveryManId,
+        status,
+        taskType: "REPLACEMENT_DELIVERY",
+        action: "replacement_delivery_status_updated",
+      },
+    });
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Replacement Delivery Updated",
+      message: `Replacement delivery for your exchange order ${orderCode} is now ${status}.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        status,
+        taskType: "REPLACEMENT_DELIVERY",
+        action: "replacement_delivery_status_updated",
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async completeExchange(input: CompleteExchangeInput) {
+    const adminId = String(input.adminId || "");
+    const adminNote = String(input.adminNote || "").trim();
+
+    const found: any = await findOrderByIdOrCodeRaw(input.idOrCode);
+    if (!found) {
+      throw new Error("Order not found");
+    }
+
+    if (!["REPLACEMENT_DELIVERED", "COMPLETED"].includes(String(found.exchange?.status || ""))) {
+      throw new Error("Replacement must be delivered before completing exchange");
+    }
+
+    const now = new Date();
+
+    const updated: any = await Order.findByIdAndUpdate(
+      found._id,
+      {
+        $set: {
+          "exchange.status": "COMPLETED",
+          "exchange.completedAt": now,
+          "exchange.adminNote": adminNote,
+          "exchange.resolvedBy": mongoose.Types.ObjectId.isValid(adminId)
+            ? new mongoose.Types.ObjectId(adminId)
+            : null,
+        },
+      },
+      { new: true }
+    )
+      .populate("customer", "name email phone")
+      .lean();
+
+    if (!updated) {
+      throw new Error("Order not found");
+    }
+
+    const customerId = String(updated.customer?._id || updated.customer || "");
+    const orderId = String(updated._id);
+    const orderCode = String(updated.orderCode || "");
+
+    await notifyCustomer({
+      userId: customerId,
+      title: "Exchange Completed",
+      message: `Your exchange for order ${orderCode} has been completed.`,
+      link: orderDetailsLink(orderCode),
+      meta: {
+        orderId,
+        orderCode,
+        action: "exchange_completed",
+      },
+    });
+
+    await notifyAdmin({
+      title: "Exchange Completed",
+      message: `Exchange for order ${orderCode} has been completed.`,
+      link: adminOrderLink(orderId),
+      meta: {
+        orderId,
+        orderCode,
+        adminId,
+        action: "exchange_completed",
+      },
+    });
+
+    await emitOrderUpdated(updated, customerId);
+
+    return this.mapOrder(updated);
+  },
+
+  async listReturnsRefunds(input: ListReturnsRefundsInput) {
+    const type = String(input.type || "").trim().toUpperCase();
+    const status = String(input.status || "").trim().toUpperCase();
+    const search = String(input.search || "").trim();
+
+    const filter: any = {
+      $or: [
+        { "cancelRequest.status": { $ne: "NONE" } },
+        { "returnRequest.status": { $ne: "NONE" } },
+        { "refund.status": { $ne: "NONE" } },
+        { "exchange.status": { $ne: "NONE" } },
+      ],
+    };
+
+    if (search) {
+      const rx = safeRegex(search);
+
+      const users = await User.find(
+        {
+          $or: [{ name: rx }, { email: rx }, { phone: rx }],
+        },
+        { _id: 1 }
+      ).lean();
+
+      const userIds = users.map((u: any) => u._id);
+
+      filter.$and = [
+        {
+          $or: [
+            { orderCode: rx },
+            ...(userIds.length ? [{ customer: { $in: userIds } }] : []),
+          ],
+        },
+      ];
+    }
+
+    const orders = await Order.find(filter)
+      .populate("customer", "name email phone")
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+
+    let rows: any[] = [];
+
+    for (const order of orders as any[]) {
+      if (order.cancelRequest?.status && order.cancelRequest.status !== "NONE") {
+        rows.push(toRequestRow(order, "CANCELLATION"));
+      }
+
+      if (order.returnRequest?.status && order.returnRequest.status !== "NONE") {
+        rows.push(toRequestRow(order, "RETURN"));
+      }
+
+      if (order.exchange?.status && order.exchange.status !== "NONE") {
+        rows.push(toRequestRow(order, "EXCHANGE"));
+      }
+
+      if (order.refund?.status && order.refund.status !== "NONE") {
+        rows.push(toRequestRow(order, "REFUND"));
+      }
+    }
+
+    if (type) {
+      rows = rows.filter((row) => String(row.type || "").toUpperCase() === type);
+    }
+
+    if (status) {
+      rows = rows.filter(
+        (row) => String(row.status || "").toUpperCase() === status
+      );
+    }
+
+    rows.sort((a, b) => {
+      const at = new Date(a.requestedAt || 0).getTime();
+      const bt = new Date(b.requestedAt || 0).getTime();
+      return bt - at;
+    });
+
+    return rows;
+  },
+
   mapOrder(o: any) {
+    const normalizeAssignment = (assignment: any) =>
+      assignment
+        ? {
+            ...assignment,
+            deliveryManId: assignment.deliveryManId
+              ? String(assignment.deliveryManId)
+              : "",
+          }
+        : null;
+
     return {
       id: String(o._id),
       orderCode: o.orderCode || "",
@@ -1337,9 +3700,10 @@ export const orderService = {
       orderStatus: o.orderStatus,
       paymentRef: o.paymentRef || null,
       createdAt: o.createdAt,
+      updatedAt: o.updatedAt,
       customer: o.customer
         ? {
-            id: String(o.customer._id),
+            id: String(o.customer._id || o.customer),
             name: o.customer.name || "",
             email: o.customer.email || "",
             phone: o.customer.phone || "",
@@ -1372,18 +3736,24 @@ export const orderService = {
           }
         : null,
       shipping: o.shipping || null,
-      deliveryAssignment: o.deliveryAssignment
-        ? {
-            ...o.deliveryAssignment,
-            deliveryManId: o.deliveryAssignment.deliveryManId
-              ? String(o.deliveryAssignment.deliveryManId)
-              : "",
-          }
-        : null,
+      deliveryAssignment: normalizeAssignment(o.deliveryAssignment),
+      returnPickupAssignment: normalizeAssignment(o.returnPickupAssignment),
+      exchangePickupAssignment: normalizeAssignment(o.exchangePickupAssignment),
+      replacementDeliveryAssignment: normalizeAssignment(
+        o.replacementDeliveryAssignment
+      ),
+      cancelRequest: o.cancelRequest || { status: "NONE" },
+      returnRequest: o.returnRequest || { status: "NONE" },
+      refund: o.refund || { status: "NONE" },
+      exchange: o.exchange || { status: "NONE" },
       confirmedAt: o.confirmedAt || null,
+      processingAt: o.processingAt || null,
       shippedAt: o.shippedAt || null,
       inTransitAt: o.inTransitAt || null,
       deliveredAt: o.deliveredAt || null,
+      cancelledAt: o.cancelledAt || null,
+      returnedAt: o.returnedAt || null,
+      refundedAt: o.refundedAt || null,
       invoiceNo: o.invoiceNo || null,
       invoiceSentAt: o.invoiceSentAt || null,
     };
@@ -1451,6 +3821,7 @@ export const orderService = {
 
     return {
       orderId: o.orderCode || normalizedCode,
+      id: String(o._id),
       status,
       customer: {
         name: customerName,
@@ -1462,6 +3833,10 @@ export const orderService = {
       shipping: { method: shipMethod, estimatedDelivery: estDelivery },
       summary: { subtotal, shipping, discount, taxes: 0, total },
       coupon: o.coupon || null,
+      cancelRequest: o.cancelRequest || { status: "NONE" },
+      returnRequest: o.returnRequest || { status: "NONE" },
+      refund: o.refund || { status: "NONE" },
+      exchange: o.exchange || { status: "NONE" },
       invoiceNo: o.invoiceNo || null,
       invoiceSentAt: o.invoiceSentAt || null,
       address: o.address
@@ -1487,6 +3862,30 @@ export const orderService = {
               : "",
           }
         : null,
+      returnPickupAssignment: o.returnPickupAssignment
+        ? {
+            ...o.returnPickupAssignment,
+            deliveryManId: o.returnPickupAssignment.deliveryManId
+              ? String(o.returnPickupAssignment.deliveryManId)
+              : "",
+          }
+        : null,
+      exchangePickupAssignment: o.exchangePickupAssignment
+        ? {
+            ...o.exchangePickupAssignment,
+            deliveryManId: o.exchangePickupAssignment.deliveryManId
+              ? String(o.exchangePickupAssignment.deliveryManId)
+              : "",
+          }
+        : null,
+      replacementDeliveryAssignment: o.replacementDeliveryAssignment
+        ? {
+            ...o.replacementDeliveryAssignment,
+            deliveryManId: o.replacementDeliveryAssignment.deliveryManId
+              ? String(o.replacementDeliveryAssignment.deliveryManId)
+              : "",
+          }
+        : null,
     };
   },
 
@@ -1505,17 +3904,29 @@ export const orderService = {
           "createdAt",
           "updatedAt",
           "confirmedAt",
+          "processingAt",
           "shippedAt",
           "inTransitAt",
           "deliveredAt",
+          "cancelledAt",
+          "returnedAt",
+          "refundedAt",
           "shipping",
           "deliveryAssignment",
+          "returnPickupAssignment",
+          "exchangePickupAssignment",
+          "replacementDeliveryAssignment",
           "paymentMethod",
           "subtotalPaisa",
           "shippingPaisa",
+          "discountPaisa",
           "totalPaisa",
           "address",
           "items",
+          "cancelRequest",
+          "returnRequest",
+          "refund",
+          "exchange",
         ].join(" ")
       )
       .lean();
@@ -1538,15 +3949,29 @@ export const orderService = {
       })
     );
 
+    const normalizeAssignment = (assignment: any) =>
+      assignment
+        ? {
+            ...assignment,
+            deliveryManId: assignment.deliveryManId
+              ? String(assignment.deliveryManId)
+              : "",
+          }
+        : null;
+
     return {
       orderCode: o.orderCode,
       orderStatus: o.orderStatus,
       createdAt: o.createdAt,
       updatedAt: o.updatedAt,
       confirmedAt: o.confirmedAt || null,
+      processingAt: o.processingAt || null,
       shippedAt: o.shippedAt || null,
       inTransitAt: o.inTransitAt || null,
       deliveredAt: o.deliveredAt || null,
+      cancelledAt: o.cancelledAt || null,
+      returnedAt: o.returnedAt || null,
+      refundedAt: o.refundedAt || null,
       shipping: {
         method: o.shipping?.method || "Standard Shipping",
         estimatedDelivery:
@@ -1569,18 +3994,21 @@ export const orderService = {
       summary: {
         subtotal: Math.round(Number(o.subtotalPaisa || 0) / 100),
         shipping: Math.round(Number(o.shippingPaisa || 0) / 100),
+        discount: Math.round(Number(o.discountPaisa || 0) / 100),
         taxes: 0,
         total: Math.round(Number(o.totalPaisa || 0) / 100),
       },
       items,
-      deliveryAssignment: o.deliveryAssignment
-        ? {
-            ...o.deliveryAssignment,
-            deliveryManId: o.deliveryAssignment.deliveryManId
-              ? String(o.deliveryAssignment.deliveryManId)
-              : "",
-          }
-        : null,
+      cancelRequest: o.cancelRequest || { status: "NONE" },
+      returnRequest: o.returnRequest || { status: "NONE" },
+      refund: o.refund || { status: "NONE" },
+      exchange: o.exchange || { status: "NONE" },
+      deliveryAssignment: normalizeAssignment(o.deliveryAssignment),
+      returnPickupAssignment: normalizeAssignment(o.returnPickupAssignment),
+      exchangePickupAssignment: normalizeAssignment(o.exchangePickupAssignment),
+      replacementDeliveryAssignment: normalizeAssignment(
+        o.replacementDeliveryAssignment
+      ),
     };
   },
 };

@@ -11,6 +11,12 @@ import {
   sendDeliveryInviteEmail,
 } from "../../../services/invite.service";
 
+type DeliveryTaskType =
+  | "NORMAL_DELIVERY"
+  | "RETURN_PICKUP"
+  | "EXCHANGE_PICKUP"
+  | "REPLACEMENT_DELIVERY";
+
 function mapDeliveryItems(items: any[]) {
   if (!Array.isArray(items)) return [];
 
@@ -28,7 +34,61 @@ function mapDeliveryItems(items: any[]) {
   }));
 }
 
-function mapDeliveryOrder(o: any) {
+function mapAssignment(assignment: any) {
+  if (!assignment) return null;
+
+  return {
+    ...assignment,
+    deliveryManId: assignment.deliveryManId
+      ? String(assignment.deliveryManId)
+      : "",
+  };
+}
+
+function getTaskTypeForRider(o: any, riderId?: any): DeliveryTaskType {
+  const rider = String(riderId || "");
+
+  if (
+    rider &&
+    String(o?.returnPickupAssignment?.deliveryManId || "") === rider
+  ) {
+    return "RETURN_PICKUP";
+  }
+
+  if (
+    rider &&
+    String(o?.exchangePickupAssignment?.deliveryManId || "") === rider
+  ) {
+    return "EXCHANGE_PICKUP";
+  }
+
+  if (
+    rider &&
+    String(o?.replacementDeliveryAssignment?.deliveryManId || "") === rider
+  ) {
+    return "REPLACEMENT_DELIVERY";
+  }
+
+  return "NORMAL_DELIVERY";
+}
+
+function getTaskAssignmentForRider(o: any, riderId?: any) {
+  const taskType = getTaskTypeForRider(o, riderId);
+
+  if (taskType === "RETURN_PICKUP") return o.returnPickupAssignment || null;
+  if (taskType === "EXCHANGE_PICKUP") return o.exchangePickupAssignment || null;
+
+  if (taskType === "REPLACEMENT_DELIVERY") {
+    return o.replacementDeliveryAssignment || null;
+  }
+
+  return o.deliveryAssignment || null;
+}
+
+function mapDeliveryOrder(o: any, riderId?: any) {
+  const taskType = getTaskTypeForRider(o, riderId);
+  const taskAssignment = getTaskAssignmentForRider(o, riderId);
+
   return {
     id: String(o._id),
     orderCode: o.orderCode || "",
@@ -39,33 +99,166 @@ function mapDeliveryOrder(o: any) {
     orderStatus: o.orderStatus || "Pending",
     paymentStatus: o.paymentStatus || "Pending",
     createdAt: o.createdAt,
+
+    taskType,
+    taskStatus: taskAssignment?.status || "Assigned",
+    taskAssignedAt: taskAssignment?.assignedAt || null,
+    taskRiderName: taskAssignment?.name || "",
+    taskAssignment: mapAssignment(taskAssignment),
+
     customer: o.customer
       ? {
-          id: String(o.customer._id),
+          id: String(o.customer._id || o.customer),
           name: o.customer.name || "",
           email: o.customer.email || "",
           phone: o.customer.phone || "",
         }
       : { id: "", name: "", email: "", phone: "" },
+
     items: mapDeliveryItems(o.items),
     address: o.address || null,
     shippingPaisa: Number(o.shippingPaisa || 0),
     discountPaisa: Number(o.discountPaisa || 0),
     shipping: o.shipping || null,
-    deliveryAssignment: o.deliveryAssignment
-      ? {
-          ...o.deliveryAssignment,
-          deliveryManId: o.deliveryAssignment.deliveryManId
-            ? String(o.deliveryAssignment.deliveryManId)
-            : "",
-        }
-      : null,
+
+    deliveryAssignment: mapAssignment(o.deliveryAssignment),
+    returnPickupAssignment: mapAssignment(o.returnPickupAssignment),
+    exchangePickupAssignment: mapAssignment(o.exchangePickupAssignment),
+    replacementDeliveryAssignment: mapAssignment(o.replacementDeliveryAssignment),
+
+    cancelRequest: o.cancelRequest || { status: "NONE" },
+    returnRequest: o.returnRequest || { status: "NONE" },
+    refund: o.refund || { status: "NONE" },
+    exchange: o.exchange || { status: "NONE" },
+  };
+}
+
+function normalizeMainOrderStatus(status?: string) {
+  const s = String(status || "").trim().toLowerCase();
+
+  if (s === "cancelled" || s === "canceled") return "Cancelled";
+  if (s === "returned") return "Returned";
+  if (s === "refunded") return "Refunded";
+  if (s === "delivered") return "Delivered";
+  if (s === "transit" || s === "in transit") return "Transit";
+  if (s === "shipped") return "Shipped";
+  if (s === "processing") return "Processing";
+  if (s === "confirmed") return "Confirmed";
+  if (s === "pending") return "Pending";
+
+  return String(status || "Pending");
+}
+
+function isDeliveryBlockedMainOrderStatus(status?: string) {
+  const normalized = normalizeMainOrderStatus(status);
+
+  return ["Cancelled", "Returned", "Refunded"].includes(normalized);
+}
+
+function assertDeliveryActionAllowed(order: any) {
+  const orderStatus = normalizeMainOrderStatus(order?.orderStatus);
+
+  if (isDeliveryBlockedMainOrderStatus(orderStatus)) {
+    throw new AppError(
+      `Delivery action is not allowed because this order is ${orderStatus}.`,
+      400,
+    );
+  }
+}
+
+function assignedTaskQuery(riderId: any) {
+  return {
+    $or: [
+      { "deliveryAssignment.deliveryManId": riderId },
+      { "returnPickupAssignment.deliveryManId": riderId },
+      { "exchangePickupAssignment.deliveryManId": riderId },
+      { "replacementDeliveryAssignment.deliveryManId": riderId },
+    ],
+  };
+}
+
+function activeAssignedTaskQuery(riderId: any) {
+  return {
+    $or: [
+      {
+        "deliveryAssignment.deliveryManId": riderId,
+        "deliveryAssignment.status": {
+          $in: ["Assigned", "Picked Up", "Out for Delivery"],
+        },
+      },
+      {
+        "returnPickupAssignment.deliveryManId": riderId,
+        "returnPickupAssignment.status": {
+          $in: ["Assigned", "Picked Up"],
+        },
+      },
+      {
+        "exchangePickupAssignment.deliveryManId": riderId,
+        "exchangePickupAssignment.status": {
+          $in: ["Assigned", "Picked Up"],
+        },
+      },
+      {
+        "replacementDeliveryAssignment.deliveryManId": riderId,
+        "replacementDeliveryAssignment.status": {
+          $in: ["Assigned", "Picked Up", "Out for Delivery"],
+        },
+      },
+    ],
+  };
+}
+
+function deliveredAssignedTaskQuery(riderId: any) {
+  return {
+    $or: [
+      {
+        "deliveryAssignment.deliveryManId": riderId,
+        "deliveryAssignment.status": "Delivered",
+      },
+      {
+        "replacementDeliveryAssignment.deliveryManId": riderId,
+        "replacementDeliveryAssignment.status": "Delivered",
+      },
+      {
+        "returnPickupAssignment.deliveryManId": riderId,
+        "returnPickupAssignment.status": "Returned to Store",
+      },
+      {
+        "exchangePickupAssignment.deliveryManId": riderId,
+        "exchangePickupAssignment.status": "Returned to Store",
+      },
+    ],
+  };
+}
+
+function failedAssignedTaskQuery(riderId: any) {
+  return {
+    $or: [
+      {
+        "deliveryAssignment.deliveryManId": riderId,
+        "deliveryAssignment.status": {
+          $in: ["Failed Delivery", "Returned"],
+        },
+      },
+      {
+        "returnPickupAssignment.deliveryManId": riderId,
+        "returnPickupAssignment.status": "Failed Delivery",
+      },
+      {
+        "exchangePickupAssignment.deliveryManId": riderId,
+        "exchangePickupAssignment.status": "Failed Delivery",
+      },
+      {
+        "replacementDeliveryAssignment.deliveryManId": riderId,
+        "replacementDeliveryAssignment.status": "Failed Delivery",
+      },
+    ],
   };
 }
 
 function validateDeliveryStatusTransition(
   currentStatus: string,
-  nextStatus: string
+  nextStatus: string,
 ) {
   const current = String(currentStatus || "Assigned").trim();
   const next = String(nextStatus || "").trim();
@@ -96,7 +289,7 @@ function validateDeliveryStatusTransition(
   if (!allowed.includes(next)) {
     throw new AppError(
       `Invalid delivery status transition from "${current}" to "${next}"`,
-      400
+      400,
     );
   }
 }
@@ -137,14 +330,16 @@ async function emitOrderUpdated(updated: any, customerId: string) {
       orderCode: String(updated.orderCode || ""),
       orderStatus: String(updated.orderStatus || ""),
       paymentStatus: String(updated.paymentStatus || ""),
-      deliveryAssignment: updated.deliveryAssignment
-        ? {
-            ...updated.deliveryAssignment,
-            deliveryManId: updated.deliveryAssignment.deliveryManId
-              ? String(updated.deliveryAssignment.deliveryManId)
-              : "",
-          }
-        : null,
+      deliveryAssignment: mapAssignment(updated.deliveryAssignment),
+      returnPickupAssignment: mapAssignment(updated.returnPickupAssignment),
+      exchangePickupAssignment: mapAssignment(updated.exchangePickupAssignment),
+      replacementDeliveryAssignment: mapAssignment(
+        updated.replacementDeliveryAssignment,
+      ),
+      cancelRequest: updated.cancelRequest || { status: "NONE" },
+      returnRequest: updated.returnRequest || { status: "NONE" },
+      refund: updated.refund || { status: "NONE" },
+      exchange: updated.exchange || { status: "NONE" },
       updatedAt: new Date().toISOString(),
       source: "delivery",
     };
@@ -165,7 +360,7 @@ async function notifyDeliveryStatus(
   customerId: string,
   riderName: string,
   userId: string,
-  nextStatus: string
+  nextStatus: string,
 ) {
   const updatedOrderId = String(updated._id);
   const orderCode = String(updated.orderCode || "");
@@ -426,28 +621,18 @@ export const deliveryStaffService = {
 
     const users = await User.find(query)
       .select(
-        "name email phone vehicleType vehicleNumber deliveryArea status mustChangePassword createdAt updatedAt"
+        "name email phone vehicleType vehicleNumber deliveryArea status mustChangePassword createdAt updatedAt",
       )
       .sort({ createdAt: -1 })
       .lean();
 
     const enriched = await Promise.all(
       users.map(async (u: any) => {
-        const assigned = await Order.countDocuments({
-          "deliveryAssignment.deliveryManId": u._id,
-        });
-
-        const delivered = await Order.countDocuments({
-          "deliveryAssignment.deliveryManId": u._id,
-          "deliveryAssignment.status": "Delivered",
-        });
-
-        const failed = await Order.countDocuments({
-          "deliveryAssignment.deliveryManId": u._id,
-          "deliveryAssignment.status": {
-            $in: ["Failed Delivery", "Returned"],
-          },
-        });
+        const assigned = await Order.countDocuments(assignedTaskQuery(u._id));
+        const delivered = await Order.countDocuments(
+          deliveredAssignedTaskQuery(u._id),
+        );
+        const failed = await Order.countDocuments(failedAssignedTaskQuery(u._id));
 
         return {
           id: String(u._id),
@@ -465,7 +650,7 @@ export const deliveryStaffService = {
           createdAt: u.createdAt,
           updatedAt: u.updatedAt,
         };
-      })
+      }),
     );
 
     return enriched;
@@ -481,36 +666,34 @@ export const deliveryStaffService = {
       role: "delivery",
     })
       .select(
-        "name email phone vehicleType vehicleNumber deliveryArea status mustChangePassword createdAt updatedAt"
+        "name email phone vehicleType vehicleNumber deliveryArea status mustChangePassword createdAt updatedAt",
       )
       .lean();
 
     if (!user) throw new AppError("Delivery staff not found", 404);
 
-    const assigned = await Order.countDocuments({
-      "deliveryAssignment.deliveryManId": user._id,
-    });
-
-    const active = await Order.countDocuments({
-      "deliveryAssignment.deliveryManId": user._id,
-      "deliveryAssignment.status": {
-        $in: ["Assigned", "Picked Up", "Out for Delivery"],
-      },
-    });
-
-    const delivered = await Order.countDocuments({
-      "deliveryAssignment.deliveryManId": user._id,
-      "deliveryAssignment.status": "Delivered",
-    });
-
-    const failed = await Order.countDocuments({
-      "deliveryAssignment.deliveryManId": user._id,
-      "deliveryAssignment.status": "Failed Delivery",
-    });
+    const assigned = await Order.countDocuments(assignedTaskQuery(user._id));
+    const active = await Order.countDocuments(activeAssignedTaskQuery(user._id));
+    const delivered = await Order.countDocuments(
+      deliveredAssignedTaskQuery(user._id),
+    );
+    const failed = await Order.countDocuments(failedAssignedTaskQuery(user._id));
 
     const returned = await Order.countDocuments({
-      "deliveryAssignment.deliveryManId": user._id,
-      "deliveryAssignment.status": "Returned",
+      $or: [
+        {
+          "deliveryAssignment.deliveryManId": user._id,
+          "deliveryAssignment.status": "Returned",
+        },
+        {
+          "returnPickupAssignment.deliveryManId": user._id,
+          "returnPickupAssignment.status": "Returned to Store",
+        },
+        {
+          "exchangePickupAssignment.deliveryManId": user._id,
+          "exchangePickupAssignment.status": "Returned to Store",
+        },
+      ],
     });
 
     return {
@@ -551,10 +734,10 @@ export const deliveryStaffService = {
     const name = String(data?.name ?? user.name).trim();
     const phone = String(data?.phone ?? user.phone ?? "").trim();
     const vehicleType = String(
-      data?.vehicleType ?? user.vehicleType ?? ""
+      data?.vehicleType ?? user.vehicleType ?? "",
     ).trim();
     const vehicleNumber = String(
-      data?.vehicleNumber ?? user.vehicleNumber ?? ""
+      data?.vehicleNumber ?? user.vehicleNumber ?? "",
     ).trim();
     const area = String(data?.area ?? user.deliveryArea ?? "").trim();
 
@@ -617,17 +800,14 @@ export const deliveryStaffService = {
       throw new AppError("Delivery staff not found", 404);
     }
 
-    const activeAssignments = await Order.countDocuments({
-      "deliveryAssignment.deliveryManId": user._id,
-      "deliveryAssignment.status": {
-        $in: ["Assigned", "Picked Up", "Out for Delivery"],
-      },
-    });
+    const activeAssignments = await Order.countDocuments(
+      activeAssignedTaskQuery(user._id),
+    );
 
     if (activeAssignments > 0) {
       throw new AppError(
-        "This delivery staff has active assigned orders. Reassign or complete them before deleting.",
-        400
+        "This delivery staff has active assigned tasks. Reassign or complete them before deleting.",
+        400,
       );
     }
 
@@ -654,36 +834,46 @@ export const deliveryStaffService = {
       throw new AppError("Delivery rider not found", 404);
     }
 
-    const orders = await Order.find({
-      "deliveryAssignment.deliveryManId": rider._id,
-    })
+    const orders = await Order.find(assignedTaskQuery(rider._id))
       .populate("customer", "name email phone")
       .sort({ createdAt: -1 })
       .lean();
 
-    const rows = (orders as any[]).map(mapDeliveryOrder);
+    const rows = (orders as any[]).map((order) =>
+      mapDeliveryOrder(order, rider._id),
+    );
 
     const assignedCount = rows.filter((item: any) => {
-      const s = String(item?.deliveryAssignment?.status || "").toLowerCase();
+      const s = String(item?.taskStatus || "").toLowerCase();
       return s === "assigned" || s === "picked up";
     }).length;
 
     const outForDeliveryCount = rows.filter(
       (item: any) =>
-        String(item?.deliveryAssignment?.status || "").toLowerCase() ===
-        "out for delivery"
+        String(item?.taskStatus || "").toLowerCase() === "out for delivery",
     ).length;
 
-    const deliveredCount = rows.filter(
-      (item: any) =>
-        String(item?.deliveryAssignment?.status || "").toLowerCase() ===
-        "delivered"
-    ).length;
+    const deliveredCount = rows.filter((item: any) => {
+      const s = String(item?.taskStatus || "").toLowerCase();
+      return s === "delivered" || s === "returned to store";
+    }).length;
 
     const failedCount = rows.filter((item: any) => {
-      const s = String(item?.deliveryAssignment?.status || "").toLowerCase();
+      const s = String(item?.taskStatus || "").toLowerCase();
       return s === "failed delivery" || s === "returned";
     }).length;
+
+    const returnPickupCount = rows.filter(
+      (item: any) => item.taskType === "RETURN_PICKUP",
+    ).length;
+
+    const exchangePickupCount = rows.filter(
+      (item: any) => item.taskType === "EXCHANGE_PICKUP",
+    ).length;
+
+    const replacementDeliveryCount = rows.filter(
+      (item: any) => item.taskType === "REPLACEMENT_DELIVERY",
+    ).length;
 
     return {
       summary: {
@@ -691,6 +881,9 @@ export const deliveryStaffService = {
         outForDeliveryCount,
         deliveredCount,
         failedCount,
+        returnPickupCount,
+        exchangePickupCount,
+        replacementDeliveryCount,
       },
       orders: rows,
     };
@@ -710,14 +903,14 @@ export const deliveryStaffService = {
       throw new AppError("Delivery rider not found", 404);
     }
 
-    const orders = await Order.find({
-      "deliveryAssignment.deliveryManId": rider._id,
-    })
+    const orders = await Order.find(assignedTaskQuery(rider._id))
       .populate("customer", "name email phone")
       .sort({ createdAt: -1 })
       .lean();
 
-    return (orders as any[]).map(mapDeliveryOrder);
+    return (orders as any[]).map((order) =>
+      mapDeliveryOrder(order, rider._id),
+    );
   },
 
   async getMyOrderDetails(userId: string, orderId: string) {
@@ -738,9 +931,9 @@ export const deliveryStaffService = {
       throw new AppError("Delivery rider not found", 404);
     }
 
-    const order = await Order.findOne({
+    const order: any = await Order.findOne({
       _id: new mongoose.Types.ObjectId(orderId),
-      "deliveryAssignment.deliveryManId": rider._id,
+      ...assignedTaskQuery(rider._id),
     })
       .populate("customer", "name email phone")
       .lean();
@@ -749,7 +942,7 @@ export const deliveryStaffService = {
       throw new AppError("Assigned order not found", 404);
     }
 
-    return orderService.mapOrder(order);
+    return mapDeliveryOrder(order, rider._id);
   },
 
   async updateMyOrderStatus(
@@ -758,7 +951,7 @@ export const deliveryStaffService = {
     input: {
       status?: string;
       note?: string;
-    }
+    },
   ) {
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       throw new AppError("Invalid delivery user id", 400);
@@ -786,6 +979,8 @@ export const deliveryStaffService = {
       throw new AppError("Assigned order not found", 404);
     }
 
+    assertDeliveryActionAllowed(order);
+
     const currentAssignment = order.deliveryAssignment || {};
     const currentStatus = String(currentAssignment.status || "Assigned");
     const nextStatus = String(input?.status || "").trim();
@@ -798,7 +993,7 @@ export const deliveryStaffService = {
     if (nextStatus === "Delivered") {
       throw new AppError(
         "Delivered status requires OTP verification. Use verify OTP instead.",
-        400
+        400,
       );
     }
 
@@ -859,8 +1054,9 @@ export const deliveryStaffService = {
     }
 
     const customerId = String(
-      (updated as any)?.customer?._id || order.customer || ""
+      (updated as any)?.customer?._id || order.customer || "",
     ).trim();
+
     const riderName = String((rider as any)?.name || "Delivery rider").trim();
 
     await notifyDeliveryStatus(updated, customerId, riderName, userId, nextStatus);
@@ -902,21 +1098,23 @@ export const deliveryStaffService = {
       throw new AppError("Assigned order not found", 404);
     }
 
+    assertDeliveryActionAllowed(order);
+
     const currentStatus = String(order?.deliveryAssignment?.status || "").trim();
 
     if (currentStatus !== "Out for Delivery") {
       throw new AppError(
         "OTP can only be sent when order status is Out for Delivery",
-        400
+        400,
       );
     }
 
     const targetPhone = String(
-      order?.address?.phone || order?.customer?.phone || ""
+      order?.address?.phone || order?.customer?.phone || "",
     ).trim();
 
     const targetEmail = String(
-      order?.address?.email || order?.customer?.email || ""
+      order?.address?.email || order?.customer?.email || "",
     ).trim();
 
     if (channel === "phone" && !targetPhone) {
@@ -947,7 +1145,7 @@ export const deliveryStaffService = {
       {
         deliveryAssignment: nextDeliveryAssignment,
       },
-      { new: true }
+      { new: true },
     )
       .populate("customer", "name email phone")
       .lean();
@@ -958,7 +1156,7 @@ export const deliveryStaffService = {
 
     const orderCode = String(updated.orderCode || "");
     const customerName = String(
-      updated?.address?.fullName || updated?.customer?.name || "Customer"
+      updated?.address?.fullName || updated?.customer?.name || "Customer",
     ).trim();
 
     const maskedTarget =
@@ -984,13 +1182,13 @@ export const deliveryStaffService = {
       });
     } else {
       console.log(
-        `[DELIVERY OTP SMS SIMULATION] Order ${orderCode} | Phone: ${targetPhone} | OTP: ${otpCode}`
+        `[DELIVERY OTP SMS SIMULATION] Order ${orderCode} | Phone: ${targetPhone} | OTP: ${otpCode}`,
       );
     }
 
     try {
       const customerId = String(
-        (updated as any)?.customer?._id || order.customer || ""
+        (updated as any)?.customer?._id || order.customer || "",
       ).trim();
 
       if (customerId) {
@@ -999,7 +1197,9 @@ export const deliveryStaffService = {
           title: "Delivery OTP Sent",
           message:
             channel === "phone"
-              ? `A delivery OTP was sent to your phone ending in ${targetPhone.slice(-4)}.`
+              ? `A delivery OTP was sent to your phone ending in ${targetPhone.slice(
+                  -4,
+                )}.`
               : `A delivery OTP was sent to your email ${maskedTarget}.`,
           type: "order",
           link: customerOrderLink(orderCode),
@@ -1018,7 +1218,7 @@ export const deliveryStaffService = {
 
     await emitOrderUpdated(
       updated,
-      String((updated as any)?.customer?._id || "")
+      String((updated as any)?.customer?._id || ""),
     );
 
     return {
@@ -1070,13 +1270,15 @@ export const deliveryStaffService = {
       throw new AppError("Assigned order not found", 404);
     }
 
+    assertDeliveryActionAllowed(order);
+
     const currentAssignment = order.deliveryAssignment || {};
     const currentStatus = String(currentAssignment.status || "").trim();
 
     if (currentStatus !== "Out for Delivery") {
       throw new AppError(
         "OTP can only be verified when order status is Out for Delivery",
-        400
+        400,
       );
     }
 
@@ -1137,8 +1339,9 @@ export const deliveryStaffService = {
     }
 
     const customerId = String(
-      (updated as any)?.customer?._id || order.customer || ""
+      (updated as any)?.customer?._id || order.customer || "",
     ).trim();
+
     const riderName = String((rider as any)?.name || "Delivery rider").trim();
 
     await notifyDeliveryStatus(
@@ -1146,7 +1349,7 @@ export const deliveryStaffService = {
       customerId,
       riderName,
       userId,
-      "Delivered"
+      "Delivered",
     );
 
     await emitOrderUpdated(updated, customerId);

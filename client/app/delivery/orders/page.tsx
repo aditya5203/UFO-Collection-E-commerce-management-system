@@ -13,9 +13,37 @@ import {
   getCustomerContact,
   getCustomerName,
   getDeliveryStatusTone,
+  isDeliveryBlockedByOrderStatus,
+  normalizeOrderStatus,
   safeJson,
   safeStr,
 } from "@/app/lib/delivery";
+
+type DeliveryTaskType =
+  | "NORMAL_DELIVERY"
+  | "RETURN_PICKUP"
+  | "EXCHANGE_PICKUP"
+  | "REPLACEMENT_DELIVERY";
+
+type DeliveryTaskStatus =
+  | "Assigned"
+  | "Picked Up"
+  | "Out for Delivery"
+  | "Delivered"
+  | "Failed Delivery"
+  | "Returned"
+  | "Returned to Store"
+  | "Cancelled"
+  | "Refunded";
+
+type DeliveryTaskView = DeliveryOrder & {
+  taskType?: DeliveryTaskType;
+  taskLabel?: string;
+  taskStatus?: DeliveryTaskStatus | string;
+  taskAssignedAt?: string | null;
+  taskRiderName?: string;
+  taskAssignment?: any;
+};
 
 const panelClass =
   "rounded-[26px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
@@ -35,9 +63,104 @@ const STATUSES = [
   "Picked Up",
   "Out for Delivery",
   "Delivered",
+  "Returned to Store",
   "Failed Delivery",
   "Returned",
+  "Cancelled",
+  "Refunded",
 ];
+
+const TASK_TYPES: Array<"All" | DeliveryTaskType> = [
+  "All",
+  "NORMAL_DELIVERY",
+  "RETURN_PICKUP",
+  "EXCHANGE_PICKUP",
+  "REPLACEMENT_DELIVERY",
+];
+
+function getTaskLabel(taskType?: string) {
+  const value = safeStr(taskType || "NORMAL_DELIVERY").toUpperCase();
+
+  if (value === "RETURN_PICKUP") return "Return Pickup";
+  if (value === "EXCHANGE_PICKUP") return "Exchange Pickup";
+  if (value === "REPLACEMENT_DELIVERY") return "Replacement Delivery";
+
+  return "Normal Delivery";
+}
+
+function getTaskTone(taskType?: string) {
+  const value = safeStr(taskType || "NORMAL_DELIVERY").toUpperCase();
+
+  if (value === "RETURN_PICKUP") {
+    return "border-orange-400/30 bg-orange-500/10 text-orange-200";
+  }
+
+  if (value === "EXCHANGE_PICKUP") {
+    return "border-purple-400/30 bg-purple-500/10 text-purple-200";
+  }
+
+  if (value === "REPLACEMENT_DELIVERY") {
+    return "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
+  }
+
+  return "border-blue-400/30 bg-blue-500/10 text-blue-200";
+}
+
+function getTaskAssignment(item: any) {
+  const taskType = safeStr(item.taskType || "").toUpperCase();
+
+  if (taskType === "RETURN_PICKUP") {
+    return item.returnPickupAssignment || item.taskAssignment || null;
+  }
+
+  if (taskType === "EXCHANGE_PICKUP") {
+    return item.exchangePickupAssignment || item.taskAssignment || null;
+  }
+
+  if (taskType === "REPLACEMENT_DELIVERY") {
+    return item.replacementDeliveryAssignment || item.taskAssignment || null;
+  }
+
+  if (item.returnPickupAssignment?.deliveryManId) {
+    return item.returnPickupAssignment;
+  }
+
+  if (item.exchangePickupAssignment?.deliveryManId) {
+    return item.exchangePickupAssignment;
+  }
+
+  if (item.replacementDeliveryAssignment?.deliveryManId) {
+    return item.replacementDeliveryAssignment;
+  }
+
+  return item.deliveryAssignment || item.taskAssignment || null;
+}
+
+function getTaskType(item: any): DeliveryTaskType {
+  const explicit = safeStr(item.taskType || item.taskAssignment?.taskType);
+  if (explicit) return explicit.toUpperCase() as DeliveryTaskType;
+
+  if (item.returnPickupAssignment?.deliveryManId) return "RETURN_PICKUP";
+  if (item.exchangePickupAssignment?.deliveryManId) return "EXCHANGE_PICKUP";
+  if (item.replacementDeliveryAssignment?.deliveryManId) {
+    return "REPLACEMENT_DELIVERY";
+  }
+
+  return "NORMAL_DELIVERY";
+}
+
+function getDisplayStatus(item: DeliveryTaskView) {
+  const taskType = getTaskType(item);
+  const assignment = getTaskAssignment(item);
+
+  const deliveryStatus =
+    safeStr(item.taskStatus || assignment?.status) || "Assigned";
+
+  const orderStatus = normalizeOrderStatus(item.orderStatus);
+  const blocked = taskType === "NORMAL_DELIVERY" && isDeliveryBlockedByOrderStatus(item);
+
+  return blocked ? orderStatus : deliveryStatus;
+}
 
 function StatusPill({ children }: { children: React.ReactNode }) {
   const tone = getDeliveryStatusTone(String(children));
@@ -52,7 +175,19 @@ function StatusPill({ children }: { children: React.ReactNode }) {
   );
 }
 
-function OrderItemsPreview({ item }: { item: DeliveryOrder }) {
+function TaskPill({ taskType }: { taskType?: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${getTaskTone(
+        taskType,
+      )}`}
+    >
+      {getTaskLabel(taskType)}
+    </span>
+  );
+}
+
+function OrderItemsPreview({ item }: { item: DeliveryTaskView }) {
   const items = Array.isArray(item.items) ? item.items : [];
 
   if (!items.length) {
@@ -69,9 +204,7 @@ function OrderItemsPreview({ item }: { item: DeliveryOrder }) {
       </div>
 
       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-[#a7aec4]">
-        <span>
-          {safeStr(first.colorLabel) || safeStr(first.color) || "Color"}
-        </span>
+        <span>{safeStr(first.colorLabel) || safeStr(first.color) || "Color"}</span>
         <span>•</span>
         <span>{safeStr(first.size) || "Size"}</span>
         <span>•</span>
@@ -97,7 +230,7 @@ function OrderItemsPreview({ item }: { item: DeliveryOrder }) {
   );
 }
 
-function getMobileItemSubValue(item: DeliveryOrder) {
+function getMobileItemSubValue(item: DeliveryTaskView) {
   const first = item.items?.[0];
 
   if (!first) return undefined;
@@ -110,12 +243,31 @@ function getMobileItemSubValue(item: DeliveryOrder) {
   return `${color} • ${size} • Qty ${qty}${sku}`;
 }
 
+function normalizeDeliveryRows(rawRows: any[]): DeliveryTaskView[] {
+  return rawRows.map((item) => {
+    const taskType = getTaskType(item);
+    const assignment = getTaskAssignment(item);
+
+    return {
+      ...item,
+      taskType,
+      taskLabel: getTaskLabel(taskType),
+      taskStatus: assignment?.status || item.taskStatus || "Assigned",
+      taskAssignedAt: assignment?.assignedAt || item.taskAssignedAt || null,
+      taskRiderName: assignment?.name || item.taskRiderName || "",
+      taskAssignment: assignment,
+    };
+  });
+}
+
 export default function DeliveryOrdersPage() {
-  const [rows, setRows] = React.useState<DeliveryOrder[]>([]);
+  const [rows, setRows] = React.useState<DeliveryTaskView[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("All");
+  const [taskFilter, setTaskFilter] =
+    React.useState<"All" | DeliveryTaskType>("All");
   const [query, setQuery] = React.useState("");
 
   const loadOrders = React.useCallback(async (mode: "initial" | "refresh") => {
@@ -141,9 +293,11 @@ export default function DeliveryOrdersPage() {
 
       const data = Array.isArray((json as any)?.data)
         ? (json as any).data
-        : [];
+        : Array.isArray((json as any)?.orders)
+          ? (json as any).orders
+          : [];
 
-      setRows(data);
+      setRows(normalizeDeliveryRows(data));
     } catch {
       setRows([]);
       setError("Network error while loading orders");
@@ -165,11 +319,23 @@ export default function DeliveryOrdersPage() {
     for (const status of STATUSES) {
       if (status === "All") continue;
 
-      counts[status] = rows.filter(
-        (item) =>
-          safeStr(item.deliveryAssignment?.status).toLowerCase() ===
-          status.toLowerCase()
-      ).length;
+      counts[status] = rows.filter((item) => {
+        const displayStatus = getDisplayStatus(item);
+        return displayStatus.toLowerCase() === status.toLowerCase();
+      }).length;
+    }
+
+    return counts;
+  }, [rows]);
+
+  const taskCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {
+      All: rows.length,
+    };
+
+    for (const task of TASK_TYPES) {
+      if (task === "All") continue;
+      counts[task] = rows.filter((item) => getTaskType(item) === task).length;
     }
 
     return counts;
@@ -179,11 +345,16 @@ export default function DeliveryOrdersPage() {
     const search = query.trim().toLowerCase();
 
     return rows.filter((item) => {
-      const status = safeStr(item.deliveryAssignment?.status);
+      const displayStatus = getDisplayStatus(item);
+      const taskType = getTaskType(item);
+
+      const matchesTask = taskFilter === "All" || taskType === taskFilter;
+
+      if (!matchesTask) return false;
 
       const matchesStatus =
         statusFilter === "All" ||
-        status.toLowerCase() === statusFilter.toLowerCase();
+        displayStatus.toLowerCase() === statusFilter.toLowerCase();
 
       if (!matchesStatus) return false;
 
@@ -199,7 +370,7 @@ export default function DeliveryOrdersPage() {
             safeStr(it.size),
             safeStr(it.color),
             safeStr(it.colorLabel),
-          ].join(" ")
+          ].join(" "),
         )
         .join(" ");
 
@@ -210,7 +381,9 @@ export default function DeliveryOrdersPage() {
         getCustomerContact(item),
         getArea(item),
         getCity(item),
-        status,
+        displayStatus,
+        getTaskLabel(taskType),
+        normalizeOrderStatus(item.orderStatus),
         formatNPR(item.totalPaisa, item.total),
         itemSearchText,
       ]
@@ -219,7 +392,7 @@ export default function DeliveryOrdersPage() {
 
       return searchable.includes(search);
     });
-  }, [rows, statusFilter, query]);
+  }, [rows, statusFilter, taskFilter, query]);
 
   return (
     <div className="-m-6 min-h-screen bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
@@ -242,12 +415,12 @@ export default function DeliveryOrdersPage() {
               </div>
 
               <h1 className="mt-2 text-[30px] font-semibold tracking-[-0.045em] text-white sm:text-[38px]">
-                My Delivery Orders
+                My Delivery Tasks
               </h1>
 
-              <p className="mt-2 max-w-[650px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
-                View, search, filter, and manage all delivery orders assigned to
-                you with product variant details.
+              <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                View normal deliveries, return pickups, exchange pickups, and
+                replacement deliveries assigned to you.
               </p>
 
               <div className="mt-5 flex flex-wrap gap-3">
@@ -261,8 +434,15 @@ export default function DeliveryOrdersPage() {
                   }
                 />
                 <MiniMetric
-                  label="Delivered"
-                  value={statusCounts.Delivered || 0}
+                  label="Returns"
+                  value={
+                    (taskCounts.RETURN_PICKUP || 0) +
+                    (taskCounts.EXCHANGE_PICKUP || 0)
+                  }
+                />
+                <MiniMetric
+                  label="Replacement"
+                  value={taskCounts.REPLACEMENT_DELIVERY || 0}
                 />
               </div>
             </div>
@@ -295,7 +475,7 @@ export default function DeliveryOrdersPage() {
               type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by order ID, customer, SKU, product, size, color, city..."
+              placeholder="Search by order ID, customer, task, SKU, product, size, color, city..."
               className={inputClass}
             />
 
@@ -310,34 +490,78 @@ export default function DeliveryOrdersPage() {
             ) : null}
           </div>
 
-          <div className="relative mt-5 flex gap-3 overflow-x-auto pb-1">
-            {STATUSES.map((status) => {
-              const active = statusFilter === status;
+          <div className="relative mt-5">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8f98b3]">
+              Task Type
+            </div>
 
-              return (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => setStatusFilter(status)}
-                  className={
-                    active
-                      ? "inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-white px-5 py-2.5 text-[12px] font-bold uppercase tracking-[0.16em] text-[#090a12] transition hover:bg-white/90"
-                      : `${secondaryBtnClass} shrink-0 gap-2`
-                  }
-                >
-                  <span>{status}</span>
-                  <span
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {TASK_TYPES.map((task) => {
+                const active = taskFilter === task;
+
+                return (
+                  <button
+                    key={task}
+                    type="button"
+                    onClick={() => setTaskFilter(task)}
                     className={
                       active
-                        ? "rounded-full bg-[#090a12]/10 px-2 py-0.5 text-[11px]"
-                        : "rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-[#d1d5db]"
+                        ? "inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-white px-5 py-2.5 text-[12px] font-bold uppercase tracking-[0.16em] text-[#090a12] transition hover:bg-white/90"
+                        : `${secondaryBtnClass} shrink-0 gap-2`
                     }
                   >
-                    {statusCounts[status] || 0}
-                  </span>
-                </button>
-              );
-            })}
+                    <span>
+                      {task === "All" ? "All Tasks" : getTaskLabel(task)}
+                    </span>
+                    <span
+                      className={
+                        active
+                          ? "rounded-full bg-[#090a12]/10 px-2 py-0.5 text-[11px]"
+                          : "rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-[#d1d5db]"
+                      }
+                    >
+                      {taskCounts[task] || 0}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="relative mt-5">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8f98b3]">
+              Status
+            </div>
+
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {STATUSES.map((status) => {
+                const active = statusFilter === status;
+
+                return (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setStatusFilter(status)}
+                    className={
+                      active
+                        ? "inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-white px-5 py-2.5 text-[12px] font-bold uppercase tracking-[0.16em] text-[#090a12] transition hover:bg-white/90"
+                        : `${secondaryBtnClass} shrink-0 gap-2`
+                    }
+                  >
+                    <span>{status}</span>
+                    <span
+                      className={
+                        active
+                          ? "rounded-full bg-[#090a12]/10 px-2 py-0.5 text-[11px]"
+                          : "rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-[#d1d5db]"
+                      }
+                    >
+                      {statusCounts[status] || 0}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </motion.section>
 
@@ -358,28 +582,33 @@ export default function DeliveryOrdersPage() {
           <div className="flex flex-col gap-4 border-b border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <div>
               <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                Orders
+                Delivery Tasks
               </div>
 
               <div className="mt-1 text-[20px] font-semibold text-white">
-                Assigned Delivery List
+                Assigned Task List
               </div>
 
               <div className="mt-1 text-[13px] text-[#a7aec4]">
-                Showing {filteredRows.length} of {rows.length} orders
+                Showing {filteredRows.length} of {rows.length} tasks
               </div>
             </div>
 
             <div className="rounded-full border border-white/10 bg-white/[0.035] px-4 py-2 text-[12px] font-semibold text-[#a7aec4]">
-              Filter: <span className="text-white">{statusFilter}</span>
+              Filter:{" "}
+              <span className="text-white">
+                {taskFilter === "All" ? "All Tasks" : getTaskLabel(taskFilter)}
+              </span>{" "}
+              / <span className="text-white">{statusFilter}</span>
             </div>
           </div>
 
           <div className="hidden overflow-x-auto lg:block">
-            <table className="w-full min-w-[1380px] border-collapse text-[13px]">
+            <table className="w-full min-w-[1480px] border-collapse text-[13px]">
               <thead>
                 <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
                   <th className="px-5 py-4 font-medium">Order ID</th>
+                  <th className="px-5 py-4 font-medium">Task</th>
                   <th className="px-5 py-4 font-medium">Customer</th>
                   <th className="px-5 py-4 font-medium">Address</th>
                   <th className="px-5 py-4 font-medium">Items / Variants</th>
@@ -396,12 +625,12 @@ export default function DeliveryOrdersPage() {
                 ) : filteredRows.length ? (
                   filteredRows.map((item, index) => {
                     const orderId = item.id || item._id || "";
-                    const status =
-                      safeStr(item.deliveryAssignment?.status) || "Assigned";
+                    const status = getDisplayStatus(item);
+                    const taskType = getTaskType(item);
 
                     return (
                       <motion.tr
-                        key={orderId || index}
+                        key={`${orderId || index}-${taskType}`}
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{
@@ -415,6 +644,17 @@ export default function DeliveryOrdersPage() {
                           <div className="font-semibold text-white">
                             {item.orderCode || orderId || "N/A"}
                           </div>
+
+                          {taskType === "NORMAL_DELIVERY" &&
+                          isDeliveryBlockedByOrderStatus(item) ? (
+                            <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-red-300">
+                              Delivery blocked
+                            </div>
+                          ) : null}
+                        </td>
+
+                        <td className="px-5 py-4">
+                          <TaskPill taskType={taskType} />
                         </td>
 
                         <td className="px-5 py-4">
@@ -448,12 +688,15 @@ export default function DeliveryOrdersPage() {
                         </td>
 
                         <td className="px-5 py-4 text-[#a7aec4]">
-                          {formatDateShort(item.deliveryAssignment?.assignedAt)}
+                          {formatDateShort(
+                            item.taskAssignedAt ||
+                              getTaskAssignment(item)?.assignedAt,
+                          )}
                         </td>
 
                         <td className="px-5 py-4 text-right">
                           <Link
-                            href={`/delivery/orders/${orderId}`}
+                            href={`/delivery/orders/${orderId}?task=${taskType}`}
                             className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[12px] font-semibold text-white transition hover:bg-white/10"
                           >
                             Open
@@ -464,12 +707,12 @@ export default function DeliveryOrdersPage() {
                   })
                 ) : (
                   <EmptyTable
-                    colSpan={8}
-                    title="No delivery orders found"
+                    colSpan={9}
+                    title="No delivery tasks found"
                     description={
                       query
-                        ? "Try clearing your search or changing the selected status filter."
-                        : "You do not have delivery orders for this status yet."
+                        ? "Try clearing your search or changing the selected filters."
+                        : "You do not have delivery tasks for this filter yet."
                     }
                   />
                 )}
@@ -487,12 +730,12 @@ export default function DeliveryOrdersPage() {
             ) : filteredRows.length ? (
               filteredRows.map((item, index) => {
                 const orderId = item.id || item._id || "";
-                const status =
-                  safeStr(item.deliveryAssignment?.status) || "Assigned";
+                const status = getDisplayStatus(item);
+                const taskType = getTaskType(item);
 
                 return (
                   <motion.div
-                    key={orderId || index}
+                    key={`${orderId || index}-${taskType}`}
                     initial={{ opacity: 0, y: 14 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{
@@ -511,9 +754,20 @@ export default function DeliveryOrdersPage() {
                         <div className="mt-1 font-semibold text-white">
                           {item.orderCode || orderId || "N/A"}
                         </div>
+
+                        {taskType === "NORMAL_DELIVERY" &&
+                        isDeliveryBlockedByOrderStatus(item) ? (
+                          <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-red-300">
+                            Delivery blocked
+                          </div>
+                        ) : null}
                       </div>
 
                       <StatusPill>{status}</StatusPill>
+                    </div>
+
+                    <div className="mt-3">
+                      <TaskPill taskType={taskType} />
                     </div>
 
                     <div className="mt-4 grid gap-3 text-[13px]">
@@ -547,16 +801,17 @@ export default function DeliveryOrdersPage() {
                       <MobileInfo
                         label="Assigned"
                         value={formatDateShort(
-                          item.deliveryAssignment?.assignedAt
+                          item.taskAssignedAt ||
+                            getTaskAssignment(item)?.assignedAt,
                         )}
                       />
                     </div>
 
                     <Link
-                      href={`/delivery/orders/${orderId}`}
+                      href={`/delivery/orders/${orderId}?task=${taskType}`}
                       className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-full border border-white/10 bg-white/5 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
                     >
-                      Open Order
+                      Open Task
                     </Link>
                   </motion.div>
                 );
@@ -568,13 +823,13 @@ export default function DeliveryOrdersPage() {
                 </div>
 
                 <div className="mt-4 text-base font-semibold text-white">
-                  No delivery orders found
+                  No delivery tasks found
                 </div>
 
                 <div className="mx-auto mt-2 max-w-[320px] text-[13px] leading-6 text-[#a7aec4]">
                   {query
-                    ? "Try clearing your search or changing the selected status filter."
-                    : "You do not have delivery orders for this status yet."}
+                    ? "Try clearing your search or changing the selected filters."
+                    : "You do not have delivery tasks for this filter yet."}
                 </div>
               </div>
             )}
@@ -601,7 +856,7 @@ function TableSkeleton() {
     <>
       {Array.from({ length: 6 }).map((_, index) => (
         <tr key={index} className="border-t border-[#26293a]">
-          {Array.from({ length: 8 }).map((__, cellIndex) => (
+          {Array.from({ length: 9 }).map((__, cellIndex) => (
             <td key={cellIndex} className="px-5 py-4">
               <div className="h-4 w-full max-w-[150px] animate-pulse rounded-full bg-white/10" />
             </td>

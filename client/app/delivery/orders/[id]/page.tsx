@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   DELIVERY_ENDPOINTS,
@@ -12,13 +12,31 @@ import {
   formatDateLong,
   formatDateTime,
   formatNPR,
+  getDeliveryBlockedReason,
   getDeliveryStatusTone,
   getGoogleMapsUrl,
   hasLatLng,
+  isDeliveryBlockedByOrderStatus,
+  normalizeOrderStatus,
   pickId,
   safeJson,
   safeStr,
 } from "@/app/lib/delivery";
+
+type DeliveryTaskType =
+  | "NORMAL_DELIVERY"
+  | "RETURN_PICKUP"
+  | "EXCHANGE_PICKUP"
+  | "REPLACEMENT_DELIVERY";
+
+type TaskStatus =
+  | "Assigned"
+  | "Picked Up"
+  | "Out for Delivery"
+  | "Delivered"
+  | "Failed Delivery"
+  | "Returned"
+  | "Returned to Store";
 
 type TimelineStep = {
   label: string;
@@ -68,40 +86,29 @@ function getColorDotClass(color?: string) {
     black: "bg-black",
     "#000": "bg-black",
     "#000000": "bg-black",
-
     white: "bg-white",
     "#fff": "bg-white",
     "#ffffff": "bg-white",
-
     red: "bg-red-500",
     "#ef4444": "bg-red-500",
-
     blue: "bg-blue-500",
     "#3b82f6": "bg-blue-500",
-
     green: "bg-green-500",
     "#22c55e": "bg-green-500",
-
     yellow: "bg-yellow-400",
     "#eab308": "bg-yellow-400",
-
     gray: "bg-gray-500",
     grey: "bg-gray-500",
     "#808080": "bg-gray-500",
-
     pink: "bg-pink-500",
     "#ec4899": "bg-pink-500",
-
     purple: "bg-purple-500",
     "#a855f7": "bg-purple-500",
-
     orange: "bg-orange-500",
     "#f97316": "bg-orange-500",
-
     navy: "bg-blue-950",
     "navy blue": "bg-blue-950",
     "#000080": "bg-blue-950",
-
     brown: "bg-amber-900",
     maroon: "bg-red-900",
     cream: "bg-yellow-100",
@@ -109,6 +116,69 @@ function getColorDotClass(color?: string) {
   };
 
   return colorMap[c] || "bg-[#161824]";
+}
+
+function getTaskLabel(taskType: DeliveryTaskType) {
+  if (taskType === "RETURN_PICKUP") return "Return Pickup";
+  if (taskType === "EXCHANGE_PICKUP") return "Exchange Pickup";
+  if (taskType === "REPLACEMENT_DELIVERY") return "Replacement Delivery";
+  return "Normal Delivery";
+}
+
+function getTaskTone(taskType: DeliveryTaskType) {
+  if (taskType === "RETURN_PICKUP") {
+    return "border-orange-400/30 bg-orange-500/10 text-orange-200";
+  }
+
+  if (taskType === "EXCHANGE_PICKUP") {
+    return "border-purple-400/30 bg-purple-500/10 text-purple-200";
+  }
+
+  if (taskType === "REPLACEMENT_DELIVERY") {
+    return "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
+  }
+
+  return "border-blue-400/30 bg-blue-500/10 text-blue-200";
+}
+
+function normalizeTaskType(value?: string | null): DeliveryTaskType {
+  const task = safeStr(value).toUpperCase();
+
+  if (task === "RETURN_PICKUP") return "RETURN_PICKUP";
+  if (task === "EXCHANGE_PICKUP") return "EXCHANGE_PICKUP";
+  if (task === "REPLACEMENT_DELIVERY") return "REPLACEMENT_DELIVERY";
+
+  return "NORMAL_DELIVERY";
+}
+
+function getTaskAssignment(order: any, taskType: DeliveryTaskType) {
+  if (taskType === "RETURN_PICKUP") {
+    return order?.returnPickupAssignment || order?.taskAssignment || null;
+  }
+
+  if (taskType === "EXCHANGE_PICKUP") {
+    return order?.exchangePickupAssignment || order?.taskAssignment || null;
+  }
+
+  if (taskType === "REPLACEMENT_DELIVERY") {
+    return order?.replacementDeliveryAssignment || order?.taskAssignment || null;
+  }
+
+  return order?.deliveryAssignment || order?.taskAssignment || null;
+}
+
+function getDefaultTaskFromOrder(order: any): DeliveryTaskType {
+  const explicit = safeStr(order?.taskType || order?.taskAssignment?.taskType);
+
+  if (explicit) return normalizeTaskType(explicit);
+
+  if (order?.returnPickupAssignment?.deliveryManId) return "RETURN_PICKUP";
+  if (order?.exchangePickupAssignment?.deliveryManId) return "EXCHANGE_PICKUP";
+  if (order?.replacementDeliveryAssignment?.deliveryManId) {
+    return "REPLACEMENT_DELIVERY";
+  }
+
+  return "NORMAL_DELIVERY";
 }
 
 function StatusPill({ children }: { children: React.ReactNode }) {
@@ -120,6 +190,19 @@ function StatusPill({ children }: { children: React.ReactNode }) {
     >
       <span className="mr-2 h-1.5 w-1.5 rounded-full bg-current" />
       {children}
+    </span>
+  );
+}
+
+function TaskPill({ taskType }: { taskType: DeliveryTaskType }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${getTaskTone(
+        taskType,
+      )}`}
+    >
+      <span className="mr-2 h-1.5 w-1.5 rounded-full bg-current" />
+      {getTaskLabel(taskType)}
     </span>
   );
 }
@@ -213,8 +296,55 @@ function LineItem({
   );
 }
 
-function getAllowedTransitions(currentStatus: string): DeliveryStatus[] {
+function getAllowedTransitions(
+  currentStatus: string,
+  taskType: DeliveryTaskType,
+): TaskStatus[] {
   const s = safeStr(currentStatus).toLowerCase();
+
+  if (taskType === "RETURN_PICKUP" || taskType === "EXCHANGE_PICKUP") {
+    if (!s || s === "assigned") {
+      return ["Assigned", "Picked Up", "Failed Delivery"];
+    }
+
+    if (s === "picked up") {
+      return ["Picked Up", "Returned to Store", "Failed Delivery"];
+    }
+
+    if (s === "returned to store") {
+      return ["Returned to Store"];
+    }
+
+    if (s === "failed delivery") {
+      return ["Failed Delivery"];
+    }
+
+    return ["Assigned", "Picked Up", "Returned to Store", "Failed Delivery"];
+  }
+
+  if (taskType === "REPLACEMENT_DELIVERY") {
+    if (!s || s === "assigned") {
+      return ["Assigned", "Picked Up", "Out for Delivery", "Failed Delivery"];
+    }
+
+    if (s === "picked up") {
+      return ["Picked Up", "Out for Delivery", "Failed Delivery"];
+    }
+
+    if (s === "out for delivery") {
+      return ["Out for Delivery", "Delivered", "Failed Delivery"];
+    }
+
+    if (s === "delivered") {
+      return ["Delivered"];
+    }
+
+    if (s === "failed delivery") {
+      return ["Failed Delivery"];
+    }
+
+    return ["Assigned", "Picked Up", "Out for Delivery", "Failed Delivery"];
+  }
 
   if (!s || s === "assigned") {
     return ["Assigned", "Picked Up", "Failed Delivery", "Returned"];
@@ -243,10 +373,143 @@ function getAllowedTransitions(currentStatus: string): DeliveryStatus[] {
   return ["Assigned", "Picked Up", "Failed Delivery", "Returned"];
 }
 
+function buildTimeline(
+  taskType: DeliveryTaskType,
+  currentStatus: string,
+  assignment: any,
+  placedOn: string,
+  assignedAt: string,
+): TimelineStep[] {
+  if (taskType === "RETURN_PICKUP" || taskType === "EXCHANGE_PICKUP") {
+    return [
+      { label: "Task Created", date: placedOn, status: "done" },
+      {
+        label: "Assigned",
+        date: assignedAt,
+        status:
+          currentStatus === "Assigned"
+            ? "current"
+            : assignedAt !== "-"
+              ? "done"
+              : "upcoming",
+      },
+      {
+        label: "Picked Up",
+        date: safeStr(assignment?.pickedUpAt)
+          ? formatDateLong(assignment?.pickedUpAt)
+          : "—",
+        status:
+          currentStatus === "Picked Up"
+            ? "current"
+            : ["Returned to Store", "Failed Delivery"].includes(currentStatus)
+              ? "done"
+              : "upcoming",
+      },
+      {
+        label: "Returned to Store",
+        date: safeStr(assignment?.returnedToStoreAt)
+          ? formatDateLong(assignment?.returnedToStoreAt)
+          : "—",
+        status:
+          currentStatus === "Returned to Store" ? "current" : "upcoming",
+      },
+    ];
+  }
+
+  if (taskType === "REPLACEMENT_DELIVERY") {
+    return [
+      { label: "Replacement Assigned", date: assignedAt, status: "done" },
+      {
+        label: "Picked Up",
+        date: safeStr(assignment?.pickedUpAt)
+          ? formatDateLong(assignment?.pickedUpAt)
+          : "—",
+        status:
+          currentStatus === "Picked Up"
+            ? "current"
+            : ["Out for Delivery", "Delivered", "Failed Delivery"].includes(
+                  currentStatus,
+                )
+              ? "done"
+              : "upcoming",
+      },
+      {
+        label: "Out for Delivery",
+        date: safeStr(assignment?.outForDeliveryAt)
+          ? formatDateLong(assignment?.outForDeliveryAt)
+          : "—",
+        status:
+          currentStatus === "Out for Delivery"
+            ? "current"
+            : ["Delivered", "Failed Delivery"].includes(currentStatus)
+              ? "done"
+              : "upcoming",
+      },
+      {
+        label: "Delivered",
+        date: safeStr(assignment?.deliveredAt)
+          ? formatDateLong(assignment?.deliveredAt)
+          : "—",
+        status: currentStatus === "Delivered" ? "current" : "upcoming",
+      },
+    ];
+  }
+
+  return [
+    { label: "Order Placed", date: placedOn, status: "done" },
+    {
+      label: "Assigned",
+      date: assignedAt,
+      status:
+        currentStatus === "Assigned"
+          ? "current"
+          : assignedAt !== "-"
+            ? "done"
+            : "upcoming",
+    },
+    {
+      label: "Picked Up",
+      date: safeStr(assignment?.pickedUpAt)
+        ? formatDateLong(assignment?.pickedUpAt)
+        : "—",
+      status:
+        currentStatus === "Picked Up"
+          ? "current"
+          : ["Out for Delivery", "Delivered", "Failed Delivery", "Returned"].includes(
+                currentStatus,
+              )
+            ? "done"
+            : "upcoming",
+    },
+    {
+      label: "Out for Delivery",
+      date: safeStr(assignment?.outForDeliveryAt)
+        ? formatDateLong(assignment?.outForDeliveryAt)
+        : "—",
+      status:
+        currentStatus === "Out for Delivery"
+          ? "current"
+          : ["Delivered", "Failed Delivery", "Returned"].includes(currentStatus)
+            ? "done"
+            : "upcoming",
+    },
+    {
+      label: "Delivered",
+      date: safeStr(assignment?.deliveredAt)
+        ? formatDateLong(assignment?.deliveredAt)
+        : "—",
+      status: currentStatus === "Delivered" ? "current" : "upcoming",
+    },
+  ];
+}
+
 export default function DeliveryOrderDetailsPage() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const router = useRouter();
+
   const id = params?.id;
+  const taskFromUrl = normalizeTaskType(searchParams.get("task"));
 
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -254,11 +517,13 @@ export default function DeliveryOrderDetailsPage() {
   const [otpSending, setOtpSending] = React.useState(false);
   const [otpVerifying, setOtpVerifying] = React.useState(false);
   const [order, setOrder] = React.useState<DeliveryOrder | null>(null);
+  const [taskType, setTaskType] =
+    React.useState<DeliveryTaskType>(taskFromUrl);
   const [error, setError] = React.useState("");
   const [toast, setToast] = React.useState<Toast | null>(null);
 
   const [deliveryStatus, setDeliveryStatus] =
-    React.useState<DeliveryStatus>("Assigned");
+    React.useState<TaskStatus>("Assigned");
   const [deliveryNote, setDeliveryNote] = React.useState("");
 
   const [otpChannel, setOtpChannel] =
@@ -303,11 +568,19 @@ export default function DeliveryOrderDetailsPage() {
         const nextOrder = ((json as any)?.data || null) as DeliveryOrder | null;
         setOrder(nextOrder);
 
+        const resolvedTask =
+          taskFromUrl !== "NORMAL_DELIVERY"
+            ? taskFromUrl
+            : getDefaultTaskFromOrder(nextOrder);
+
+        setTaskType(resolvedTask);
+
+        const assignment = getTaskAssignment(nextOrder, resolvedTask);
+
         setDeliveryStatus(
-          (safeStr(nextOrder?.deliveryAssignment?.status) ||
-            "Assigned") as DeliveryStatus
+          (safeStr(assignment?.status) || "Assigned") as TaskStatus,
         );
-        setDeliveryNote(safeStr(nextOrder?.deliveryAssignment?.note));
+        setDeliveryNote(safeStr(assignment?.note));
       } catch {
         setError("Failed to load order");
         setOrder(null);
@@ -316,7 +589,7 @@ export default function DeliveryOrderDetailsPage() {
         setRefreshing(false);
       }
     },
-    [id]
+    [id, taskFromUrl],
   );
 
   React.useEffect(() => {
@@ -327,9 +600,18 @@ export default function DeliveryOrderDetailsPage() {
     const orderId = pickId(order);
     if (!orderId) return;
 
-    const currentStatus =
-      safeStr(order?.deliveryAssignment?.status) || "Assigned";
-    const originalDeliveryNote = safeStr(order?.deliveryAssignment?.note).trim();
+    const assignment = getTaskAssignment(order, taskType);
+
+    if (taskType === "NORMAL_DELIVERY" && isDeliveryBlockedByOrderStatus(order)) {
+      setToast({
+        type: "error",
+        message: getDeliveryBlockedReason(order),
+      });
+      return;
+    }
+
+    const currentStatus = safeStr(assignment?.status) || "Assigned";
+    const originalDeliveryNote = safeStr(assignment?.note).trim();
 
     const hasStatusChanges =
       deliveryStatus !== currentStatus ||
@@ -347,14 +629,34 @@ export default function DeliveryOrderDetailsPage() {
       setSaving(true);
       setToast(null);
 
-      const res = await fetch(`${DELIVERY_ENDPOINTS.orders}/${orderId}/status`, {
+      let endpoint = `${DELIVERY_ENDPOINTS.orders}/${orderId}/status`;
+      let body: Record<string, any> = {
+        status: deliveryStatus,
+        note: deliveryNote.trim(),
+      };
+
+      if (taskType === "RETURN_PICKUP" || taskType === "EXCHANGE_PICKUP") {
+  endpoint = DELIVERY_ENDPOINTS.pickupTaskStatus(orderId);
+  body = {
+    taskType,
+    status: deliveryStatus,
+    note: deliveryNote.trim(),
+  };
+}
+
+      if (taskType === "REPLACEMENT_DELIVERY") {
+  endpoint = DELIVERY_ENDPOINTS.replacementTaskStatus(orderId);
+  body = {
+    status: deliveryStatus,
+    note: deliveryNote.trim(),
+  };
+}
+
+      const res = await fetch(endpoint, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: deliveryStatus,
-          note: deliveryNote.trim(),
-        }),
+        body: JSON.stringify(body),
       });
 
       const json = await safeJson(res);
@@ -367,20 +669,27 @@ export default function DeliveryOrderDetailsPage() {
         return;
       }
 
-      const updatedOrder = ((json as any)?.data || order) as DeliveryOrder;
+      const updatedOrder = ((json as any)?.data ||
+        (json as any)?.order ||
+        order) as DeliveryOrder;
 
       setOrder(updatedOrder);
+
+      const updatedAssignment = getTaskAssignment(updatedOrder, taskType);
+
       setDeliveryStatus(
-        (safeStr(updatedOrder?.deliveryAssignment?.status) ||
-          deliveryStatus) as DeliveryStatus
+        (safeStr(updatedAssignment?.status) || deliveryStatus) as TaskStatus,
       );
-      setDeliveryNote(safeStr(updatedOrder?.deliveryAssignment?.note));
+      setDeliveryNote(safeStr(updatedAssignment?.note));
       setOtpMessage("");
       setOtpError("");
 
       setToast({
         type: "success",
-        message: "Delivery status updated successfully.",
+        message:
+          taskType === "NORMAL_DELIVERY"
+            ? "Delivery status updated successfully."
+            : "Task status updated successfully.",
       });
 
       router.refresh();
@@ -398,6 +707,20 @@ export default function DeliveryOrderDetailsPage() {
     const orderId = pickId(order);
     if (!orderId) return;
 
+    if (taskType !== "NORMAL_DELIVERY") {
+      const message = "OTP is only required for normal customer delivery.";
+      setOtpError(message);
+      setToast({ type: "info", message });
+      return;
+    }
+
+    if (isDeliveryBlockedByOrderStatus(order)) {
+      const message = getDeliveryBlockedReason(order);
+      setOtpError(message);
+      setToast({ type: "error", message });
+      return;
+    }
+
     try {
       setOtpSending(true);
       setOtpError("");
@@ -411,7 +734,7 @@ export default function DeliveryOrderDetailsPage() {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ channel: otpChannel }),
-        }
+        },
       );
 
       const json = await safeJson(res);
@@ -450,6 +773,20 @@ export default function DeliveryOrderDetailsPage() {
     const orderId = pickId(order);
     if (!orderId) return;
 
+    if (taskType !== "NORMAL_DELIVERY") {
+      const message = "OTP verification is only for normal delivery.";
+      setOtpError(message);
+      setToast({ type: "info", message });
+      return;
+    }
+
+    if (isDeliveryBlockedByOrderStatus(order)) {
+      const message = getDeliveryBlockedReason(order);
+      setOtpError(message);
+      setToast({ type: "error", message });
+      return;
+    }
+
     const cleanOtp = otpInput.trim();
 
     if (!/^\d{4}$/.test(cleanOtp)) {
@@ -460,7 +797,7 @@ export default function DeliveryOrderDetailsPage() {
     }
 
     const confirmed = window.confirm(
-      "Are you sure you want to verify OTP and mark this order as delivered?"
+      "Are you sure you want to verify OTP and mark this order as delivered?",
     );
 
     if (!confirmed) return;
@@ -478,7 +815,7 @@ export default function DeliveryOrderDetailsPage() {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ otp: cleanOtp }),
-        }
+        },
       );
 
       const json = await safeJson(res);
@@ -495,7 +832,7 @@ export default function DeliveryOrderDetailsPage() {
       setOrder(updatedOrder);
       setDeliveryStatus(
         (safeStr(updatedOrder?.deliveryAssignment?.status) ||
-          "Delivered") as DeliveryStatus
+          "Delivered") as TaskStatus,
       );
       setDeliveryNote(safeStr(updatedOrder?.deliveryAssignment?.note));
       setOtpInput("");
@@ -561,69 +898,36 @@ export default function DeliveryOrderDetailsPage() {
     );
   }
 
+  const assignment = getTaskAssignment(order, taskType);
+
   const orderId = pickId(order);
   const placedOn = formatDateLong(order.createdAt);
-  const assignedAt = formatDateLong(order?.deliveryAssignment?.assignedAt);
+  const assignedAt = formatDateLong(assignment?.assignedAt);
 
-  const currentStatus =
-    safeStr(order?.deliveryAssignment?.status) || "Assigned";
-  const allowedStatuses = getAllowedTransitions(currentStatus);
+  const currentStatus = safeStr(assignment?.status) || "Assigned";
 
-  const originalDeliveryNote = safeStr(order?.deliveryAssignment?.note).trim();
+  const orderLifecycleStatus = normalizeOrderStatus(order?.orderStatus);
+  const blockedByOrderStatus =
+    taskType === "NORMAL_DELIVERY" && isDeliveryBlockedByOrderStatus(order);
+  const blockedReason = getDeliveryBlockedReason(order);
+
+  const allowedStatuses = blockedByOrderStatus
+    ? [currentStatus as TaskStatus]
+    : getAllowedTransitions(currentStatus, taskType);
+
+  const originalDeliveryNote = safeStr(assignment?.note).trim();
 
   const hasStatusChanges =
     deliveryStatus !== currentStatus ||
     deliveryNote.trim() !== originalDeliveryNote;
 
-  const timeline: TimelineStep[] = [
-    { label: "Order Placed", date: placedOn, status: "done" },
-    {
-      label: "Assigned",
-      date: assignedAt,
-      status:
-        currentStatus === "Assigned"
-          ? "current"
-          : assignedAt !== "-"
-            ? "done"
-            : "upcoming",
-    },
-    {
-      label: "Picked Up",
-      date: safeStr(order?.deliveryAssignment?.pickedUpAt)
-        ? formatDateLong(order?.deliveryAssignment?.pickedUpAt)
-        : "—",
-      status:
-        currentStatus === "Picked Up"
-          ? "current"
-          : [
-                "Out for Delivery",
-                "Delivered",
-                "Failed Delivery",
-                "Returned",
-              ].includes(currentStatus)
-            ? "done"
-            : "upcoming",
-    },
-    {
-      label: "Out for Delivery",
-      date: safeStr(order?.deliveryAssignment?.outForDeliveryAt)
-        ? formatDateLong(order?.deliveryAssignment?.outForDeliveryAt)
-        : "—",
-      status:
-        currentStatus === "Out for Delivery"
-          ? "current"
-          : ["Delivered", "Failed Delivery", "Returned"].includes(currentStatus)
-            ? "done"
-            : "upcoming",
-    },
-    {
-      label: "Delivered",
-      date: safeStr(order?.deliveryAssignment?.deliveredAt)
-        ? formatDateLong(order?.deliveryAssignment?.deliveredAt)
-        : "—",
-      status: currentStatus === "Delivered" ? "current" : "upcoming",
-    },
-  ];
+  const timeline = buildTimeline(
+    taskType,
+    currentStatus,
+    assignment,
+    placedOn,
+    assignedAt,
+  );
 
   const addr = order.address || null;
   const addrTitle = addr?.label ? safeStr(addr.label) : "Shipping Address";
@@ -658,9 +962,16 @@ export default function DeliveryOrderDetailsPage() {
   const mapsLink = hasLatLng(addr) ? getGoogleMapsUrl(addr) : "";
 
   const isFinalState =
-    currentStatus === "Delivered" || currentStatus === "Returned";
+    blockedByOrderStatus ||
+    currentStatus === "Delivered" ||
+    currentStatus === "Returned" ||
+    currentStatus === "Returned to Store";
 
-  const canSendOtp = currentStatus === "Out for Delivery";
+  const canSendOtp =
+    taskType === "NORMAL_DELIVERY" &&
+    !blockedByOrderStatus &&
+    currentStatus === "Out for Delivery";
+
   const otpVerified = Boolean(order?.deliveryAssignment?.isOtpVerified);
   const otpExpiresAt = safeStr(order?.deliveryAssignment?.otpExpiresAt);
   const otpSentTo = safeStr(order?.deliveryAssignment?.otpSentTo);
@@ -685,7 +996,7 @@ export default function DeliveryOrderDetailsPage() {
           <div className="relative flex min-w-0 flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div className="min-w-0">
               <div className="break-words text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                Delivery <span className="mx-2 text-[#7f879f]">/</span> Orders{" "}
+                Delivery <span className="mx-2 text-[#7f879f]">/</span> Tasks{" "}
                 <span className="mx-2 text-[#7f879f]">/</span>{" "}
                 {order.orderCode || orderId}
               </div>
@@ -695,11 +1006,18 @@ export default function DeliveryOrderDetailsPage() {
                   {order.orderCode || orderId}
                 </h1>
 
+                <TaskPill taskType={taskType} />
                 <StatusPill>{currentStatus}</StatusPill>
+
+                {orderLifecycleStatus &&
+                orderLifecycleStatus !== "Pending" &&
+                orderLifecycleStatus !== currentStatus ? (
+                  <StatusPill>{orderLifecycleStatus}</StatusPill>
+                ) : null}
               </div>
 
               <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
-                Placed on {placedOn}
+                {getTaskLabel(taskType)} assigned on {assignedAt}
                 {order?.paymentMethod ? (
                   <>
                     <span className="mx-2 text-[#7f879f]">•</span>
@@ -707,6 +1025,13 @@ export default function DeliveryOrderDetailsPage() {
                   </>
                 ) : null}
               </p>
+
+              {blockedByOrderStatus ? (
+                <div className="mt-4 rounded-[18px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] leading-6 text-red-200">
+                  <div className="font-semibold">Delivery blocked</div>
+                  <div className="mt-1">{blockedReason}</div>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -759,23 +1084,23 @@ export default function DeliveryOrderDetailsPage() {
 
             <SummaryCard
               index={1}
+              label="Task Type"
+              value={getTaskLabel(taskType)}
+              hint="Assigned delivery task"
+            />
+
+            <SummaryCard
+              index={2}
               label="Items"
               value={String(items.length)}
               hint="Products / variants in this order"
             />
 
             <SummaryCard
-              index={2}
-              label="Total"
-              value={formatNPR(totalPaisa)}
-              hint="Order collection amount"
-            />
-
-            <SummaryCard
               index={3}
               label="Assigned Date"
               value={assignedAt}
-              hint={formatDateTime(order?.deliveryAssignment?.assignedAt)}
+              hint={formatDateTime(assignment?.assignedAt)}
             />
           </div>
         </motion.section>
@@ -794,7 +1119,7 @@ export default function DeliveryOrderDetailsPage() {
                 </div>
 
                 <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  Ordered Items
+                  Order Items
                 </h2>
 
                 <p className="mt-1 text-[13px] text-[#a7aec4]">
@@ -833,7 +1158,7 @@ export default function DeliveryOrderDetailsPage() {
                         const colorValue = safeStr(it?.color);
                         const colorLabel = safeStr(it?.colorLabel);
                         const colorClass = getColorDotClass(
-                          colorValue || colorLabel
+                          colorValue || colorLabel,
                         );
                         const qty = Number(it?.qty || 0);
                         const pricePaisa = Number(it?.pricePaisa || 0);
@@ -950,7 +1275,7 @@ export default function DeliveryOrderDetailsPage() {
                     const colorValue = safeStr(it?.color);
                     const colorLabel = safeStr(it?.colorLabel);
                     const colorClass = getColorDotClass(
-                      colorValue || colorLabel
+                      colorValue || colorLabel,
                     );
                     const qty = Number(it?.qty || 0);
                     const pricePaisa = Number(it?.pricePaisa || 0);
@@ -1060,11 +1385,11 @@ export default function DeliveryOrderDetailsPage() {
                 </div>
 
                 <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  Delivery Timeline
+                  Task Timeline
                 </h2>
 
                 <p className="mt-1 text-[13px] text-[#a7aec4]">
-                  Current delivery progress of this order
+                  Current progress of this delivery task
                 </p>
               </div>
 
@@ -1175,26 +1500,35 @@ export default function DeliveryOrderDetailsPage() {
                 </div>
 
                 <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  Update Delivery Status
+                  Update Task Status
                 </h2>
 
                 <p className="mt-1 text-[13px] leading-6 text-[#a7aec4]">
-                  Follow the delivery flow carefully. Delivered status is only
-                  completed after OTP verification.
+                  You are updating{" "}
+                  <span className="font-semibold text-white">
+                    {getTaskLabel(taskType)}
+                  </span>
+                  . Follow the flow carefully.
                 </p>
+
+                {blockedByOrderStatus ? (
+                  <div className="mt-4 rounded-[16px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] leading-6 text-red-200">
+                    {blockedReason}
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-5 space-y-5">
-                <Field label="Delivery Status">
+                <Field label="Task Status">
                   <select
                     value={deliveryStatus}
                     onChange={(e) =>
-                      setDeliveryStatus(e.target.value as DeliveryStatus)
+                      setDeliveryStatus(e.target.value as TaskStatus)
                     }
                     disabled={isFinalState}
                     className={inputClass}
-                    title="Delivery status"
-                    aria-label="Delivery status"
+                    title="Task status"
+                    aria-label="Task status"
                   >
                     {allowedStatuses.map((status) => (
                       <option
@@ -1208,16 +1542,16 @@ export default function DeliveryOrderDetailsPage() {
                   </select>
                 </Field>
 
-                <Field label="Delivery Note">
+                <Field label="Task Note">
                   <textarea
                     value={deliveryNote}
                     onChange={(e) => setDeliveryNote(e.target.value)}
                     disabled={isFinalState}
                     rows={4}
-                    placeholder="Add delivery note, failed reason, landmark, etc."
+                    placeholder="Add task note, failed reason, pickup condition, landmark, etc."
                     className={`${inputClass} min-h-[120px] resize-none`}
-                    title="Delivery note"
-                    aria-label="Delivery note"
+                    title="Task note"
+                    aria-label="Task note"
                   />
                 </Field>
 
@@ -1258,12 +1592,26 @@ export default function DeliveryOrderDetailsPage() {
                 </h2>
 
                 <p className="mt-1 text-[13px] leading-6 text-[#a7aec4]">
-                  When order is Out for Delivery, send OTP to customer by phone
-                  or email and verify before completing delivery.
+                  OTP is required only for normal customer delivery. Return
+                  pickup, exchange pickup, and replacement delivery can be
+                  updated using task status.
                 </p>
               </div>
 
-              {!canSendOtp && !otpVerified ? (
+              {taskType !== "NORMAL_DELIVERY" ? (
+                <div className="mt-5 rounded-[16px] border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-[13px] leading-6 text-blue-200">
+                  OTP is disabled for {getTaskLabel(taskType)}.
+                </div>
+              ) : blockedByOrderStatus ? (
+                <div className="mt-5 rounded-[16px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] leading-6 text-red-200">
+                  OTP is disabled. {blockedReason}
+                </div>
+              ) : null}
+
+              {!canSendOtp &&
+              !otpVerified &&
+              !blockedByOrderStatus &&
+              taskType === "NORMAL_DELIVERY" ? (
                 <div className="mt-5 rounded-[16px] border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-6 text-amber-200">
                   OTP can be sent only when delivery status is Out for Delivery.
                 </div>

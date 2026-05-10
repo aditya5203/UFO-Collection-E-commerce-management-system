@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   customerAuthMiddleware,
   adminAuthMiddleware,
+  deliveryAuthMiddleware,
   authorize,
   anyAuthMiddleware,
 } from "../../auth/middleware/auth.middleware";
@@ -12,120 +13,25 @@ const publicRouter = Router();
 const adminRouter = Router();
 
 /* ------------------------------------------------------------------
- * PUBLIC (Customer) Endpoints
+ * PUBLIC / CUSTOMER / DELIVERY Endpoints
  * ------------------------------------------------------------------*/
 
 /**
  * @swagger
  * tags:
  *   - name: Orders - Public
- *     description: Customer order endpoints (checkout, history, details & tracking)
+ *     description: Customer order endpoints including checkout, order history, tracking, invoice, cancellation, return, exchange, and refund details
  */
 
 /**
  * @swagger
  * /api/orders:
  *   post:
- *     summary: Create an order (COD / Khalti / eSewa / Fonepay)
+ *     summary: Create an order
+ *     description: Create a customer order using COD, Khalti, eSewa, or Fonepay.
  *     tags: [Orders - Public]
  *     security:
  *       - cookieAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - paymentMethod
- *               - items
- *             properties:
- *               paymentMethod:
- *                 type: string
- *                 example: "COD"
- *               paymentRef:
- *                 type: string
- *                 example: "pidx_xxxxxx"
- *               paymentStatus:
- *                 type: string
- *                 example: "Pending"
- *               shippingPaisa:
- *                 type: number
- *                 example: 10000
- *               couponCode:
- *                 type: string
- *                 nullable: true
- *                 example: "DASH10"
- *               items:
- *                 type: array
- *                 items:
- *                   type: object
- *                   required: [productId, qty]
- *                   properties:
- *                     productId:
- *                       type: string
- *                       example: "68001234567890abcdef1234"
- *                     variantId:
- *                       type: string
- *                       nullable: true
- *                       example: "68001234567890abcdef5678"
- *                     size:
- *                       type: string
- *                       example: "S"
- *                     color:
- *                       type: string
- *                       example: "#000000"
- *                     colorLabel:
- *                       type: string
- *                       example: "Black"
- *                     sku:
- *                       type: string
- *                       nullable: true
- *                       example: "LIGHT-BLUE-DISTRES-8FB6D6-S"
- *                     qty:
- *                       type: number
- *                       example: 1
- *               address:
- *                 type: object
- *                 properties:
- *                   fullName:
- *                     type: string
- *                     example: "Baiju Pandit"
- *                   phone:
- *                     type: string
- *                     example: "9800000000"
- *                   provinceId:
- *                     type: string
- *                     example: "bagmati"
- *                   district:
- *                     type: string
- *                     example: "Kathmandu"
- *                   city:
- *                     type: string
- *                     example: "Kathmandu"
- *                   area:
- *                     type: string
- *                     example: "Baneshwor"
- *                   addressLine:
- *                     type: string
- *                     example: "Old Baneshwor"
- *                   street:
- *                     type: string
- *                     example: "Main road"
- *                   postalCode:
- *                     type: string
- *                     example: "44600"
- *                   lat:
- *                     type: number
- *                     example: 27.7172
- *                   lng:
- *                     type: number
- *                     example: 85.324
- *     responses:
- *       201:
- *         description: Order created
- *       401:
- *         description: Unauthorized
  */
 publicRouter.post("/", customerAuthMiddleware, orderController.create);
 
@@ -137,19 +43,31 @@ publicRouter.post("/", customerAuthMiddleware, orderController.create);
  *     tags: [Orders - Public]
  *     security:
  *       - cookieAuth: []
- *     responses:
- *       200:
- *         description: Customer order history
- *       401:
- *         description: Unauthorized
  */
 publicRouter.get("/my", customerAuthMiddleware, orderController.getMyOrders);
 
 /**
  * @swagger
- * /api/orders/my/{id}:
- *   get:
- *     summary: Get logged-in customer's order details
+ * /api/orders/my/{id}/cancel-request:
+ *   post:
+ *     summary: Submit cancellation request for customer's own order
+ *     description: Customer can request cancellation only before the order is shipped/transit/delivered.
+ *     tags: [Orders - Public]
+ *     security:
+ *       - cookieAuth: []
+ */
+publicRouter.post(
+  "/my/:id/cancel-request",
+  customerAuthMiddleware,
+  orderController.requestCancellation
+);
+
+/**
+ * @swagger
+ * /api/orders/my/{id}/return-request:
+ *   post:
+ *     summary: Submit return/refund/exchange request for customer's own delivered order
+ *     description: Customer can request Return & Refund or Exchange after the order has been delivered.
  *     tags: [Orders - Public]
  *     security:
  *       - cookieAuth: []
@@ -159,14 +77,109 @@ publicRouter.get("/my", customerAuthMiddleware, orderController.getMyOrders);
  *         required: true
  *         schema:
  *           type: string
- *         description: "OrderCode (123456 | #123456) OR MongoId"
- *     responses:
- *       200:
- *         description: Customer order details
- *       404:
- *         description: Order not found
- *       401:
- *         description: Unauthorized
+ *         example: "#123456"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 example: Wrong size received
+ *               type:
+ *                 type: string
+ *                 enum:
+ *                   - RETURN_REFUND
+ *                   - EXCHANGE
+ *                   - DAMAGED
+ *                   - WRONG_ITEM
+ *                   - SIZE_COLOR_ISSUE
+ *                   - NOT_SATISFIED
+ *                   - OTHER
+ *                 example: SIZE_COLOR_ISSUE
+ *               preferredResolution:
+ *                 type: string
+ *                 enum: [REFUND, EXCHANGE]
+ *                 example: EXCHANGE
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example:
+ *                   - https://example.com/damaged-product.jpg
+ */
+publicRouter.post(
+  "/my/:id/return-request",
+  customerAuthMiddleware,
+  orderController.requestReturn
+);
+
+/**
+ * @swagger
+ * /api/orders/my/{id}/refund-details:
+ *   post:
+ *     summary: Submit refund account details
+ *     description: Customer submits bank/eSewa/Khalti/Fonepay refund details after admin requests them.
+ *     tags: [Orders - Public]
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "#123456"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - method
+ *             properties:
+ *               method:
+ *                 type: string
+ *                 enum: [BANK, KHALTI, ESEWA, FONEPAY]
+ *                 example: ESEWA
+ *               accountName:
+ *                 type: string
+ *                 example: Baiju Pandit
+ *               accountNumber:
+ *                 type: string
+ *                 example: "123456789012"
+ *               bankName:
+ *                 type: string
+ *                 example: Nabil Bank
+ *               walletNumber:
+ *                 type: string
+ *                 example: "9800000000"
+ *               walletId:
+ *                 type: string
+ *                 example: baiju@esewa
+ *               customerNote:
+ *                 type: string
+ *                 example: Please refund to this wallet.
+ */
+publicRouter.post(
+  "/my/:id/refund-details",
+  customerAuthMiddleware,
+  orderController.submitRefundDetails
+);
+
+/**
+ * @swagger
+ * /api/orders/my/{id}:
+ *   get:
+ *     summary: Get logged-in customer's order details
+ *     tags: [Orders - Public]
+ *     security:
+ *       - cookieAuth: []
  */
 publicRouter.get(
   "/my/:id",
@@ -180,26 +193,15 @@ publicRouter.get(
  *   get:
  *     summary: Track order by order code
  *     tags: [Orders - Public]
- *     parameters:
- *       - in: path
- *         name: code
- *         required: true
- *         schema:
- *           type: string
- *         description: "OrderCode without # (123456) OR with # (#123456)"
- *     responses:
- *       200:
- *         description: Order tracking info
- *       404:
- *         description: Order not found
  */
 publicRouter.get("/track/:code", orderController.track);
 
 /**
  * @swagger
- * /api/orders/{id}/invoice:
- *   get:
- *     summary: Download invoice PDF (customer own order or admin any order)
+ * /api/orders/delivery/{id}/pickup-status:
+ *   patch:
+ *     summary: Delivery rider updates return/exchange pickup status
+ *     description: Delivery rider updates Return Pickup or Exchange Pickup task status.
  *     tags: [Orders - Public]
  *     security:
  *       - cookieAuth: []
@@ -209,15 +211,95 @@ publicRouter.get("/track/:code", orderController.track);
  *         required: true
  *         schema:
  *           type: string
- *     responses:
- *       200:
- *         description: Invoice PDF
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Forbidden
- *       404:
- *         description: Order not found
+ *         example: "#123456"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               taskType:
+ *                 type: string
+ *                 enum: [RETURN_PICKUP, EXCHANGE_PICKUP]
+ *                 example: RETURN_PICKUP
+ *               status:
+ *                 type: string
+ *                 enum:
+ *                   - Picked Up
+ *                   - Returned to Store
+ *                   - Failed Delivery
+ *                 example: Picked Up
+ *               note:
+ *                 type: string
+ *                 example: Product collected from customer.
+ *               photo:
+ *                 type: string
+ *                 example: https://example.com/pickup-proof.jpg
+ */
+publicRouter.patch(
+  "/delivery/:id/pickup-status",
+  deliveryAuthMiddleware,
+  orderController.updateReturnOrExchangePickupByDelivery
+);
+
+/**
+ * @swagger
+ * /api/orders/delivery/{id}/replacement-status:
+ *   patch:
+ *     summary: Delivery rider updates replacement delivery status
+ *     description: Delivery rider updates exchange replacement delivery task status.
+ *     tags: [Orders - Public]
+ *     security:
+ *       - cookieAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         example: "#123456"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum:
+ *                   - Picked Up
+ *                   - Out for Delivery
+ *                   - Delivered
+ *                   - Failed Delivery
+ *                 example: Delivered
+ *               note:
+ *                 type: string
+ *                 example: Replacement delivered to customer.
+ *               photo:
+ *                 type: string
+ *                 example: https://example.com/delivery-proof.jpg
+ */
+publicRouter.patch(
+  "/delivery/:id/replacement-status",
+  deliveryAuthMiddleware,
+  orderController.updateReplacementDeliveryByDelivery
+);
+
+/**
+ * @swagger
+ * /api/orders/{id}/invoice:
+ *   get:
+ *     summary: Download invoice PDF
+ *     description: Customer can download their own order invoice. Admin can download any order invoice.
+ *     tags: [Orders - Public]
+ *     security:
+ *       - cookieAuth: []
  */
 publicRouter.get(
   "/:id/invoice",
@@ -233,41 +315,17 @@ publicRouter.get(
  * @swagger
  * tags:
  *   - name: Orders - Admin
- *     description: Admin order management
+ *     description: Admin order management, delivery assignment, cancellation, return, refund, and exchange workflow
  */
 
 /**
  * @swagger
  * /api/admin/orders:
  *   get:
- *     summary: List orders
+ *     summary: List all orders
  *     tags: [Orders - Admin]
  *     security:
  *       - cookieAuth: []
- *     parameters:
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *         description: Search by orderCode or customer name/email
- *       - in: query
- *         name: customerId
- *         schema:
- *           type: string
- *       - in: query
- *         name: paymentStatus
- *         schema:
- *           type: string
- *       - in: query
- *         name: orderStatus
- *         schema:
- *           type: string
- *         description: Pending | Shipped | Transit | Delivered | Cancelled
- *     responses:
- *       200:
- *         description: Orders list
- *       401:
- *         description: Unauthorized
  */
 adminRouter.get(
   "/",
@@ -279,25 +337,273 @@ adminRouter.get(
 
 /**
  * @swagger
- * /api/admin/orders/{id}:
+ * /api/admin/orders/returns-refunds:
  *   get:
- *     summary: Get order by id OR orderCode
+ *     summary: List cancellation, return, refund, and exchange requests
+ *     description: Returns combined list of cancellation, return, refund, and exchange records.
  *     tags: [Orders - Admin]
  *     security:
  *       - cookieAuth: []
  *     parameters:
- *       - in: path
- *         name: id
- *         required: true
+ *       - in: query
+ *         name: type
  *         schema:
  *           type: string
- *     responses:
- *       200:
- *         description: Order details
- *       404:
- *         description: Order not found
- *       401:
- *         description: Unauthorized
+ *           enum: [CANCELLATION, RETURN, REFUND, EXCHANGE]
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum:
+ *             - NONE
+ *             - REQUESTED
+ *             - APPROVED
+ *             - REJECTED
+ *             - PICKUP_ASSIGNED
+ *             - PICKED_UP
+ *             - RECEIVED
+ *             - PENDING
+ *             - PENDING_ACCOUNT_DETAILS
+ *             - READY_TO_REFUND
+ *             - PROCESSING
+ *             - REFUNDED
+ *             - FAILED
+ *             - REPLACEMENT_ASSIGNED
+ *             - REPLACEMENT_DELIVERED
+ *             - COMPLETED
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ */
+adminRouter.get(
+  "/returns-refunds",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderView"),
+  orderController.listReturnsRefunds
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/cancel/approve:
+ *   patch:
+ *     summary: Approve order cancellation request
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/cancel/approve",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.approveCancellation
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/cancel/reject:
+ *   patch:
+ *     summary: Reject order cancellation request
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/cancel/reject",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.rejectCancellation
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/return/approve:
+ *   patch:
+ *     summary: Approve return or exchange request
+ *     description: Admin approves customer return/refund or exchange request. After approval admin should assign pickup rider.
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/return/approve",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.approveReturn
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/return/reject:
+ *   patch:
+ *     summary: Reject return or exchange request
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/return/reject",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.rejectReturn
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/return/assign-pickup:
+ *   patch:
+ *     summary: Assign delivery rider for return pickup
+ *     description: Admin assigns rider to collect returned product from customer.
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/return/assign-pickup",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.assignReturnPickup
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/exchange/assign-pickup:
+ *   patch:
+ *     summary: Assign delivery rider for exchange pickup
+ *     description: Admin assigns rider to collect damaged/wrong/size issue product from customer.
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/exchange/assign-pickup",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.assignExchangePickup
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/return/mark-received:
+ *   patch:
+ *     summary: Mark returned product as received
+ *     description: Admin verifies returned product has reached store/warehouse.
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/return/mark-received",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.markProductReceived
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/refund/request-details:
+ *   patch:
+ *     summary: Request refund account details from customer
+ *     description: Admin asks customer to submit bank/wallet details for refund.
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/refund/request-details",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.requestRefundDetails
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/refund/processing:
+ *   patch:
+ *     summary: Mark refund as processing
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/refund/processing",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.markRefundProcessing
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/refund/mark-refunded:
+ *   patch:
+ *     summary: Mark refund as completed
+ *     description: Admin manually marks refund completed after sending money through bank/wallet.
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/refund/mark-refunded",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.markRefunded
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/exchange/assign-replacement:
+ *   patch:
+ *     summary: Assign delivery rider for replacement delivery
+ *     description: Admin assigns rider to deliver replacement product after old product is received.
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/exchange/assign-replacement",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.assignReplacementDelivery
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}/exchange/complete:
+ *   patch:
+ *     summary: Complete exchange request
+ *     description: Admin completes exchange after replacement product has been delivered.
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
+ */
+adminRouter.patch(
+  "/:id/exchange/complete",
+  adminAuthMiddleware,
+  authorize("admin", "superadmin"),
+  authorizePermission("orderUpdate"),
+  orderController.completeExchange
+);
+
+/**
+ * @swagger
+ * /api/admin/orders/{id}:
+ *   get:
+ *     summary: Get order by id or order code
+ *     tags: [Orders - Admin]
+ *     security:
+ *       - cookieAuth: []
  */
 adminRouter.get(
   "/:id",
@@ -311,48 +617,10 @@ adminRouter.get(
  * @swagger
  * /api/admin/orders/{id}:
  *   patch:
- *     summary: Update order status/payment status/delivery assignment
+ *     summary: Update order status, payment status, or normal delivery assignment
  *     tags: [Orders - Admin]
  *     security:
  *       - cookieAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               paymentStatus:
- *                 type: string
- *                 example: Paid
- *               orderStatus:
- *                 type: string
- *                 example: Transit
- *               deliveryAssignment:
- *                 type: object
- *                 properties:
- *                   deliveryManId:
- *                     type: string
- *                     example: 68001234567890abcdef1234
- *                   note:
- *                     type: string
- *                     example: Call customer before arrival
- *                   status:
- *                     type: string
- *                     example: Assigned
- *     responses:
- *       200:
- *         description: Order updated
- *       404:
- *         description: Order not found
- *       401:
- *         description: Unauthorized
  */
 adminRouter.patch(
   "/:id",
