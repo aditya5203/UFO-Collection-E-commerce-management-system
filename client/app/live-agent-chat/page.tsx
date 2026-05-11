@@ -2,26 +2,15 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { io, Socket } from "socket.io-client";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
-type ToastType = "success" | "error" | "info";
-
-type Msg = {
-  _id: string;
-  senderRole: "user" | "admin" | "bot" | "system";
-  text: string;
-  createdAt: string;
-};
-
-type Conversation = {
-  _id: string;
-  status: "OPEN" | "ENDED";
-  adminId?: string | null;
-  orderId?: string | null;
-};
+import ChatHelpSidebar from "./_components/ChatHelpSidebar";
+import ChatHero from "./_components/ChatHero";
+import ChatWindow from "./_components/ChatWindow";
+import ToastMessage from "./_components/ToastMessage";
+import { Conversation, Msg, ToastType } from "./_components/chatTypes";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
@@ -30,139 +19,11 @@ const API = `${API_BASE}/api`;
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
 const containerClass =
   "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
-const panelClass =
-  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
-const primaryBtnClass =
-  "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
-const secondaryBtnClass =
-  "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
-
-function fmtTime(s?: string) {
-  if (!s) return "";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return "";
-
-  const today = new Date();
-  const isToday = d.toDateString() === today.toDateString();
-
-  return d.toLocaleString([], {
-    month: isToday ? undefined : "short",
-    day: isToday ? undefined : "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function getOrderUrl(orderId?: string | null) {
   const clean = String(orderId || "").trim().replace("#", "");
   if (!clean) return "";
   return `/customerorderdetails/${encodeURIComponent(clean)}`;
-}
-
-function ToastMessage({
-  toast,
-  onClose,
-}: {
-  toast: { type: ToastType; message: string } | null;
-  onClose: () => void;
-}) {
-  if (!toast) return null;
-
-  const tone =
-    toast.type === "error"
-      ? "border-red-400/30 bg-red-500/15 text-red-100"
-      : toast.type === "info"
-        ? "border-blue-400/30 bg-blue-500/15 text-blue-100"
-        : "border-emerald-400/30 bg-emerald-500/15 text-emerald-100";
-
-  const dot =
-    toast.type === "error"
-      ? "bg-red-300"
-      : toast.type === "info"
-        ? "bg-blue-300"
-        : "bg-emerald-300";
-
-  return (
-    <div className="fixed right-4 top-24 z-[10000] w-[calc(100%-32px)] max-w-[380px] sm:right-6">
-      <div
-        className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
-      >
-        <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
-        <div className="flex-1 text-[13px] font-medium leading-6">
-          {toast.message}
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-full px-2 text-[14px] text-white/75 transition hover:bg-white/10 hover:text-white"
-          aria-label="Close notification"
-        >
-          ×
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function Bubble({ m }: { m: Msg }) {
-  const isUser = m.senderRole === "user";
-  const isSystem = m.senderRole === "system";
-  const isBot = m.senderRole === "bot";
-
-  if (isSystem) {
-    return (
-      <div className="rounded-[18px] border border-[#26293a] bg-[#161824] px-4 py-3 text-[13px] text-[#a7aec4]">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <span className="min-w-0 whitespace-pre-wrap break-words">
-            {m.text}
-          </span>
-          <span className="shrink-0 text-[11px] text-[#7f879f] sm:ml-4">
-            {fmtTime(m.createdAt)}
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
-      <div
-        className={[
-          "min-w-0 max-w-[88%] rounded-[20px] border px-4 py-3 sm:max-w-[78%]",
-          isUser
-            ? "border-[#d6c7ff]/25 bg-[#d6c7ff]/10 text-white"
-            : "border-[#26293a] bg-[#161824] text-white",
-        ].join(" ")}
-      >
-        <div className="text-[12px] font-semibold text-[#a7aec4]">
-          {isUser ? "You" : isBot ? "UFO Bot" : "Agent"}
-        </div>
-
-        <div className="mt-1 whitespace-pre-wrap break-words text-[14px] leading-6 text-[#f5f7fb]">
-          {m.text}
-        </div>
-
-        <div className="mt-2 text-[11px] text-[#7f879f]">
-          {fmtTime(m.createdAt)}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TypingIndicator() {
-  return (
-    <div className="flex justify-start">
-      <div className="rounded-[20px] border border-[#26293a] bg-[#161824] px-4 py-3">
-        <div className="text-[12px] font-semibold text-[#a7aec4]">Agent</div>
-        <div className="mt-2 flex items-center gap-1">
-          <span className="h-2 w-2 animate-bounce rounded-full bg-[#d6c7ff]" />
-          <span className="h-2 w-2 animate-bounce rounded-full bg-[#d6c7ff] [animation-delay:120ms]" />
-          <span className="h-2 w-2 animate-bounce rounded-full bg-[#d6c7ff] [animation-delay:240ms]" />
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export default function LiveAgentChatPage() {
@@ -268,6 +129,7 @@ export default function LiveAgentChatPage() {
 
       try {
         const body: Record<string, any> = {};
+
         if (orderId) body.orderId = orderId;
         if (forceNew) body.forceNew = true;
 
@@ -304,6 +166,7 @@ export default function LiveAgentChatPage() {
   const loadMessages = React.useCallback(
     async (conversationId: string, silent = false) => {
       setErr("");
+
       if (!silent) setLoading(true);
 
       try {
@@ -344,6 +207,7 @@ export default function LiveAgentChatPage() {
 
   React.useEffect(() => {
     if (!conv?._id) return;
+
     didInitialScrollRef.current = false;
     loadMessages(conv._id);
   }, [conv?._id, loadMessages]);
@@ -503,6 +367,7 @@ export default function LiveAgentChatPage() {
       setText("");
 
       const msg = data?.message;
+
       if (msg?._id) {
         setMessages((prev) => {
           if (prev.some((m) => m._id === msg._id)) return prev;
@@ -552,7 +417,9 @@ export default function LiveAgentChatPage() {
       }
 
       setConv((p) => (p ? { ...p, status: "ENDED" } : p));
+
       await loadMessages(conv._id, true);
+
       showToast("Chat ended.", "success");
       window.setTimeout(scrollToBottom, 60);
     } catch {
@@ -571,6 +438,7 @@ export default function LiveAgentChatPage() {
     setTyping(false);
     didInitialScrollRef.current = false;
     setLoading(true);
+
     await openConversation(true);
   };
 
@@ -588,20 +456,6 @@ export default function LiveAgentChatPage() {
     }
   };
 
-  const agentStatus =
-    conv?.status === "ENDED"
-      ? "Ended"
-      : conv?.adminId
-        ? "Agent Connected"
-        : "Agent Offline";
-
-  const statusTone =
-    conv?.status === "ENDED"
-      ? "border-slate-500/30 bg-slate-500/10 text-slate-200"
-      : conv?.adminId
-        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-        : "border-amber-500/30 bg-amber-500/10 text-amber-200";
-
   return (
     <>
       <CartHeader backHref="/profile" />
@@ -610,117 +464,19 @@ export default function LiveAgentChatPage() {
 
       <main className={shellClass}>
         <div className={containerClass}>
-          <div className="mb-6 text-[13px] text-[#a7aec4]">
-            <Link href="/profile" className="transition hover:text-white">
-              Profile
-            </Link>
-            <span className="mx-2">/</span>
-            <span className="text-white">Live Chat</span>
-          </div>
-
-          <section className={`${panelClass} overflow-hidden p-6 sm:p-8`}>
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                  Customer Support
-                </div>
-
-                <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[44px]">
-                  Live Agent Chat
-                </h1>
-
-                <p className="mt-3 max-w-[720px] text-[14px] leading-7 text-[#a7aec4] sm:text-[15px]">
-                  Chat with the UFO Collection support team. Leave a message
-                  even when agents are offline and get replies in real time.
-                </p>
-
-                <div className="mt-6 flex flex-wrap gap-3">
-                  {conv?._id ? (
-                    <button
-                      type="button"
-                      onClick={() => loadMessages(conv._id, true)}
-                      className={secondaryBtnClass}
-                    >
-                      Refresh Chat
-                    </button>
-                  ) : null}
-
-                  {conv?._id ? (
-                    <button
-                      type="button"
-                      onClick={copyConversationId}
-                      className={secondaryBtnClass}
-                    >
-                      Copy Chat ID
-                    </button>
-                  ) : null}
-
-                  {conv?.status === "ENDED" ? (
-                    <button
-                      type="button"
-                      onClick={startNewChat}
-                      disabled={opening}
-                      className={primaryBtnClass}
-                    >
-                      Start New Chat
-                    </button>
-                  ) : null}
-
-                  {orderUrl ? (
-                    <button
-                      type="button"
-                      onClick={() => router.push(orderUrl)}
-                      className={primaryBtnClass}
-                    >
-                      View Order
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              <div className="grid gap-3">
-                <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                    Status
-                  </div>
-
-                  <div
-                    className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[12px] font-semibold uppercase tracking-[0.14em] ${statusTone}`}
-                  >
-                    <span className="h-2 w-2 rounded-full bg-current" />
-                    {opening ? "Opening..." : agentStatus}
-                  </div>
-                </div>
-
-                <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                    Socket
-                  </div>
-
-                  <div
-                    className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[12px] font-semibold uppercase tracking-[0.14em] ${
-                      socketConnected
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
-                        : "border-slate-500/30 bg-slate-500/10 text-slate-200"
-                    }`}
-                  >
-                    <span className="h-2 w-2 rounded-full bg-current" />
-                    {socketConnected ? "Live Connected" : "Offline"}
-                  </div>
-                </div>
-
-                <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                    Linked Order
-                  </div>
-
-                  <div className="mt-2 truncate text-[16px] font-semibold text-white">
-                    {orderId || "No order linked"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
+          <ChatHero
+            conv={conv}
+            orderId={orderId}
+            orderUrl={orderUrl}
+            opening={opening}
+            socketConnected={socketConnected}
+            onRefresh={() => {
+              if (conv?._id) loadMessages(conv._id, true);
+            }}
+            onCopyConversationId={copyConversationId}
+            onStartNewChat={startNewChat}
+            onViewOrder={() => router.push(orderUrl)}
+          />
 
           {err ? (
             <div className="mt-6 rounded-[20px] border border-red-500/30 bg-red-500/10 px-4 py-4 text-sm text-red-200">
@@ -729,209 +485,36 @@ export default function LiveAgentChatPage() {
           ) : null}
 
           <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
-            <section className={`${panelClass} overflow-hidden`}>
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#26293a] px-5 py-4 sm:px-6">
-                <div>
-                  <div className="text-[20px] font-semibold text-white">
-                    Conversation
-                  </div>
+            <ChatWindow
+              conv={conv}
+              messages={messages}
+              opening={opening}
+              loading={loading}
+              typing={typing}
+              text={text}
+              sending={sending}
+              ending={ending}
+              listRef={listRef}
+              onTextChange={(value) => {
+                setText(value);
+                sendTyping();
+              }}
+              onSend={send}
+              onEndChat={endChat}
+              onClear={() => setText("")}
+            />
 
-                  <div className="mt-1 text-[13px] text-[#a7aec4]">
-                    Enter to send • Shift+Enter for new line
-                  </div>
-                </div>
-
-                {conv?.status === "ENDED" ? (
-                  <span className="rounded-full border border-slate-500/30 bg-slate-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-200">
-                    Ended
-                  </span>
-                ) : null}
-              </div>
-
-              <div
-                ref={listRef}
-                className="h-[520px] overflow-y-auto px-4 py-5 [overflow-wrap:anywhere] sm:px-6"
-              >
-                {opening || loading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3, 4].map((n) => (
-                      <div
-                        key={n}
-                        className={`flex ${
-                          n % 2 === 0 ? "justify-end" : "justify-start"
-                        }`}
-                      >
-                        <div className="w-[72%] rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
-                          <div className="h-3 w-24 animate-pulse rounded bg-white/5" />
-                          <div className="mt-3 h-4 w-full animate-pulse rounded bg-white/5" />
-                          <div className="mt-2 h-4 w-2/3 animate-pulse rounded bg-white/5" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : messages.length === 0 ? (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="text-center">
-                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[22px] border border-white/10 bg-white/5 text-2xl">
-                        💬
-                      </div>
-
-                      <h2 className="mt-5 text-[22px] font-semibold text-white">
-                        No messages yet
-                      </h2>
-
-                      <p className="mx-auto mt-2 max-w-[360px] text-[14px] leading-7 text-[#a7aec4]">
-                        Start the conversation by sending your first message.
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {messages.map((m) => (
-                      <Bubble key={m._id} m={m} />
-                    ))}
-
-                    {typing ? <TypingIndicator /> : null}
-                  </div>
-                )}
-              </div>
-
-              <div className="border-t border-[#26293a] px-4 py-5 sm:px-6">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
-                  Your Message
-                </div>
-
-                <textarea
-                  value={text}
-                  onChange={(e) => {
-                    setText(e.target.value);
-                    sendTyping();
-                  }}
-                  placeholder={
-                    conv?.status === "ENDED"
-                      ? "Chat ended."
-                      : "Type your message..."
-                  }
-                  disabled={sending || conv?.status === "ENDED"}
-                  className="mt-3 min-h-[120px] w-full resize-none rounded-[18px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-[14px] leading-7 text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      send();
-                    }
-                  }}
-                />
-
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <button
-                    type="button"
-                    onClick={send}
-                    disabled={
-                      sending || conv?.status === "ENDED" || !text.trim()
-                    }
-                    className={primaryBtnClass}
-                  >
-                    {sending ? "Sending..." : "Send Message"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={endChat}
-                    disabled={ending || conv?.status === "ENDED" || !conv?._id}
-                    className={secondaryBtnClass}
-                  >
-                    {conv?.status === "ENDED"
-                      ? "Ended"
-                      : ending
-                        ? "Ending..."
-                        : "End Chat"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setText("")}
-                    disabled={!text.trim()}
-                    className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#a7aec4] transition hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            <aside className="space-y-6">
-              <section className={`${panelClass} p-5 sm:p-6`}>
-                <div className="text-[20px] font-semibold text-white">
-                  Quick Help
-                </div>
-
-                <p className="mt-2 text-[14px] leading-7 text-[#a7aec4]">
-                  Try these common support questions while waiting for an agent.
-                </p>
-
-                <div className="mt-5 space-y-3 text-[14px] text-[#d6dbeb]">
-                  {[
-                    "Track my order / मेरो order कहाँ छ?",
-                    "Delivery time / Delivery कति दिन?",
-                    "Return policy / Return कसरी?",
-                    "eSewa payment failed / eSewa चलेन",
-                    "Size guide / कुन size?",
-                  ].map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => {
-                        setText(item);
-                        sendTyping();
-                      }}
-                      disabled={conv?.status === "ENDED"}
-                      className="block w-full rounded-[18px] border border-[#26293a] bg-[#161824] px-4 py-3 text-left transition hover:border-[#4a506b] hover:bg-white/[0.04] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section className={`${panelClass} p-5 sm:p-6`}>
-                <div className="text-[20px] font-semibold text-white">
-                  Need faster help?
-                </div>
-
-                <p className="mt-2 text-[14px] leading-7 text-[#a7aec4]">
-                  You can also track your order directly from the order tracking
-                  page.
-                </p>
-
-                <div className="mt-5 grid gap-3">
-                  <button
-                    type="button"
-                    onClick={() => router.push("/order-tracking")}
-                    className={primaryBtnClass}
-                  >
-                    Order Tracking
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => router.push("/profile/tickets")}
-                    className={secondaryBtnClass}
-                  >
-                    Support Tickets
-                  </button>
-
-                  {orderUrl ? (
-                    <button
-                      type="button"
-                      onClick={() => router.push(orderUrl)}
-                      className={secondaryBtnClass}
-                    >
-                      View Order
-                    </button>
-                  ) : null}
-                </div>
-              </section>
-            </aside>
+            <ChatHelpSidebar
+              orderUrl={orderUrl}
+              disabled={conv?.status === "ENDED"}
+              onSetQuickText={(value) => {
+                setText(value);
+                sendTyping();
+              }}
+              onOrderTracking={() => router.push("/order-tracking")}
+              onSupportTickets={() => router.push("/profile/tickets")}
+              onViewOrder={() => router.push(orderUrl)}
+            />
           </div>
         </div>
       </main>

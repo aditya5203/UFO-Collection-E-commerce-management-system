@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
@@ -31,14 +32,19 @@ const defaultCenter = {
 };
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+
 const containerClass =
   "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
+
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
 const primaryBtnClass =
   "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+
 const secondaryBtnClass =
   "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+
 const inputClass =
   "h-[50px] w-full rounded-full border border-[#2b3042] bg-[#0d0f17] px-5 text-[13px] text-[#f5f7fb] outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60";
 
@@ -166,8 +172,14 @@ function buildSummaryFromCart(
     0
   );
 
-  const shipping = Number(previousSummary?.shipping ?? previousSummary?.shippingRs ?? 100);
-  const discount = Number(previousSummary?.discount ?? previousSummary?.discountRs ?? 0);
+  const shipping = Number(
+    previousSummary?.shipping ?? previousSummary?.shippingRs ?? 100
+  );
+
+  const discount = Number(
+    previousSummary?.discount ?? previousSummary?.discountRs ?? 0
+  );
+
   const total = Math.max(0, subtotal + shipping - discount);
 
   return {
@@ -186,6 +198,7 @@ function buildSummaryFromCart(
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const { t } = useI18n();
 
   const [provinceId, setProvinceId] = React.useState("");
   const [district, setDistrict] = React.useState("");
@@ -272,13 +285,13 @@ export default function CheckoutPage() {
         : null;
 
       if (!cart.length || !previousSummary) {
-        showToast("error", "Your cart is empty.");
+        showToast("error", t("checkout.cartEmpty"));
         router.replace("/cartpage");
         return;
       }
 
       if (hasStockIssue(cart)) {
-        showToast("error", "Some cart items have stock issues.");
+        showToast("error", t("checkout.stockIssues"));
         router.replace("/cartpage");
         return;
       }
@@ -291,12 +304,12 @@ export default function CheckoutPage() {
       localStorage.setItem(ORDER_SUMMARY_KEY, JSON.stringify(syncedSummary));
       localStorage.setItem(CHECKOUT_ITEMS_KEY, JSON.stringify(cart));
     } catch {
-      showToast("error", "Checkout data is missing.");
+      showToast("error", t("checkout.checkoutDataMissing"));
       router.replace("/cartpage");
     } finally {
       setCartChecked(true);
     }
-  }, [router, showToast]);
+  }, [router, showToast, t]);
 
   React.useEffect(() => {
     const loadMe = async () => {
@@ -376,18 +389,19 @@ export default function CheckoutPage() {
   }, []);
 
   const validate = () => {
-    if (!email.trim()) return "Email is required";
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return "Enter a valid email";
-    if (!firstName.trim()) return "First name is required";
-    if (!lastName.trim()) return "Last name is required";
-    if (!provinceId) return "Province is required";
-    if (!district) return "District is required";
-    if (!cityOrMunicipality.trim()) return "City/Municipality is required";
-    if (!addressLine.trim()) return "Address is required";
-    if (!phone.trim()) return "Phone number is required";
-    if (!isPhoneValid) return "Enter a valid Nepali phone number";
-    if (!checkoutItems.length) return "Your cart is empty";
-    if (cartHasStockIssue) return "Some cart items have stock issues";
+    if (!email.trim()) return t("checkout.emailRequired");
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return t("checkout.validEmail");
+    if (!firstName.trim()) return t("checkout.firstNameRequired");
+    if (!lastName.trim()) return t("checkout.lastNameRequired");
+    if (!provinceId) return t("checkout.provinceRequired");
+    if (!district) return t("checkout.districtRequired");
+    if (!cityOrMunicipality.trim()) return t("checkout.cityRequired");
+    if (!addressLine.trim()) return t("checkout.addressRequired");
+    if (!phone.trim()) return t("checkout.phoneRequired");
+    if (!isPhoneValid) return t("checkout.validPhone");
+    if (!checkoutItems.length) return t("checkout.cartEmpty");
+    if (cartHasStockIssue) return t("checkout.stockIssues");
+
     return "";
   };
 
@@ -421,7 +435,7 @@ export default function CheckoutPage() {
     const json = await res.json().catch(() => ({} as any));
 
     if (!res.ok || !json?.success) {
-      throw new Error(json?.message || "Failed to save address");
+      throw new Error(json?.message || t("checkout.failedSaveAddress"));
     }
 
     return json?.data;
@@ -435,7 +449,7 @@ export default function CheckoutPage() {
 
     setMarkerPosition({ lat, lng });
     setMapCenter({ lat, lng });
-    showToast("info", "Delivery map pin updated");
+    showToast("info", t("checkout.mapPinUpdated"));
   };
 
   const handleUseCurrentLocation = () => {
@@ -444,8 +458,8 @@ export default function CheckoutPage() {
 
     if (!navigator.geolocation) {
       setLocationLoading(false);
-      setError("Geolocation is not supported in this browser");
-      showToast("error", "Geolocation is not supported in this browser");
+      setError(t("checkout.geolocationNotSupported"));
+      showToast("error", t("checkout.geolocationNotSupported"));
       return;
     }
 
@@ -457,12 +471,12 @@ export default function CheckoutPage() {
         setMarkerPosition({ lat, lng });
         setMapCenter({ lat, lng });
         setLocationLoading(false);
-        showToast("success", "Current location detected");
+        showToast("success", t("checkout.currentLocationDetected"));
       },
       () => {
         setLocationLoading(false);
-        setError("Unable to fetch your current location");
-        showToast("error", "Unable to fetch your current location");
+        setError(t("checkout.unableCurrentLocation"));
+        showToast("error", t("checkout.unableCurrentLocation"));
       },
       {
         enableHighAccuracy: true,
@@ -513,15 +527,18 @@ export default function CheckoutPage() {
 
       const syncedSummary = buildSummaryFromCart(checkoutItems, orderSummary);
 
-      localStorage.setItem(CHECKOUT_ADDRESS_KEY, JSON.stringify(checkoutAddress));
+      localStorage.setItem(
+        CHECKOUT_ADDRESS_KEY,
+        JSON.stringify(checkoutAddress)
+      );
       localStorage.setItem("checkout_address", JSON.stringify(checkoutAddress));
       localStorage.setItem(CHECKOUT_ITEMS_KEY, JSON.stringify(checkoutItems));
       localStorage.setItem(ORDER_SUMMARY_KEY, JSON.stringify(syncedSummary));
 
-      showToast("success", "Address saved. Continuing to payment...");
+      showToast("success", t("checkout.addressSavedPayment"));
       router.push("/payment");
     } catch (e: any) {
-      const msg = e?.message || "Something went wrong";
+      const msg = e?.message || t("checkout.somethingWrong");
       setError(msg);
       showToast("error", msg);
     } finally {
@@ -533,9 +550,10 @@ export default function CheckoutPage() {
     return (
       <>
         <CartHeader backHref="/cartpage" />
+
         <main className="flex min-h-screen items-center justify-center bg-[#0a0a0f] px-4 text-white">
           <div className="rounded-[24px] border border-[#26293a] bg-[#11121a] px-6 py-4 text-sm font-semibold text-[#cbd5f5] shadow-[0_20px_70px_rgba(0,0,0,0.35)]">
-            Preparing checkout...
+            {t("checkout.preparingCheckout")}
           </div>
         </main>
       </>
@@ -567,10 +585,12 @@ export default function CheckoutPage() {
           <div className="mb-8">
             <div className="flex flex-wrap items-center gap-2 text-[13px] text-[#a7aec4]">
               <Link href="/cartpage" className="hover:text-white">
-                Cart
+                {t("checkout.cart")}
               </Link>
+
               <span>/</span>
-              <span className="text-white">Information</span>
+
+              <span className="text-white">{t("checkout.information")}</span>
             </div>
 
             <div className="mt-6 flex items-center gap-3 rounded-[22px] border border-[#26293a] bg-[#11121a] p-3 text-[12px] uppercase tracking-[0.14em] text-[#a7aec4]">
@@ -578,42 +598,47 @@ export default function CheckoutPage() {
                 <span className="grid h-7 w-7 place-items-center rounded-full bg-white text-[#090a12]">
                   1
                 </span>
-                Cart
+                {t("checkout.cart")}
               </div>
+
               <div className="h-px flex-1 bg-[#2b3042]" />
+
               <div className="flex items-center gap-2 text-white">
                 <span className="grid h-7 w-7 place-items-center rounded-full bg-white text-[#090a12]">
                   2
                 </span>
-                Information
+                {t("checkout.information")}
               </div>
+
               <div className="h-px flex-1 bg-[#2b3042]" />
+
               <div className="flex items-center gap-2">
                 <span className="grid h-7 w-7 place-items-center rounded-full border border-[#2b3042]">
                   3
                 </span>
-                Payment
+                {t("checkout.payment")}
               </div>
             </div>
           </div>
 
           <div className="mb-8">
             <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-              Checkout
+              {t("checkout.checkout")}
             </div>
+
             <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[44px]">
-              Delivery Information
+              {t("checkout.deliveryInformation")}
             </h1>
+
             <p className="mt-2 max-w-[620px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
-              Add your contact details, shipping address, and exact map pin for
-              smooth delivery.
+              {t("checkout.deliveryInfoDesc")}
             </p>
           </div>
 
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_390px] xl:grid-cols-[minmax(0,1fr)_420px]">
             <section className={`${panelClass} p-5 sm:p-7`}>
               <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-white">
-                Contact Details
+                {t("checkout.contactDetails")}
               </h2>
 
               {error ? (
@@ -624,8 +649,7 @@ export default function CheckoutPage() {
 
               {loadError ? (
                 <div className="mt-4 rounded-[18px] border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
-                  Google Maps failed to load. Check your API key and allowed
-                  referrers.
+                  {t("checkout.mapsFailed")}
                 </div>
               ) : null}
 
@@ -634,12 +658,13 @@ export default function CheckoutPage() {
                   htmlFor="email"
                   className="mb-2 block text-[13px] text-[#cfd3ff]"
                 >
-                  Email
+                  {t("checkout.email")}
                 </label>
+
                 <input
                   id="email"
                   type="email"
-                  placeholder="Email address"
+                  placeholder={t("checkout.emailAddress")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className={inputClass}
@@ -653,12 +678,12 @@ export default function CheckoutPage() {
                   onChange={(e) => setMarketingOptIn(e.target.checked)}
                   className="h-4 w-4 accent-white"
                 />
-                Email me with news and offers
+                {t("checkout.marketingOptIn")}
               </label>
 
               <div className="mt-9">
                 <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-white">
-                  Shipping Address
+                  {t("checkout.shippingAddress")}
                 </h2>
 
                 <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -667,11 +692,12 @@ export default function CheckoutPage() {
                       htmlFor="firstName"
                       className="mb-2 block text-[13px] text-[#cfd3ff]"
                     >
-                      First name
+                      {t("checkout.firstName")}
                     </label>
+
                     <input
                       id="firstName"
-                      placeholder="First name"
+                      placeholder={t("checkout.firstName")}
                       className={inputClass}
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
@@ -683,11 +709,12 @@ export default function CheckoutPage() {
                       htmlFor="lastName"
                       className="mb-2 block text-[13px] text-[#cfd3ff]"
                     >
-                      Last name
+                      {t("checkout.lastName")}
                     </label>
+
                     <input
                       id="lastName"
-                      placeholder="Last name"
+                      placeholder={t("checkout.lastName")}
                       className={inputClass}
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
@@ -700,8 +727,9 @@ export default function CheckoutPage() {
                     htmlFor="country"
                     className="mb-2 block text-[13px] text-[#cfd3ff]"
                   >
-                    Country
+                    {t("checkout.country")}
                   </label>
+
                   <input
                     id="country"
                     value="Nepal"
@@ -716,8 +744,9 @@ export default function CheckoutPage() {
                       htmlFor="province"
                       className="mb-2 block text-[13px] text-[#cfd3ff]"
                     >
-                      Province
+                      {t("checkout.province")}
                     </label>
+
                     <select
                       id="province"
                       value={provinceId}
@@ -728,7 +757,7 @@ export default function CheckoutPage() {
                       }}
                       className={`${inputClass} appearance-none`}
                     >
-                      <option value="">Select Province</option>
+                      <option value="">{t("checkout.selectProvince")}</option>
                       {NEPAL_PROVINCES.map((p: Province) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
@@ -742,8 +771,9 @@ export default function CheckoutPage() {
                       htmlFor="district"
                       className="mb-2 block text-[13px] text-[#cfd3ff]"
                     >
-                      District
+                      {t("checkout.district")}
                     </label>
+
                     <select
                       id="district"
                       value={district}
@@ -753,9 +783,10 @@ export default function CheckoutPage() {
                     >
                       <option value="">
                         {provinceId
-                          ? "Select District"
-                          : "Select Province first"}
+                          ? t("checkout.selectDistrict")
+                          : t("checkout.selectProvinceFirst")}
                       </option>
+
                       {districtsForProvince.map((d: District) => (
                         <option key={d.name} value={d.name}>
                           {d.name}
@@ -770,13 +801,14 @@ export default function CheckoutPage() {
                     htmlFor="cityOrMunicipality"
                     className="mb-2 block text-[13px] text-[#cfd3ff]"
                   >
-                    City / Municipality
+                    {t("checkout.cityMunicipality")}
                   </label>
+
                   <input
                     id="cityOrMunicipality"
                     value={cityOrMunicipality}
                     onChange={(e) => setCityOrMunicipality(e.target.value)}
-                    placeholder="City / Municipality"
+                    placeholder={t("checkout.cityMunicipality")}
                     disabled={!district}
                     className={inputClass}
                   />
@@ -787,11 +819,12 @@ export default function CheckoutPage() {
                     htmlFor="addressLine"
                     className="mb-2 block text-[13px] text-[#cfd3ff]"
                   >
-                    Address
+                    {t("checkout.address")}
                   </label>
+
                   <input
                     id="addressLine"
-                    placeholder="Address"
+                    placeholder={t("checkout.address")}
                     className={inputClass}
                     value={addressLine}
                     onChange={(e) => setAddressLine(e.target.value)}
@@ -804,11 +837,12 @@ export default function CheckoutPage() {
                       htmlFor="street"
                       className="mb-2 block text-[13px] text-[#cfd3ff]"
                     >
-                      Street
+                      {t("checkout.street")}
                     </label>
+
                     <input
                       id="street"
-                      placeholder="Street"
+                      placeholder={t("checkout.street")}
                       className={inputClass}
                       value={street}
                       onChange={(e) => setStreet(e.target.value)}
@@ -820,11 +854,12 @@ export default function CheckoutPage() {
                       htmlFor="postalCode"
                       className="mb-2 block text-[13px] text-[#cfd3ff]"
                     >
-                      Postal code
+                      {t("checkout.postalCode")}
                     </label>
+
                     <input
                       id="postalCode"
-                      placeholder="Postal code"
+                      placeholder={t("checkout.postalCode")}
                       className={inputClass}
                       value={postalCode}
                       onChange={(e) => setPostalCode(e.target.value)}
@@ -837,8 +872,9 @@ export default function CheckoutPage() {
                     htmlFor="phone"
                     className="mb-2 block text-[13px] text-[#cfd3ff]"
                   >
-                    Phone number
+                    {t("checkout.phoneNumber")}
                   </label>
+
                   <input
                     id="phone"
                     placeholder="98XXXXXXXX"
@@ -846,9 +882,10 @@ export default function CheckoutPage() {
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                   />
+
                   {phone && !isPhoneValid ? (
                     <p className="mt-2 text-[12px] text-red-300">
-                      Enter a valid Nepali phone number.
+                      {t("checkout.validPhone")}
                     </p>
                   ) : null}
                 </div>
@@ -860,7 +897,7 @@ export default function CheckoutPage() {
                     onChange={(e) => setSaveForNextTime(e.target.checked)}
                     className="h-4 w-4 accent-white"
                   />
-                  Save this information for next time
+                  {t("checkout.saveForNextTime")}
                 </label>
               </div>
             </section>
@@ -868,14 +905,15 @@ export default function CheckoutPage() {
             <aside className="lg:sticky lg:top-[104px] lg:self-start">
               <div className={`${panelClass} p-5 sm:p-6`}>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                  Location
+                  {t("checkout.location")}
                 </div>
+
                 <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
-                  Delivery Map
+                  {t("checkout.deliveryMap")}
                 </h2>
+
                 <p className="mt-2 text-[13px] leading-6 text-[#a7aec4]">
-                  Use current location or drag the map pin to set the exact
-                  delivery spot.
+                  {t("checkout.deliveryMapDesc")}
                 </p>
 
                 <button
@@ -885,15 +923,16 @@ export default function CheckoutPage() {
                   className={`${secondaryBtnClass} mt-5 w-full`}
                 >
                   {locationLoading
-                    ? "Detecting Location..."
-                    : "Use Current Location"}
+                    ? t("checkout.detectingLocation")
+                    : t("checkout.useCurrentLocation")}
                 </button>
 
                 <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
                   <div className="rounded-[18px] border border-[#26293a] bg-[#161824] px-4 py-3">
                     <div className="text-[11px] uppercase tracking-[0.16em] text-[#7f88b3]">
-                      Latitude
+                      {t("checkout.latitude")}
                     </div>
+
                     <div className="mt-1 text-[15px] font-semibold text-white">
                       {markerPosition.lat.toFixed(6)}
                     </div>
@@ -901,8 +940,9 @@ export default function CheckoutPage() {
 
                   <div className="rounded-[18px] border border-[#26293a] bg-[#161824] px-4 py-3">
                     <div className="text-[11px] uppercase tracking-[0.16em] text-[#7f88b3]">
-                      Longitude
+                      {t("checkout.longitude")}
                     </div>
+
                     <div className="mt-1 text-[15px] font-semibold text-white">
                       {markerPosition.lng.toFixed(6)}
                     </div>
@@ -912,8 +952,7 @@ export default function CheckoutPage() {
                 <div className="mt-5 overflow-hidden rounded-[20px] border border-[#26293a] bg-[#161824]">
                   {!GOOGLE_MAPS_API_KEY ? (
                     <div className="flex h-[340px] items-center justify-center px-5 text-center text-[14px] leading-6 text-yellow-100">
-                      Google Maps is not configured. Delivery pin will use
-                      default Kathmandu location.
+                      {t("checkout.mapsNotConfigured")}
                     </div>
                   ) : isLoaded ? (
                     <GoogleMap
@@ -938,54 +977,63 @@ export default function CheckoutPage() {
                     </GoogleMap>
                   ) : (
                     <div className="flex h-[340px] items-center justify-center text-[14px] text-[#a7aec4]">
-                      Loading Google Maps...
+                      {t("checkout.loadingGoogleMaps")}
                     </div>
                   )}
                 </div>
 
                 <div className="mt-3 text-[12px] leading-5 text-[#7f88b3]">
-                  {mapLoaded
-                    ? "Tip: drag the pin for exact delivery location."
-                    : "Map pin is using the selected/default location."}
+                  {mapLoaded ? t("checkout.mapTip") : t("checkout.mapDefaultTip")}
                 </div>
 
                 <div className="mt-6 rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-[#7f88b3]">
-                    Selected Address
+                    {t("checkout.selectedAddress")}
                   </div>
 
                   <div className="mt-3 space-y-2 text-[13px] leading-6 text-[#cfd3ff]">
                     <p>
-                      <span className="text-[#7f88b3]">Name:</span>{" "}
+                      <span className="text-[#7f88b3]">
+                        {t("checkout.name")}:
+                      </span>{" "}
                       {firstName || lastName
                         ? `${firstName} ${lastName}`.trim()
-                        : "Not added"}
+                        : t("checkout.notAdded")}
                     </p>
+
                     <p>
-                      <span className="text-[#7f88b3]">Address:</span>{" "}
-                      {addressLine || "Not added"}
+                      <span className="text-[#7f88b3]">
+                        {t("checkout.address")}:
+                      </span>{" "}
+                      {addressLine || t("checkout.notAdded")}
                     </p>
+
                     <p>
-                      <span className="text-[#7f88b3]">Area:</span>{" "}
+                      <span className="text-[#7f88b3]">
+                        {t("checkout.area")}:
+                      </span>{" "}
                       {[cityOrMunicipality, district, selectedProvince?.name]
                         .filter(Boolean)
-                        .join(", ") || "Not selected"}
+                        .join(", ") || t("checkout.notSelected")}
                     </p>
+
                     <p>
-                      <span className="text-[#7f88b3]">Phone:</span>{" "}
-                      {phone || "Not added"}
+                      <span className="text-[#7f88b3]">
+                        {t("checkout.phoneNumber")}:
+                      </span>{" "}
+                      {phone || t("checkout.notAdded")}
                     </p>
                   </div>
                 </div>
 
                 <div className="mt-5 rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
                   <div className="text-[11px] uppercase tracking-[0.2em] text-[#7f88b3]">
-                    Order Summary
+                    {t("checkout.orderSummary")}
                   </div>
 
                   <div className="mt-4 space-y-3 text-[14px] text-[#a7aec4]">
                     <div className="flex items-center justify-between gap-4">
-                      <span>Items</span>
+                      <span>{t("checkout.items")}</span>
                       <span className="text-white">
                         {orderSummary?.itemCount ||
                           getCartCount(checkoutItems) ||
@@ -1005,10 +1053,12 @@ export default function CheckoutPage() {
                                 <div className="truncate text-[13px] font-semibold text-white">
                                   {item.name}
                                 </div>
+
                                 <div className="mt-1 text-[11px] text-[#7f88b3]">
                                   {item.colorLabel || item.color} /{" "}
                                   {item.size || "-"} × {item.qty}
                                 </div>
+
                                 {item.sku ? (
                                   <div className="mt-1 text-[11px] text-[#7f88b3]">
                                     SKU: {item.sku}
@@ -1026,18 +1076,18 @@ export default function CheckoutPage() {
                     ) : null}
 
                     <div className="flex items-center justify-between gap-4">
-                      <span>Subtotal</span>
+                      <span>{t("checkout.subtotal")}</span>
                       <span className="text-white">{formatMoney(subtotal)}</span>
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
-                      <span>Shipping</span>
+                      <span>{t("checkout.shipping")}</span>
                       <span className="text-white">{formatMoney(shipping)}</span>
                     </div>
 
                     <div className="flex items-center justify-between gap-4">
                       <span>
-                        Discount{" "}
+                        {t("checkout.discount")}{" "}
                         {orderSummary?.couponCode
                           ? `(${orderSummary.couponCode})`
                           : ""}
@@ -1049,7 +1099,7 @@ export default function CheckoutPage() {
 
                     <div className="border-t border-[#26293a] pt-3">
                       <div className="flex items-center justify-between gap-4 text-[16px] font-semibold text-white">
-                        <span>Total</span>
+                        <span>{t("checkout.total")}</span>
                         <span>{formatMoney(total)}</span>
                       </div>
                     </div>
@@ -1063,15 +1113,15 @@ export default function CheckoutPage() {
                   className={`${primaryBtnClass} mt-6 w-full`}
                 >
                   {saving
-                    ? "Saving..."
+                    ? t("checkout.saving")
                     : cartHasStockIssue
-                      ? "Fix Cart Stock"
-                      : "Continue to Payment"}
+                      ? t("checkout.fixCartStock")
+                      : t("checkout.continueToPayment")}
                 </button>
 
                 {!isFormReady ? (
                   <p className="mt-3 text-center text-[12px] text-[#7f88b3]">
-                    Fill all required fields to continue.
+                    {t("checkout.fillRequired")}
                   </p>
                 ) : null}
               </div>

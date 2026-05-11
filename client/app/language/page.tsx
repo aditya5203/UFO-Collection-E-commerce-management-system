@@ -10,13 +10,12 @@ import MainFooter from "@/components/layout/MainFooter";
 type AppLocale = "en" | "np";
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+
 const containerClass =
   "mx-auto w-full max-w-[760px] px-4 py-10 sm:px-6 lg:px-8";
 
 const panelClass =
   "relative overflow-hidden rounded-[30px] border border-[#26293a] bg-[#11121a]/95 shadow-[0_25px_90px_rgba(0,0,0,0.5)] backdrop-blur";
-
-const LANGUAGE_STORAGE_KEY = "ufo_locale";
 
 const languages: Array<{
   locale: AppLocale;
@@ -48,20 +47,13 @@ export default function LanguagePage() {
   const [selected, setSelected] = React.useState<AppLocale>(
     locale === "np" ? "np" : "en"
   );
+
   const [toast, setToast] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
   React.useEffect(() => {
-    const saved =
-      typeof window !== "undefined"
-        ? localStorage.getItem(LANGUAGE_STORAGE_KEY)
-        : null;
-
-    if (saved === "en" || saved === "np") {
-      setSelected(saved);
-      setLocale(saved);
-    }
-  }, [setLocale]);
+    setSelected(locale === "np" ? "np" : "en");
+  }, [locale]);
 
   const handleLanguageChange = (nextLocale: AppLocale) => {
     if (saving) return;
@@ -69,18 +61,11 @@ export default function LanguagePage() {
     setSaving(true);
     setSelected(nextLocale);
     setLocale(nextLocale);
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLocale);
 
     setToast(
       nextLocale === "np"
         ? "भाषा नेपालीमा परिवर्तन भयो।"
         : "Language changed to English."
-    );
-
-    window.dispatchEvent(
-      new CustomEvent("ufo_locale_changed", {
-        detail: { locale: nextLocale },
-      })
     );
 
     window.setTimeout(() => {
@@ -134,7 +119,10 @@ export default function LanguagePage() {
                     type="button"
                     initial={{ opacity: 0, x: -16 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.35, delay: 0.12 + index * 0.08 }}
+                    transition={{
+                      duration: 0.35,
+                      delay: 0.12 + index * 0.08,
+                    }}
                     whileHover={{ y: -3, scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => handleLanguageChange(item.locale)}
@@ -165,9 +153,11 @@ export default function LanguagePage() {
                           <div className="text-[17px] font-semibold text-white">
                             {item.nativeLabel}
                           </div>
+
                           <div className="mt-1 text-[12px] font-medium uppercase tracking-[0.16em] text-[#7f879d]">
                             {item.label}
                           </div>
+
                           <div className="mt-2 text-[13px] leading-5 text-[#a7aec4]">
                             {item.description}
                           </div>
@@ -220,6 +210,7 @@ export default function LanguagePage() {
               className="fixed bottom-5 left-1/2 z-50 w-[calc(100%-32px)] max-w-[420px] -translate-x-1/2 rounded-2xl border border-[#d6c7ff]/30 bg-[#151724]/95 px-5 py-4 text-center text-sm font-semibold text-white shadow-[0_20px_70px_rgba(0,0,0,0.5)] backdrop-blur"
             >
               {toast}
+
               <div className="mt-1 text-xs font-medium text-[#a7aec4]">
                 Redirecting to homepage...
               </div>

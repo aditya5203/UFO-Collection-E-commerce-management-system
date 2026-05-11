@@ -1,13 +1,25 @@
 "use client";
+
 import * as React from "react";
 import { en } from "./en";
 import { np } from "./np";
 
 type Locale = "en" | "np";
+
+const LANGUAGE_STORAGE_KEY = "ufo_locale";
+
 const dict = { en, np } as const;
 
-function getByPath(obj: any, path: string) {
-  return path.split(".").reduce((acc, key) => (acc ? acc[key] : undefined), obj);
+function getByPath(obj: unknown, path: string): unknown {
+  return path
+    .split(".")
+    .reduce<unknown>((acc, key) => {
+      if (acc && typeof acc === "object" && key in acc) {
+        return (acc as Record<string, unknown>)[key];
+      }
+
+      return undefined;
+    }, obj);
 }
 
 const I18nContext = React.createContext<{
@@ -20,19 +32,28 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = React.useState<Locale>("en");
 
   React.useEffect(() => {
-    const saved = localStorage.getItem("locale");
+    const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY);
     setLocaleState(saved === "np" ? "np" : "en");
   }, []);
 
-  const setLocale = (l: Locale) => {
-    localStorage.setItem("locale", l);
+  const setLocale = React.useCallback((l: Locale) => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, l);
     setLocaleState(l);
-  };
 
-  const t = (key: string) => {
-    const value = getByPath(dict[locale], key);
-    return typeof value === "string" ? value : key; // fallback: show key
-  };
+    window.dispatchEvent(
+      new CustomEvent("ufo_locale_changed", {
+        detail: { locale: l },
+      })
+    );
+  }, []);
+
+  const t = React.useCallback(
+    (key: string) => {
+      const value = getByPath(dict[locale], key);
+      return typeof value === "string" ? value : key;
+    },
+    [locale]
+  );
 
   return (
     <I18nContext.Provider value={{ locale, setLocale, t }}>
@@ -43,6 +64,10 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
 export function useI18n() {
   const ctx = React.useContext(I18nContext);
-  if (!ctx) throw new Error("useI18n must be used inside I18nProvider");
+
+  if (!ctx) {
+    throw new Error("useI18n must be used inside I18nProvider");
+  }
+
   return ctx;
 }

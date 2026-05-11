@@ -3,18 +3,23 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
 type ToastType = "success" | "error" | "info";
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+
 const containerClass =
   "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-12 lg:px-6";
+
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
 const primaryBtnClass =
   "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90";
+
 const secondaryBtnClass =
   "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
 
@@ -47,9 +52,11 @@ function ToastMessage({
         className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
       >
         <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
+
         <div className="flex-1 text-[13px] font-medium leading-6">
           {toast.message}
         </div>
+
         <button
           type="button"
           onClick={onClose}
@@ -72,11 +79,13 @@ function StatusIcon() {
 }
 
 function StepIndicator() {
+  const { t } = useI18n();
+
   const steps = [
-    { label: "Cart", href: "/cartpage", active: false },
-    { label: "Information", href: "/checkout", active: false },
-    { label: "Payment", href: "/payment", active: false },
-    { label: "Confirmed", href: "/ThankYou", active: true },
+    { label: t("thankYou.cart"), href: "/cartpage", active: false },
+    { label: t("thankYou.information"), href: "/checkout", active: false },
+    { label: t("thankYou.payment"), href: "/payment", active: false },
+    { label: t("thankYou.confirmed"), href: "/ThankYou", active: true },
   ];
 
   return (
@@ -107,6 +116,7 @@ function StepIndicator() {
 
 export default function ThankYouPage() {
   const router = useRouter();
+  const { t } = useI18n();
 
   const [paymentMethod, setPaymentMethod] = React.useState("");
   const [orderNumber, setOrderNumber] = React.useState("#000000");
@@ -203,33 +213,33 @@ export default function ThankYouPage() {
   }, []);
 
   const getOrderDetailsPath = () => {
-  const cleanOrderNumber = String(orderNumber || "")
-    .replace("#", "")
-    .trim();
+    const cleanOrderNumber = String(orderNumber || "").replace("#", "").trim();
 
-  if (cleanOrderNumber && cleanOrderNumber !== "000000") {
-    return `/customerorderdetails/${encodeURIComponent(
-      cleanOrderNumber
-    )}?from=thankyou`;
-  }
+    if (cleanOrderNumber && cleanOrderNumber !== "000000") {
+      return `/customerorderdetails/${encodeURIComponent(
+        cleanOrderNumber
+      )}?from=thankyou`;
+    }
 
-  if (orderId) {
-    return `/customerorderdetails/${encodeURIComponent(
-      orderId
-    )}?from=thankyou`;
-  }
+    if (orderId) {
+      return `/customerorderdetails/${encodeURIComponent(
+        orderId
+      )}?from=thankyou`;
+    }
 
-  return "";
-};
+    return "";
+  };
 
   const handleViewOrder = () => {
     const path = getOrderDetailsPath();
 
     if (!path) {
-      showToast("Order not found. Please check Order History.", "error");
+      showToast(t("thankYou.orderNotFoundHistory"), "error");
+
       window.setTimeout(() => {
         router.push("/order-history");
       }, 700);
+
       return;
     }
 
@@ -240,10 +250,12 @@ export default function ThankYouPage() {
     const path = getOrderDetailsPath();
 
     if (!path) {
-      showToast("Order not found. Redirecting to Order History.", "error");
+      showToast(t("thankYou.orderNotFoundRedirect"), "error");
+
       window.setTimeout(() => {
         router.push("/order-history");
       }, 700);
+
       return;
     }
 
@@ -271,16 +283,15 @@ export default function ThankYouPage() {
               </div>
 
               <div className="relative mt-5 text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                Order Confirmed
+                {t("thankYou.orderConfirmed")}
               </div>
 
               <h1 className="relative mx-auto mt-3 max-w-[760px] text-[34px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[48px]">
-                Thank You for Your Order!
+                {t("thankYou.title")}
               </h1>
 
               <p className="relative mx-auto mt-4 max-w-[720px] text-[14px] leading-7 text-[#a7aec4] sm:text-[15px]">
-                Your order has been successfully placed. You will receive an
-                email confirmation shortly with your order details.
+                {t("thankYou.desc")}
               </p>
 
               <div className="relative mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -289,7 +300,7 @@ export default function ThankYouPage() {
                   onClick={handleViewOrder}
                   className={secondaryBtnClass}
                 >
-                  View Order
+                  {t("thankYou.viewOrder")}
                 </button>
 
                 <button
@@ -297,7 +308,7 @@ export default function ThankYouPage() {
                   onClick={handleTrackOrder}
                   className={secondaryBtnClass}
                 >
-                  Track Order
+                  {t("thankYou.trackOrder")}
                 </button>
 
                 <button
@@ -305,7 +316,7 @@ export default function ThankYouPage() {
                   onClick={() => router.push("/collection")}
                   className={primaryBtnClass}
                 >
-                  Continue Shopping
+                  {t("thankYou.continueShopping")}
                 </button>
               </div>
             </div>
@@ -316,25 +327,28 @@ export default function ThankYouPage() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                    Receipt
+                    {t("thankYou.receipt")}
                   </div>
 
                   <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
-                    Order Details
+                    {t("thankYou.orderDetails")}
                   </h2>
                 </div>
 
                 <span className="w-fit rounded-full border border-green-500/20 bg-green-500/10 px-3 py-1 text-[12px] font-semibold text-green-300">
-                  Confirmed
+                  {t("thankYou.confirmed")}
                 </span>
               </div>
 
               <div className="mt-6 divide-y divide-[#26293a]">
                 {[
-                  ["Order Number", orderNumber],
-                  ["Estimated Delivery", estimatedDelivery],
-                  ["Total", formatNPR(totalPaisa)],
-                  ["Payment Method", paymentMethod || "Not available"],
+                  [t("thankYou.orderNumber"), orderNumber],
+                  [t("thankYou.estimatedDelivery"), estimatedDelivery],
+                  [t("thankYou.total"), formatNPR(totalPaisa)],
+                  [
+                    t("thankYou.paymentMethod"),
+                    paymentMethod || t("thankYou.notAvailable"),
+                  ],
                 ].map(([label, value]) => (
                   <div
                     key={label}
@@ -351,12 +365,11 @@ export default function ThankYouPage() {
 
               <div className="mt-6 rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
                 <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#cbd5f5]">
-                  Need Help?
+                  {t("thankYou.needHelp")}
                 </div>
 
                 <p className="mt-2 text-[13px] leading-6 text-[#a7aec4]">
-                  You can check your order status from order history or contact
-                  support if you have any issue with your order.
+                  {t("thankYou.needHelpDesc")}
                 </p>
 
                 <div className="mt-4 flex flex-wrap gap-3">
@@ -365,7 +378,7 @@ export default function ThankYouPage() {
                     onClick={() => router.push("/order-history")}
                     className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
                   >
-                    Order History
+                    {t("thankYou.orderHistory")}
                   </button>
 
                   <button
@@ -373,7 +386,7 @@ export default function ThankYouPage() {
                     onClick={() => router.push("/contact")}
                     className="inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
                   >
-                    Contact Support
+                    {t("thankYou.contactSupport")}
                   </button>
                 </div>
               </div>
@@ -383,26 +396,18 @@ export default function ThankYouPage() {
               className={`${panelClass} p-5 sm:p-6 lg:sticky lg:top-[104px] lg:self-start`}
             >
               <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                Next Steps
+                {t("thankYou.nextSteps")}
               </div>
 
               <h3 className="mt-2 text-[22px] font-semibold tracking-[-0.02em] text-white">
-                What happens next?
+                {t("thankYou.whatNext")}
               </h3>
 
               <div className="mt-5 space-y-4">
                 {[
-                  [
-                    "1",
-                    "Order confirmation",
-                    "We confirm your order and payment details.",
-                  ],
-                  ["2", "Processing", "Your items will be packed carefully."],
-                  [
-                    "3",
-                    "Delivery",
-                    "Your order will be delivered to your address.",
-                  ],
+                  ["1", t("thankYou.step1Title"), t("thankYou.step1Text")],
+                  ["2", t("thankYou.step2Title"), t("thankYou.step2Text")],
+                  ["3", t("thankYou.step3Title"), t("thankYou.step3Text")],
                 ].map(([step, title, text]) => (
                   <div key={step} className="flex gap-3">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-[12px] font-semibold text-white">
@@ -424,7 +429,7 @@ export default function ThankYouPage() {
 
               <div className="mt-6 rounded-[20px] border border-green-500/20 bg-green-500/10 p-4">
                 <div className="text-[13px] font-semibold text-green-200">
-                  Delivery Estimate
+                  {t("thankYou.deliveryEstimate")}
                 </div>
 
                 <div className="mt-1 text-[14px] text-white">
@@ -432,16 +437,15 @@ export default function ThankYouPage() {
                 </div>
 
                 <p className="mt-2 text-[12px] leading-5 text-green-100/80">
-                  Delivery timing may vary depending on your location and order
-                  processing time.
+                  {t("thankYou.deliveryEstimateDesc")}
                 </p>
               </div>
 
               <div className="mt-6 grid grid-cols-3 gap-2">
                 {[
-                  ["Secure", "Payment"],
-                  ["Easy", "Return"],
-                  ["COD", "Available"],
+                  [t("thankYou.secure"), t("thankYou.paymentLabel")],
+                  [t("thankYou.easy"), t("thankYou.returnLabel")],
+                  [t("thankYou.cod"), t("thankYou.available")],
                 ].map(([a, b]) => (
                   <div
                     key={`${a}-${b}`}

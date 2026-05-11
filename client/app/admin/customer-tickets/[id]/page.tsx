@@ -1,14 +1,10 @@
+// client/app/admin/customer-tickets/[id]/page.tsx
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
-import React from "react";
-import Image from "next/image";
-import {
-  usePathname,
-  useRouter,
-  useSearchParams,
-  useParams,
-} from "next/navigation";
+import { io, Socket } from "socket.io-client";
+import { useParams, useRouter } from "next/navigation";
 import AdminPageGuard from "../../_components/AdminPageGuard";
 import {
   AdminPermissions,
@@ -17,170 +13,188 @@ import {
   normalizeAdminPermissions,
 } from "../../_components/adminPermissions";
 
-type TabKey = "overview" | "orders" | "tickets" | "addresses";
-
-type CustomerStatus = "active" | "blocked" | "deleted";
-
-type CustomerRow = {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  createdAt: string;
-  lastLogin?: string;
-  numberOfOrders?: number;
-  status?: CustomerStatus;
-  isBlocked?: boolean;
-  isDeleted?: boolean;
-  deletedAt?: string;
-};
-
-type PaymentStatus = "Paid" | "Pending" | "Failed";
-
-type OrderStatus =
-  | "Pending"
-  | "Confirmed"
-  | "Shipped"
-  | "Transit"
-  | "Delivered"
-  | "Cancelled";
-
-type OrderRow = {
-  id: string;
-  orderCode?: string;
-  totalPaisa?: number;
-  total?: number;
-  paymentStatus: PaymentStatus;
-  orderStatus: OrderStatus;
-  createdAt: string;
-};
-
 type TicketStatus = "Open" | "Pending" | "In Progress" | "Resolved" | "Closed";
+type NormalizedTicketStatus = "Open" | "In Progress" | "Resolved" | "Closed";
 
-type TicketRow = {
+type TicketDetail = {
   id: string;
-  ticketId?: string;
-  ticketCode?: string;
-  customerName?: string;
-  customerEmail?: string;
-  subject?: string;
-  issueType?: string;
-  productName?: string;
+  ticketCode: string;
+  status: TicketStatus;
+  submittedAt: string;
+  customer: { name: string; email: string };
+  product: { name: string; id?: string | null };
   orderId?: string | null;
   size?: string | null;
   color?: string | null;
-  submittedAt?: string;
-  status: TicketStatus;
+  issueType: string;
+  subject: string;
+  message: string;
+  imageUrl?: string | null;
+  replies: Array<{
+    id: string;
+    sender: "customer" | "admin";
+    text: string;
+    createdAt: string;
+  }>;
 };
 
-type AddressType = "Shipping" | "Billing";
-type AddressLabel = "Home" | "Work" | "Other";
-
-type Address = {
-  _id?: string;
-  id?: string;
-  userId?: string;
-  type: AddressType;
-  label?: AddressLabel;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  country?: string;
-  provinceId?: string;
-  district?: string;
-  cityOrMunicipality?: string;
-  addressLine?: string;
-  street?: string;
-  postalCode?: string;
-  phone?: string;
-  isDefault?: boolean;
-  lat?: number;
-  lng?: number;
-  createdAt?: string;
-  updatedAt?: string;
+type AdminTicketSocketPayload = {
+  ticketId?: string;
+  ticketCode?: string;
+  status?: TicketStatus;
+  reply?: {
+    id?: string;
+    sender?: "customer" | "admin";
+    text?: string;
+    createdAt?: string;
+  };
 };
 
-const API_BASE = (
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
-).replace(/\/+$/, "");
+type ToastState = {
+  type: "success" | "error" | "info";
+  message: string;
+};
+
+const RAW_API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+
+const CLEAN_API_BASE = RAW_API_BASE.replace(/\/+$/, "");
+
+const API = CLEAN_API_BASE.endsWith("/api")
+  ? CLEAN_API_BASE
+  : `${CLEAN_API_BASE}/api`;
+
+const SOCKET_BASE = CLEAN_API_BASE.replace(/\/api$/, "");
+
+const MAX_REPLY_LENGTH = 2000;
 
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
+
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
 const primaryBtnClass =
   "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
+
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
-const actionBtnClass =
-  "rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+
+function optionClass() {
+  return "bg-[#11121a] text-white";
+}
+
+function normalizeStatus(status?: string): NormalizedTicketStatus {
+  if (status === "Pending") return "In Progress";
+  if (status === "Open") return "Open";
+  if (status === "In Progress") return "In Progress";
+  if (status === "Resolved") return "Resolved";
+  if (status === "Closed") return "Closed";
+  return "Open";
+}
+
+function statusTone(s: TicketStatus | NormalizedTicketStatus) {
+  const status = normalizeStatus(s);
+
+  if (status === "Open") return "border-sky-400/20 bg-sky-500/15 text-sky-300";
+  if (status === "In Progress") {
+    return "border-amber-400/20 bg-amber-500/15 text-amber-300";
+  }
+  if (status === "Resolved") {
+    return "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
+  }
+
+  return "border-slate-400/20 bg-slate-500/15 text-slate-300";
+}
 
 function formatDateShort(iso?: string) {
   if (!iso) return "-";
 
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "-";
 
-  return d.toISOString().slice(0, 10);
+  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+
+  return d.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
 }
 
-function formatNPR(paisa: number) {
-  const safe = Number.isFinite(paisa) ? paisa : 0;
-  return `Rs. ${(safe / 100).toFixed(2)}`;
+function formatDateTime(value?: string) {
+  if (!value) return "-";
+
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) return String(value).slice(0, 19);
+
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-function nameFromAddress(a: Address) {
-  const fn = (a.firstName || "").trim();
-  const ln = (a.lastName || "").trim();
-  const full = `${fn} ${ln}`.trim();
+function normalizeTicketDetail(item: any): TicketDetail | null {
+  if (!item) return null;
 
-  return full || a.email || "—";
+  return {
+    id: String(item?.id || item?._id || ""),
+    ticketCode: String(item?.ticketCode || item?.ticketId || "-"),
+    status: normalizeStatus(item?.status),
+    submittedAt: String(item?.submittedAt || item?.createdAt || ""),
+    customer: {
+      name: String(item?.customer?.name || item?.customerName || "Customer"),
+      email: String(item?.customer?.email || item?.customerEmail || "-"),
+    },
+    product: {
+      name: String(item?.product?.name || item?.productName || "-"),
+      id: item?.product?.id ? String(item.product.id) : item?.productId ? String(item.productId) : null,
+    },
+    orderId: item?.orderId ? String(item.orderId) : null,
+    size: item?.size ? String(item.size) : null,
+    color: item?.color ? String(item.color) : null,
+    issueType: String(item?.issueType || "-"),
+    subject: String(item?.subject || "-"),
+    message: String(item?.message || "-"),
+    imageUrl: item?.imageUrl ? String(item.imageUrl) : null,
+    replies: Array.isArray(item?.replies)
+      ? item.replies.map((r: any, index: number) => ({
+          id: String(r?.id || r?._id || `reply-${index}`),
+          sender: r?.sender === "admin" ? "admin" : "customer",
+          text: String(r?.text || ""),
+          createdAt: String(r?.createdAt || new Date().toISOString()),
+        }))
+      : [],
+  };
 }
 
-function addressLinePretty(a: Address) {
-  const provinceText = a.provinceId
-    ? /^province/i.test(String(a.provinceId))
-      ? String(a.provinceId)
-      : `Province ${a.provinceId}`
-    : "";
+function replyAlreadyExists(
+  replies: TicketDetail["replies"],
+  incoming: NonNullable<AdminTicketSocketPayload["reply"]>
+) {
+  const replyId = String(incoming.id || "");
+  const incomingText = String(incoming.text || "").trim();
+  const incomingSender = incoming.sender || "customer";
+  const incomingTime = incoming.createdAt
+    ? new Date(incoming.createdAt).getTime()
+    : 0;
 
-  const parts = [
-    a.addressLine,
-    a.street,
-    a.cityOrMunicipality,
-    a.district,
-    provinceText,
-    a.postalCode,
-    a.country || "Nepal",
-  ]
-    .map((x) => String(x || "").trim())
-    .filter(Boolean);
+  if (replyId && replies.some((r) => String(r.id) === replyId)) return true;
 
-  return parts.length ? parts.join(", ") : "—";
-}
+  return replies.some((r) => {
+    if (r.sender !== incomingSender) return false;
+    if (String(r.text || "").trim() !== incomingText) return false;
 
-function hasLatLng(a: Address) {
-  return (
-    typeof a.lat === "number" &&
-    Number.isFinite(a.lat) &&
-    typeof a.lng === "number" &&
-    Number.isFinite(a.lng)
-  );
-}
+    const existingTime = new Date(r.createdAt).getTime();
 
-function latLngText(a: Address) {
-  if (!hasLatLng(a)) return "No map location saved";
-  return `${Number(a.lat).toFixed(6)}, ${Number(a.lng).toFixed(6)}`;
-}
+    if (!Number.isFinite(existingTime) || !Number.isFinite(incomingTime)) {
+      return false;
+    }
 
-function getGoogleMapsUrl(a: Address) {
-  if (!hasLatLng(a)) return "";
-  return `https://www.google.com/maps?q=${a.lat},${a.lng}`;
-}
-
-function getCustomerStatus(customer: CustomerRow): CustomerStatus {
-  if (customer.status === "deleted" || customer.isDeleted) return "deleted";
-  if (customer.status === "blocked" || customer.isBlocked) return "blocked";
-  return "active";
+    return Math.abs(existingTime - incomingTime) < 3000;
+  });
 }
 
 async function safeJson(res: Response) {
@@ -193,79 +207,45 @@ async function safeJson(res: Response) {
   }
 }
 
-function normalizeTicketStatus(status?: string): TicketStatus {
-  if (status === "Pending") return "Pending";
-  if (status === "In Progress") return "In Progress";
-  if (status === "Resolved") return "Resolved";
-  if (status === "Closed") return "Closed";
-  return "Open";
-}
-
-function normalizeTicketRow(row: any): TicketRow {
-  return {
-    id: String(row?.id || row?._id || ""),
-    ticketId: row?.ticketId ? String(row.ticketId) : undefined,
-    ticketCode: row?.ticketCode ? String(row.ticketCode) : undefined,
-    customerName: row?.customerName ? String(row.customerName) : undefined,
-    customerEmail: row?.customerEmail ? String(row.customerEmail) : undefined,
-    subject: row?.subject ? String(row.subject) : undefined,
-    issueType: row?.issueType ? String(row.issueType) : undefined,
-    productName: row?.productName ? String(row.productName) : undefined,
-    orderId: row?.orderId ? String(row.orderId) : null,
-    size: row?.size ? String(row.size) : null,
-    color: row?.color ? String(row.color) : null,
-    submittedAt: row?.submittedAt
-      ? String(row.submittedAt)
-      : row?.createdAt
-        ? String(row.createdAt)
-        : undefined,
-    status: normalizeTicketStatus(row?.status),
-  };
-}
-
-export default function CustomerDetailsPage() {
-  const params = useParams<{ id: string }>();
-  const customerId = params?.id;
-
+export default function AdminTicketDetailsPage() {
   const router = useRouter();
-  const pathname = usePathname();
-  const sp = useSearchParams();
+  const params = useParams();
+  const id = String(params?.id || "");
 
-  const tab = ((sp.get("tab") as TabKey) || "overview") as TabKey;
-
-  const setTab = (t: TabKey) => {
-    const next = new URLSearchParams(sp.toString());
-    next.set("tab", t);
-    router.replace(`${pathname}?${next.toString()}`);
-  };
-
-  const [customer, setCustomer] = React.useState<CustomerRow | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string>("");
+  const [saving, setSaving] = React.useState(false);
+  const [err, setErr] = React.useState("");
+  const [toast, setToast] = React.useState<ToastState | null>(null);
 
-  const [orders, setOrders] = React.useState<OrderRow[]>([]);
-  const [ordersLoading, setOrdersLoading] = React.useState(false);
-  const [ordersError, setOrdersError] = React.useState("");
-
-  const [tickets, setTickets] = React.useState<TicketRow[]>([]);
-  const [ticketsLoading, setTicketsLoading] = React.useState(false);
-  const [ticketsError, setTicketsError] = React.useState("");
-
-  const [addrLoading, setAddrLoading] = React.useState(false);
-  const [addrError, setAddrError] = React.useState("");
-  const [shipping, setShipping] = React.useState<Address[]>([]);
-  const [billing, setBilling] = React.useState<Address[]>([]);
+  const [ticket, setTicket] = React.useState<TicketDetail | null>(null);
+  const [status, setStatus] = React.useState<NormalizedTicketStatus>("Open");
+  const [reply, setReply] = React.useState("");
+  const [attachmentPreview, setAttachmentPreview] = React.useState<string | null>(
+    null
+  );
 
   const [role, setRole] = React.useState<"admin" | "superadmin">("admin");
-  const [permissions, setPermissions] =
-    React.useState<AdminPermissions | null>(null);
+  const [permissions, setPermissions] = React.useState<AdminPermissions | null>(
+    null
+  );
+
+  const socketRef = React.useRef<Socket | null>(null);
+  const loadRef = React.useRef<(() => Promise<void>) | null>(null);
+
+  const canReply = hasPermission(role, permissions, "ticketReply");
+  const canClose = hasPermission(role, permissions, "ticketClose");
+
+  function showToast(nextToast: ToastState) {
+    setToast(nextToast);
+    window.setTimeout(() => setToast(null), 3500);
+  }
 
   React.useEffect(() => {
     let mounted = true;
 
     const loadAdminProfile = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/admin/settings`, {
+        const res = await fetch(`${API}/admin/settings`, {
           method: "GET",
           credentials: "include",
           cache: "no-store",
@@ -274,6 +254,7 @@ export default function CustomerDetailsPage() {
         if (!res.ok) return;
 
         const body = (await safeJson(res)) as AdminSettingsResponse;
+
         const nextRole = (body?.profile?.role || "admin") as
           | "admin"
           | "superadmin";
@@ -287,7 +268,10 @@ export default function CustomerDetailsPage() {
 
         setRole(nextRole);
         setPermissions(nextPermissions);
-      } catch {}
+      } catch {
+        if (!mounted) return;
+        setPermissions(null);
+      }
     };
 
     loadAdminProfile();
@@ -297,244 +281,244 @@ export default function CustomerDetailsPage() {
     };
   }, []);
 
-  const canViewOrders = hasPermission(role, permissions, "orderView");
-  const canViewTickets = hasPermission(role, permissions, "ticketView");
+  React.useEffect(() => {
+    if (!attachmentPreview) return;
 
-  const loadCustomer = React.useCallback(async (id: string) => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAttachmentPreview(null);
+    };
+
+    document.addEventListener("keydown", onKey);
+
+    return () => {
+      document.body.style.overflow = previous;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [attachmentPreview]);
+
+  const load = React.useCallback(async () => {
+    if (!id) return;
+
     setLoading(true);
-    setError("");
+    setErr("");
 
     try {
-      const res = await fetch(`${API_BASE}/api/admin/customers/${id}`, {
-        method: "GET",
+      const res = await fetch(`${API}/admin/tickets/${id}`, {
         credentials: "include",
         cache: "no-store",
       });
 
-      const json = await safeJson(res);
+      const data = await safeJson(res);
 
       if (!res.ok) {
-        setCustomer(null);
-        setError(json?.message || "Customer not found");
-        return;
+        throw new Error((data as any)?.message || "Failed to load ticket");
       }
 
-      setCustomer(json?.data || null);
-    } catch {
-      setCustomer(null);
-      setError("Failed to load customer");
+      const item = normalizeTicketDetail((data as any).item || null);
+
+      setTicket(item);
+      setStatus(normalizeStatus(item?.status));
+    } catch (e: any) {
+      setErr(e?.message || "Something went wrong.");
+      setTicket(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [id]);
 
-  const loadOrders = React.useCallback(async (id: string) => {
-    setOrdersLoading(true);
-    setOrdersError("");
+  React.useEffect(() => {
+    loadRef.current = load;
+  }, [load]);
 
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/admin/orders?customerId=${encodeURIComponent(id)}`,
-        {
-          credentials: "include",
-          cache: "no-store",
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
+  React.useEffect(() => {
+    if (!id) return;
+
+    const socket = io(SOCKET_BASE, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      loadRef.current?.();
+    });
+
+    socket.on("connect_error", () => {
+      showToast({
+        type: "info",
+        message: "Live ticket updates are reconnecting.",
+      });
+    });
+
+    socket.on("admin:ticket:updated", (payload: AdminTicketSocketPayload) => {
+      const payloadId = String(payload?.ticketId || "");
+      const nextStatus = normalizeStatus(payload?.status);
+
+      if (payloadId !== id) return;
+
+      setStatus(nextStatus);
+      setTicket((prev) => (prev ? { ...prev, status: nextStatus } : prev));
+    });
+
+    socket.on("admin:ticket:reply:new", (payload: AdminTicketSocketPayload) => {
+      const payloadId = String(payload?.ticketId || "");
+      const incoming = payload?.reply;
+
+      if (payloadId !== id || !incoming?.text) return;
+
+      setTicket((prev) => {
+        if (!prev) return prev;
+
+        const nextStatus = payload.status
+          ? normalizeStatus(payload.status)
+          : normalizeStatus(prev.status);
+
+        if (replyAlreadyExists(prev.replies, incoming)) {
+          return { ...prev, status: nextStatus };
         }
-      );
 
-      const json = await safeJson(res);
-
-      if (!res.ok) {
-        setOrders([]);
-        setOrdersError(json?.message || "Failed to load orders");
-        return;
-      }
-
-      setOrders(Array.isArray(json?.data) ? json.data : []);
-    } catch {
-      setOrders([]);
-      setOrdersError("Network error while loading orders");
-    } finally {
-      setOrdersLoading(false);
-    }
-  }, []);
-
-  const loadTickets = React.useCallback(
-  async (id: string) => {
-    setTicketsLoading(true);
-    setTicketsError("");
-
-    try {
-      const params = new URLSearchParams();
-      params.set("customerId", id);
-
-      if (customer?.email) {
-        params.set("customerEmail", customer.email);
-      }
-
-      const res = await fetch(`${API_BASE}/api/admin/tickets?${params}`, {
-        credentials: "include",
-        cache: "no-store",
+        return {
+          ...prev,
+          status: nextStatus,
+          replies: [
+            ...prev.replies,
+            {
+              id: String(incoming.id || `socket-${Date.now()}`),
+              sender: incoming.sender === "admin" ? "admin" : "customer",
+              text: String(incoming.text || ""),
+              createdAt: String(incoming.createdAt || new Date().toISOString()),
+            },
+          ],
+        };
       });
 
-      const json = await safeJson(res);
-
-      if (!res.ok) {
-        setTickets([]);
-        setTicketsError(json?.message || "Failed to load tickets");
-        return;
+      if (payload.status) {
+        setStatus(normalizeStatus(payload.status));
       }
+    });
 
-      const rawItems = Array.isArray(json?.items)
-        ? json.items
-        : Array.isArray(json?.data)
-          ? json.data
-          : [];
+    return () => {
+      socket.removeAllListeners();
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [id]);
 
-      setTickets(
-        rawItems.map(normalizeTicketRow).filter((t: TicketRow) => t.id)
-      );
-    } catch {
-      setTickets([]);
-      setTicketsError("Network error while loading tickets");
-    } finally {
-      setTicketsLoading(false);
+  const saveStatus = async (nextStatus: NormalizedTicketStatus) => {
+    if (!canClose) {
+      setErr("You do not have permission to update ticket status.");
+      return;
     }
-  },
-  [customer?.email]
-);
 
-  const loadAddresses = React.useCallback(async (id: string) => {
-    setAddrLoading(true);
-    setAddrError("");
+    if (!id) {
+      setErr("Invalid ticket id.");
+      return;
+    }
+
+    setSaving(true);
+    setErr("");
 
     try {
-      const res = await fetch(
-        `${API_BASE}/api/admin/customers/${encodeURIComponent(id)}/addresses`,
-        {
-          credentials: "include",
-          cache: "no-store",
-        }
-      );
+      const res = await fetch(`${API}/admin/tickets/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status: nextStatus }),
+      });
 
-      const json = await safeJson(res);
+      const data = await safeJson(res);
 
       if (!res.ok) {
-        setShipping([]);
-        setBilling([]);
-        setAddrError(json?.message || "Failed to load addresses");
-        return;
+        throw new Error((data as any)?.message || "Failed to update status");
       }
 
-      const s: Address[] = Array.isArray(json?.shipping) ? json.shipping : [];
-      const b: Address[] = Array.isArray(json?.billing) ? json.billing : [];
+      setStatus(nextStatus);
+      setTicket((prev) => (prev ? { ...prev, status: nextStatus } : prev));
 
-      setShipping(s);
-      setBilling(b);
-    } catch {
-      setShipping([]);
-      setBilling([]);
-      setAddrError("Network error while loading addresses");
+      showToast({
+        type: "success",
+        message: "Status updated successfully.",
+      });
+
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || "Failed to update status.");
     } finally {
-      setAddrLoading(false);
+      setSaving(false);
     }
-  }, []);
+  };
 
-  React.useEffect(() => {
-    if (!customerId) return;
-    loadCustomer(customerId);
-  }, [customerId, loadCustomer]);
-
-  React.useEffect(() => {
-    if (!customerId) return;
-    if (tab !== "orders") return;
-    if (!canViewOrders) return;
-
-    if (orders.length === 0 && !ordersLoading && !ordersError) {
-      loadOrders(customerId);
+  const sendReply = async () => {
+    if (!canReply) {
+      setErr("You do not have permission to reply to tickets.");
+      return;
     }
-  }, [
-    tab,
-    customerId,
-    canViewOrders,
-    loadOrders,
-    orders.length,
-    ordersLoading,
-    ordersError,
-  ]);
 
-  React.useEffect(() => {
-    if (!customerId) return;
-    if (tab !== "tickets") return;
-    if (!canViewTickets) return;
-
-    if (tickets.length === 0 && !ticketsLoading && !ticketsError) {
-      loadTickets(customerId);
+    if (!id) {
+      setErr("Invalid ticket id.");
+      return;
     }
-  }, [
-    tab,
-    customerId,
-    canViewTickets,
-    loadTickets,
-    tickets.length,
-    ticketsLoading,
-    ticketsError,
-  ]);
 
-  React.useEffect(() => {
-    if (!customerId) return;
-    if (tab !== "addresses") return;
+    const text = reply.trim();
 
-    const total = shipping.length + billing.length;
-
-    if (total === 0 && !addrLoading && !addrError) {
-      loadAddresses(customerId);
+    if (!text) {
+      setErr("Please write a reply first.");
+      return;
     }
-  }, [
-    tab,
-    customerId,
-    loadAddresses,
-    shipping.length,
-    billing.length,
-    addrLoading,
-    addrError,
-  ]);
 
-  const customerStatus = customer ? getCustomerStatus(customer) : "active";
-  const ordersCount = customer?.numberOfOrders ?? 0;
-  const ticketsCount = tickets.length;
-  const addressesCount = shipping.length + billing.length;
+    if (text.length > MAX_REPLY_LENGTH) {
+      setErr(`Reply must be under ${MAX_REPLY_LENGTH} characters.`);
+      return;
+    }
 
-  if (loading) {
-    return (
-      <AdminPageGuard permission="customerView">
-        <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
-          <CustomerSkeleton />
-        </div>
-      </AdminPageGuard>
-    );
-  }
+    setSaving(true);
+    setErr("");
 
-  if (!customer) {
-    return (
-      <AdminPageGuard permission="customerView">
-        <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
-          <div className="space-y-4">
-            <div className={`${panelClass} p-6 text-[13px] text-red-200`}>
-              {error || "Customer not found."}
-            </div>
+    try {
+      const res = await fetch(`${API}/admin/tickets/${id}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ text }),
+      });
 
-            <Link href="/admin/customers" className={secondaryBtnClass}>
-              Back
-            </Link>
-          </div>
-        </div>
-      </AdminPageGuard>
-    );
-  }
+      const data = await safeJson(res);
+
+      if (!res.ok) {
+        throw new Error((data as any)?.message || "Failed to send reply");
+      }
+
+      setReply("");
+
+      showToast({
+        type: "success",
+        message: "Reply sent successfully.",
+      });
+
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || "Failed to send reply.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <AdminPageGuard permission="customerView">
+    <AdminPageGuard permission="ticketView">
       <div className={`${shellClass} -m-6 p-4 sm:p-6 lg:p-8`}>
+        {toast ? <Toast toast={toast} onClose={() => setToast(null)} /> : null}
+
         <div className="space-y-6">
           <section
             className={`${panelClass} bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.22),transparent_38%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6`}
@@ -542,619 +526,454 @@ export default function CustomerDetailsPage() {
             <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                  Admin / Customers / Details
+                  Customer Tickets / Details
                 </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <h1 className="text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
-                    {customer.name || "-"}
-                  </h1>
+                <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white sm:text-[36px]">
+                  Ticket Details
+                </h1>
 
-                  <Badge text={customer.role || "customer"} />
-                  <CustomerStatusPill status={customerStatus} />
-                </div>
-
-                <p className="mt-2 max-w-[680px] text-[13px] leading-7 text-[#a7aec4]">
-                  {customer.email || "-"}
+                <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
+                  Review customer issue details, attachment, product/order
+                  information, conversation history, and reply as admin.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => customerId && loadCustomer(customerId)}
-                  className={primaryBtnClass}
+                  onClick={() => router.push("/admin/customer-tickets")}
+                  className={secondaryBtnClass}
                 >
-                  Refresh
+                  Back
                 </button>
 
-                <Link href="/admin/customers" className={secondaryBtnClass}>
-                  Back
+                <Link href="/admin/customer-tickets" className={primaryBtnClass}>
+                  All Tickets
                 </Link>
               </div>
             </div>
           </section>
 
-          <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <StatCard
-              label="Created At"
-              value={formatDateShort(customer.createdAt)}
-              hint="Account creation date"
-              iconSrc="/images/admin/calendar.png"
-            />
+          {err ? (
+            <AlertBox type="error" message={err} onClose={() => setErr("")} />
+          ) : null}
 
-            <StatCard
-              label="Last Login"
-              value={formatDateShort(customer.lastLogin)}
-              hint="Last time user logged in"
-              iconSrc="/images/admin/clock.png"
-            />
-
-            <StatCard
-              label="Total Orders"
-              value={String(ordersCount)}
-              hint="Lifetime orders"
-              iconSrc="/images/admin/orders.png"
-            />
-          </section>
-
-          <section className={`${panelClass} p-3`}>
-            <div className="flex flex-wrap items-center gap-2">
-              <TabButton
-                active={tab === "overview"}
-                onClick={() => setTab("overview")}
-              >
-                Overview
-              </TabButton>
-
-              {canViewOrders ? (
-                <TabButton
-                  active={tab === "orders"}
-                  onClick={() => setTab("orders")}
-                >
-                  Orders <span className="ml-2 opacity-70">({ordersCount})</span>
-                </TabButton>
-              ) : null}
-
-              {canViewTickets ? (
-                <TabButton
-                  active={tab === "tickets"}
-                  onClick={() => setTab("tickets")}
-                >
-                  Tickets{" "}
-                  <span className="ml-2 opacity-70">
-                    ({tab === "tickets" ? ticketsCount : "—"})
-                  </span>
-                </TabButton>
-              ) : null}
-
-              <TabButton
-                active={tab === "addresses"}
-                onClick={() => setTab("addresses")}
-              >
-                Addresses{" "}
-                <span className="ml-2 opacity-70">
-                  ({tab === "addresses" ? addressesCount : "—"})
-                </span>
-              </TabButton>
+          {loading ? (
+            <TicketSkeleton />
+          ) : !ticket ? (
+            <div
+              className={`${panelClass} p-10 text-center text-[13px] text-[#a7aec4]`}
+            >
+              Ticket not found.
             </div>
-          </section>
+          ) : (
+            <>
+              <section className={`${panelClass} p-5 sm:p-6`}>
+                <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                      Ticket Summary
+                    </div>
 
-          {tab === "overview" ? (
-            <section className={`${panelClass} p-5 sm:p-6`}>
-              <div className="mb-5">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                  Overview
-                </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <h2 className="text-[26px] font-semibold tracking-[-0.03em] text-white sm:text-[32px]">
+                        {ticket.ticketCode}
+                      </h2>
 
-                <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  Customer Profile
-                </h2>
-              </div>
+                      <StatusPill status={status} />
+                    </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <InfoBlock label="Full Name" value={customer.name} />
-                <InfoBlock label="Email" value={customer.email} />
-                <InfoBlock label="Role" value={customer.role || "customer"} />
-                <InfoBlock
-                  label="Status"
-                  value={<CustomerStatusPill status={customerStatus} />}
-                />
-                <InfoBlock
-                  label="Created At"
-                  value={formatDateShort(customer.createdAt)}
-                />
-                <InfoBlock
-                  label="Last Login"
-                  value={formatDateShort(customer.lastLogin)}
-                />
-
-                {customerStatus === "deleted" ? (
-                  <InfoBlock
-                    label="Deleted At"
-                    value={formatDateShort(customer.deletedAt)}
-                  />
-                ) : null}
-              </div>
-            </section>
-          ) : null}
-
-          {tab === "orders" && canViewOrders ? (
-            <TableShell
-              title="Orders"
-              right={
-                <button
-                  type="button"
-                  onClick={() => customerId && loadOrders(customerId)}
-                  className={secondaryBtnClass}
-                  disabled={ordersLoading}
-                >
-                  {ordersLoading ? "Refreshing..." : "Refresh"}
-                </button>
-              }
-            >
-              {ordersError ? (
-                <div className="px-5 py-4">
-                  <div className="rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-[13px] text-red-200">
-                    {ordersError}
+                    <p className="mt-2 text-[13px] text-[#a7aec4]">
+                      Submitted: {formatDateShort(ticket.submittedAt)} • Issue:{" "}
+                      {ticket.issueType}
+                    </p>
                   </div>
+
+                  {canClose ? (
+                    <div>
+                      <label
+                        htmlFor="ticket-status"
+                        className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]"
+                      >
+                        Update Status
+                      </label>
+
+                      <select
+                        id="ticket-status"
+                        value={status}
+                        onChange={(e) =>
+                          saveStatus(e.target.value as NormalizedTicketStatus)
+                        }
+                        disabled={saving}
+                        className="h-[48px] rounded-full border border-white/10 bg-white/5 px-4 text-[13px] text-white outline-none transition focus:border-[#d6c7ff] disabled:cursor-not-allowed disabled:opacity-60"
+                        title="Update ticket status"
+                        aria-label="Update ticket status"
+                      >
+                        <option value="Open" className={optionClass()}>
+                          Open
+                        </option>
+                        <option value="In Progress" className={optionClass()}>
+                          In Progress
+                        </option>
+                        <option value="Resolved" className={optionClass()}>
+                          Resolved
+                        </option>
+                        <option value="Closed" className={optionClass()}>
+                          Closed
+                        </option>
+                      </select>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
+              </section>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] border-collapse text-[13px]">
-                  <thead>
-                    <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                      <th className="px-5 py-4 font-medium">Order</th>
-                      <th className="px-5 py-4 font-medium">Total</th>
-                      <th className="px-5 py-4 font-medium">Payment</th>
-                      <th className="px-5 py-4 font-medium">Status</th>
-                      <th className="px-5 py-4 font-medium">Created</th>
-                      <th className="px-5 py-4 text-right font-medium">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
+              <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
+                <section className={`${panelClass} p-5 sm:p-6`}>
+                  <InfoSection title="Customer">
+                    <InfoBlock label="Name" value={ticket.customer.name} />
+                    <InfoBlock label="Email" value={ticket.customer.email} />
+                  </InfoSection>
 
-                  <tbody>
-                    {ordersLoading ? (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-5 py-10 text-center text-[#a7aec4]"
+                  <Divider />
+
+                  <InfoSection title="Product">
+                    <InfoBlock
+                      label="Product Name"
+                      value={ticket.product.name || "-"}
+                    />
+
+                    {ticket.product.id ? (
+                      <Link
+                        href={`/admin/products/${ticket.product.id}`}
+                        className={`${secondaryBtnClass} mt-4 inline-flex`}
+                      >
+                        View Product
+                      </Link>
+                    ) : null}
+                  </InfoSection>
+
+                  <Divider />
+
+                  <InfoSection title="Order Details">
+                    <InfoBlock label="Order ID" value={ticket.orderId || "-"} />
+                    <InfoBlock label="Size" value={ticket.size || "-"} />
+                    <InfoBlock label="Color" value={ticket.color || "-"} />
+                  </InfoSection>
+
+                  <Divider />
+
+                  <InfoSection title="Subject">
+                    <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4 text-[13px] leading-6 text-white">
+                      {ticket.subject}
+                    </div>
+                  </InfoSection>
+                </section>
+
+                <section className={`${panelClass} p-5 sm:p-6`}>
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                      Customer Message
+                    </div>
+
+                    <div className="mt-3 rounded-[18px] border border-white/10 bg-[#0d0f17] p-4 text-[13px] leading-7 text-[#d8dcef]">
+                      {ticket.message}
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                        Attachment
+                      </div>
+
+                      {ticket.imageUrl ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAttachmentPreview(ticket.imageUrl || null)
+                          }
+                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition hover:bg-white/10"
                         >
-                          Loading...
-                        </td>
-                      </tr>
-                    ) : orders.length ? (
-                      orders.map((o) => {
-                        const code = o.orderCode || o.id;
-                        const paisa = Number.isFinite(o.totalPaisa as number)
-                          ? (o.totalPaisa as number)
-                          : Math.round(Number(o.total || 0) * 100);
+                          Fullscreen
+                        </button>
+                      ) : null}
+                    </div>
 
-                        return (
-                          <tr
-                            key={o.id}
-                            className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
+                    <div className="mt-3 rounded-[18px] border border-white/10 bg-[#0d0f17] p-4">
+                      {ticket.imageUrl ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAttachmentPreview(ticket.imageUrl || null)
+                          }
+                          className="relative aspect-[16/9] w-full overflow-hidden rounded-[16px] border border-white/10"
+                          aria-label="Open attachment preview"
+                          title="Open attachment preview"
+                        >
+                          <img
+                            src={ticket.imageUrl}
+                            alt="Ticket attachment"
+                            className="h-full w-full object-cover transition hover:scale-[1.02]"
+                          />
+                        </button>
+                      ) : (
+                        <div className="py-10 text-center text-[13px] text-[#a7aec4]">
+                          No image uploaded.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-8">
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+                      Conversation
+                    </div>
+
+                    <div className="mt-3 space-y-3">
+                      {ticket.replies.length ? (
+                        ticket.replies.map((r) => (
+                          <div
+                            key={r.id}
+                            className={[
+                              "rounded-[18px] border px-4 py-3",
+                              r.sender === "admin"
+                                ? "border-[#d6c7ff]/25 bg-[#d6c7ff]/10"
+                                : "border-white/10 bg-white/[0.03]",
+                            ].join(" ")}
                           >
-                            <td className="px-5 py-4 font-semibold text-white">
-                              {code}
-                            </td>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-[13px] font-semibold text-white">
+                                {r.sender === "admin" ? "Admin" : "Customer"}
+                              </div>
 
-                            <td className="px-5 py-4 font-semibold text-[#d6c7ff]">
-                              {formatNPR(paisa)}
-                            </td>
-
-                            <td className="px-5 py-4">
-                              <PaymentPill status={o.paymentStatus}>
-                                {o.paymentStatus}
-                              </PaymentPill>
-                            </td>
-
-                            <td className="px-5 py-4">
-                              <OrderStatusPill status={o.orderStatus}>
-                                {o.orderStatus}
-                              </OrderStatusPill>
-                            </td>
-
-                            <td className="px-5 py-4 text-[#a7aec4]">
-                              {formatDateShort(o.createdAt)}
-                            </td>
-
-                            <td className="px-5 py-4 text-right">
-                              <Link
-                                href={`/admin/orders/${o.id}`}
-                                className={actionBtnClass}
-                              >
-                                View
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan={6}
-                          className="px-5 py-10 text-center text-[#a7aec4]"
-                        >
-                          No orders for this customer.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </TableShell>
-          ) : null}
-
-          {tab === "tickets" && canViewTickets ? (
-            <TableShell
-              title="Customer Tickets"
-              right={
-                <button
-                  type="button"
-                  onClick={() => customerId && loadTickets(customerId)}
-                  className={secondaryBtnClass}
-                  disabled={ticketsLoading}
-                >
-                  {ticketsLoading ? "Refreshing..." : "Refresh"}
-                </button>
-              }
-            >
-              {ticketsError ? (
-                <div className="px-5 py-4">
-                  <div className="rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-[13px] text-red-200">
-                    {ticketsError}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[1080px] border-collapse text-[13px]">
-                  <thead>
-                    <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                      <th className="px-5 py-4 font-medium">Ticket</th>
-                      <th className="px-5 py-4 font-medium">Subject</th>
-                      <th className="px-5 py-4 font-medium">Issue Type</th>
-                      <th className="px-5 py-4 font-medium">Product</th>
-                      <th className="px-5 py-4 font-medium">Order</th>
-                      <th className="px-5 py-4 font-medium">Status</th>
-                      <th className="px-5 py-4 font-medium">Submitted</th>
-                      <th className="px-5 py-4 text-right font-medium">
-                        Action
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {ticketsLoading ? (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          className="px-5 py-10 text-center text-[#a7aec4]"
-                        >
-                          Loading tickets...
-                        </td>
-                      </tr>
-                    ) : tickets.length ? (
-                      tickets.map((ticket) => (
-                        <tr
-                          key={ticket.id}
-                          className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
-                        >
-                          <td className="px-5 py-4 font-semibold text-white">
-                            {ticket.ticketCode || ticket.ticketId || ticket.id}
-                          </td>
-
-                          <td className="px-5 py-4 text-white">
-                            <div className="max-w-[260px] truncate">
-                              {ticket.subject || "-"}
-                            </div>
-                          </td>
-
-                          <td className="px-5 py-4 text-[#a7aec4]">
-                            {ticket.issueType || "-"}
-                          </td>
-
-                          <td className="px-5 py-4 text-[#a7aec4]">
-                            <div className="max-w-[240px] truncate">
-                              {ticket.productName || "-"}
+                              <div className="text-[11px] text-[#7f879f]">
+                                {formatDateTime(r.createdAt)}
+                              </div>
                             </div>
 
-                            <div className="mt-1 text-[11px] text-[#7f879f]">
-                              Size: {ticket.size || "-"} • Color:{" "}
-                              {ticket.color || "-"}
+                            <div className="mt-2 whitespace-pre-wrap text-[13px] leading-6 text-[#d8dcef]">
+                              {r.text}
                             </div>
-                          </td>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="rounded-[18px] border border-white/10 bg-white/[0.03] px-4 py-3 text-[13px] text-[#a7aec4]">
+                          No replies yet.
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-                          <td className="px-5 py-4 text-[#a7aec4]">
-                            {ticket.orderId || "-"}
-                          </td>
-
-                          <td className="px-5 py-4">
-                            <TicketStatusPill status={ticket.status}>
-                              {ticket.status}
-                            </TicketStatusPill>
-                          </td>
-
-                          <td className="px-5 py-4 text-[#a7aec4]">
-                            {formatDateShort(ticket.submittedAt)}
-                          </td>
-
-                          <td className="px-5 py-4 text-right">
-                            <Link
-                              href={`/admin/customer-tickets/${ticket.id}`}
-                              className={actionBtnClass}
-                            >
-                              View
-                            </Link>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          className="px-5 py-10 text-center text-[#a7aec4]"
+                  {canReply ? (
+                    <div className="mt-8">
+                      <div className="flex items-center justify-between gap-3">
+                        <label
+                          htmlFor="ticket-reply"
+                          className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a7aec4]"
                         >
-                          No tickets found for this customer.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </TableShell>
-          ) : null}
+                          Reply as Admin
+                        </label>
 
-          {tab === "addresses" ? (
-            <TableShell
-              title="Addresses"
-              right={
-                <button
-                  type="button"
-                  onClick={() => customerId && loadAddresses(customerId)}
-                  className={secondaryBtnClass}
-                  disabled={addrLoading}
-                >
-                  {addrLoading ? "Refreshing..." : "Refresh"}
-                </button>
-              }
-            >
-              {addrError ? (
-                <div className="px-5 py-4">
-                  <div className="rounded-[18px] border border-red-400/20 bg-red-500/10 p-4 text-[13px] text-red-200">
-                    {addrError}
-                  </div>
-                </div>
-              ) : null}
+                        <span
+                          className={[
+                            "text-[11px]",
+                            reply.length > MAX_REPLY_LENGTH
+                              ? "text-red-300"
+                              : "text-[#7f879f]",
+                          ].join(" ")}
+                        >
+                          {reply.length}/{MAX_REPLY_LENGTH}
+                        </span>
+                      </div>
 
-              <div className="px-5 pb-5 sm:px-6 sm:pb-6">
-                {addrLoading ? (
-                  <div className="py-8 text-[13px] text-[#a7aec4]">
-                    Loading addresses...
-                  </div>
-                ) : (
-                  <div className="grid gap-6 lg:grid-cols-2">
-                    <AddressColumn title="Shipping" addresses={shipping} />
-                    <AddressColumn title="Billing" addresses={billing} />
-                  </div>
-                )}
+                      <textarea
+                        id="ticket-reply"
+                        value={reply}
+                        onChange={(e) => setReply(e.target.value)}
+                        rows={4}
+                        maxLength={MAX_REPLY_LENGTH + 100}
+                        placeholder="Write a reply..."
+                        className="mt-3 w-full resize-none rounded-[18px] border border-white/10 bg-[#0d0f17] px-4 py-3 text-[13px] leading-7 text-white outline-none placeholder:text-[#7f879f] transition focus:border-[#d6c7ff]"
+                      />
+
+                      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setReply("")}
+                          disabled={saving || !reply}
+                          className={secondaryBtnClass}
+                        >
+                          Clear
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={sendReply}
+                          disabled={
+                            saving ||
+                            !reply.trim() ||
+                            reply.trim().length > MAX_REPLY_LENGTH
+                          }
+                          className={primaryBtnClass}
+                        >
+                          {saving ? "Sending..." : "Send Reply"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
               </div>
-            </TableShell>
-          ) : null}
+            </>
+          )}
         </div>
       </div>
+
+      {attachmentPreview ? (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/85 p-4 backdrop-blur-[4px]">
+          <div className="relative w-full max-w-[1100px] overflow-hidden rounded-[26px] border border-[#26293a] bg-[#11121a] shadow-[0_30px_100px_rgba(0,0,0,0.75)]">
+            <div className="flex items-center justify-between border-b border-[#26293a] px-5 py-4">
+              <div>
+                <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
+                  Attachment Preview
+                </div>
+
+                <div className="mt-1 text-[18px] font-semibold text-white">
+                  Support Ticket Image
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setAttachmentPreview(null)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
+                aria-label="Close attachment preview"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="max-h-[78vh] overflow-auto bg-[#0d0f17] p-4">
+              <img
+                src={attachmentPreview}
+                alt="Fullscreen ticket attachment"
+                className="mx-auto max-h-[72vh] w-auto max-w-full rounded-[18px] object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AdminPageGuard>
   );
 }
 
-function Badge({ text }: { text: string }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
-      {text}
-    </span>
-  );
-}
-
-function PaymentPill({
-  status,
-  children,
+function Toast({
+  toast,
+  onClose,
 }: {
-  status: PaymentStatus;
-  children: React.ReactNode;
+  toast: ToastState;
+  onClose: () => void;
 }) {
   const tone =
-    status === "Paid"
-      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
-      : status === "Failed"
-        ? "border-red-400/20 bg-red-500/15 text-red-300"
-        : "border-amber-400/20 bg-amber-500/15 text-amber-300";
+    toast.type === "success"
+      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-100"
+      : toast.type === "error"
+      ? "border-red-400/20 bg-red-500/15 text-red-100"
+      : "border-blue-400/20 bg-blue-500/15 text-blue-100";
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
-    >
-      {children}
-    </span>
+    <div className="fixed right-4 top-4 z-[70] w-[calc(100vw-2rem)] max-w-[420px]">
+      <div
+        className={[
+          "flex items-start justify-between gap-3 rounded-[20px] border px-4 py-3 shadow-2xl backdrop-blur",
+          tone,
+        ].join(" ")}
+      >
+        <p className="text-[13px] font-medium leading-6">{toast.message}</p>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-white/10 bg-white/10 px-2 py-1 text-[11px] font-bold text-white"
+          aria-label="Close toast"
+          title="Close toast"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
   );
 }
 
-function OrderStatusPill({
-  status,
-  children,
+function AlertBox({
+  type,
+  message,
+  onClose,
 }: {
-  status: OrderStatus;
-  children: React.ReactNode;
+  type: "error" | "info";
+  message: string;
+  onClose?: () => void;
 }) {
   const tone =
-    status === "Delivered"
-      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
-      : status === "Transit"
-        ? "border-violet-400/20 bg-violet-500/15 text-violet-300"
-        : status === "Shipped"
-          ? "border-blue-400/20 bg-blue-500/15 text-blue-300"
-          : status === "Confirmed"
-            ? "border-cyan-400/20 bg-cyan-500/15 text-cyan-300"
-            : status === "Cancelled"
-              ? "border-red-400/20 bg-red-500/15 text-red-300"
-              : "border-amber-400/20 bg-amber-500/15 text-amber-300";
+    type === "error"
+      ? "border-red-400/20 bg-red-500/10 text-red-200"
+      : "border-blue-400/20 bg-blue-500/10 text-blue-200";
 
   return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
+    <div
+      className={[
+        "flex items-start justify-between gap-3 rounded-[20px] border px-5 py-4 text-[13px]",
+        tone,
+      ].join(" ")}
     >
-      {children}
-    </span>
+      <p className="leading-6">{message}</p>
+
+      {onClose ? (
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] font-bold text-white"
+          aria-label="Dismiss"
+          title="Dismiss"
+        >
+          ✕
+        </button>
+      ) : null}
+    </div>
   );
 }
 
-function TicketStatusPill({
+function StatusPill({
   status,
-  children,
 }: {
-  status: TicketStatus;
-  children: React.ReactNode;
+  status: TicketStatus | NormalizedTicketStatus;
 }) {
-  const tone =
-    status === "Resolved"
-      ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-300"
-      : status === "Closed"
-        ? "border-slate-400/20 bg-slate-500/15 text-slate-300"
-        : status === "In Progress"
-          ? "border-blue-400/20 bg-blue-500/15 text-blue-300"
-          : status === "Pending"
-            ? "border-amber-400/20 bg-amber-500/15 text-amber-300"
-            : "border-sky-400/20 bg-sky-500/15 text-sky-300";
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${tone}`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Pill({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-[#a7aec4]">
-      {children}
-    </span>
-  );
-}
-
-function CustomerStatusPill({ status }: { status: CustomerStatus }) {
-  const styles =
-    status === "blocked"
-      ? "border-amber-400/20 bg-amber-500/15 text-amber-300"
-      : status === "deleted"
-        ? "border-red-400/20 bg-red-500/15 text-red-300"
-        : "border-emerald-400/20 bg-emerald-500/15 text-emerald-300";
-
   return (
     <span
       className={[
-        "inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold",
-        styles,
+        "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold",
+        statusTone(status),
       ].join(" ")}
     >
-      {status === "blocked"
-        ? "Blocked"
-        : status === "deleted"
-          ? "Deleted"
-          : "Active"}
+      {normalizeStatus(status)}
     </span>
   );
 }
 
-function TabButton({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={[
-        "rounded-full px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.14em] transition",
-        active
-          ? "bg-white text-[#090a12]"
-          : "border border-white/10 bg-white/5 text-white hover:bg-white/10",
-      ].join(" ")}
-      type="button"
-    >
-      {children}
-    </button>
-  );
-}
-
-function TableShell({
+function InfoSection({
   title,
-  right,
   children,
 }: {
   title: string;
-  right?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section className={`${panelClass} overflow-hidden`}>
-      <div className="flex flex-col gap-3 border-b border-[#26293a] px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-            Customer Data
-          </div>
-
-          <h2 className="mt-1 text-[20px] font-semibold text-white">{title}</h2>
-        </div>
-
-        {right ? <div>{right}</div> : null}
+    <div>
+      <div className="mb-3 text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
+        {title}
       </div>
 
-      {children}
-    </section>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  hint,
-  iconSrc,
-}: {
-  label: string;
-  value: React.ReactNode;
-  hint?: string;
-  iconSrc: string;
-}) {
-  return (
-    <div className="rounded-[20px] border border-[#26293a] bg-[#161824] p-5 shadow-[0_14px_40px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.18em] text-[#a7aec4]">
-            {label}
-          </div>
-
-          <div className="mt-3 text-[20px] font-semibold tracking-[-0.03em] text-white">
-            {value}
-          </div>
-
-          {hint ? (
-            <div className="mt-2 text-[12px] text-[#7f879f]">{hint}</div>
-          ) : null}
-        </div>
-
-        <div className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5">
-          <Image src={iconSrc} alt={label} width={22} height={22} />
-        </div>
-      </div>
+      <div className="space-y-3">{children}</div>
     </div>
   );
 }
@@ -1164,7 +983,7 @@ function InfoBlock({
   value,
 }: {
   label: string;
-  value?: React.ReactNode;
+  value: React.ReactNode;
 }) {
   return (
     <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
@@ -1173,134 +992,17 @@ function InfoBlock({
       </div>
 
       <div className="mt-2 break-words text-[13px] font-medium text-white">
-        {value || "-"}
+        {value}
       </div>
     </div>
   );
 }
 
-function AddressColumn({
-  title,
-  addresses,
-}: {
-  title: string;
-  addresses: Address[];
-}) {
-  return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-[14px] font-semibold text-white">{title}</h3>
-
-        <span className="text-[12px] text-[#a7aec4]">
-          {addresses.length} saved
-        </span>
-      </div>
-
-      {addresses.length ? (
-        <div className="space-y-4">
-          {addresses.map((a, index) => (
-            <AddressCard key={a._id || a.id || `${title}-${index}`} a={a} />
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-[18px] border border-white/10 bg-white/[0.03] p-5 text-[13px] text-[#a7aec4]">
-          No {title.toLowerCase()} addresses found.
-        </div>
-      )}
-    </div>
-  );
+function Divider() {
+  return <div className="my-6 h-px bg-[#26293a]" />;
 }
 
-function AddressCard({ a }: { a: Address }) {
-  const id = a._id || a.id || "";
-
-  return (
-    <div className="rounded-[20px] border border-white/10 bg-white/[0.03] p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-[14px] font-semibold text-white">
-              {a.label || "Home"}
-            </div>
-
-            <Pill>{a.type}</Pill>
-
-            {a.isDefault ? (
-              <span className="inline-flex rounded-full border border-emerald-400/20 bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-300">
-                Default
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-2 text-[12px] text-[#a7aec4]">
-            {nameFromAddress(a)}
-          </div>
-
-          {a.phone ? (
-            <div className="mt-1 text-[12px] text-[#a7aec4]">{a.phone}</div>
-          ) : null}
-
-          {a.email ? (
-            <div className="mt-1 text-[12px] text-[#7f879f]">{a.email}</div>
-          ) : null}
-        </div>
-
-        {id ? <div className="text-[11px] text-[#7f879f]">ID: {id}</div> : null}
-      </div>
-
-      <div className="mt-4 text-[13px] leading-6 text-white">
-        {addressLinePretty(a)}
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {a.cityOrMunicipality ? <Pill>{a.cityOrMunicipality}</Pill> : null}
-        {a.district ? <Pill>{a.district}</Pill> : null}
-
-        {a.provinceId ? (
-          <Pill>
-            {/^province/i.test(String(a.provinceId))
-              ? String(a.provinceId)
-              : `Province ${a.provinceId}`}
-          </Pill>
-        ) : null}
-
-        {hasLatLng(a) ? <Pill>Map Saved</Pill> : null}
-      </div>
-
-      <div className="mt-4 rounded-[16px] border border-white/10 bg-[#0d0f17] p-4">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
-          Map Location
-        </div>
-
-        <div
-          className={`mt-2 text-[12px] ${
-            hasLatLng(a) ? "text-white" : "text-[#7f879f]"
-          }`}
-        >
-          {latLngText(a)}
-        </div>
-
-        {hasLatLng(a) ? (
-          <a
-            href={getGoogleMapsUrl(a)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`${secondaryBtnClass} mt-4 inline-flex`}
-          >
-            View Map
-          </a>
-        ) : null}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#7f879f]">
-        <span>Created: {formatDateShort(a.createdAt)}</span>
-        <span>Updated: {formatDateShort(a.updatedAt)}</span>
-      </div>
-    </div>
-  );
-}
-
-function CustomerSkeleton() {
+function TicketSkeleton() {
   return (
     <div className="space-y-5">
       <div className={`${panelClass} p-6`}>
@@ -1309,13 +1011,9 @@ function CustomerSkeleton() {
         <div className="mt-3 h-4 w-80 animate-pulse rounded bg-white/5" />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div
-            key={i}
-            className="h-[116px] animate-pulse rounded-[20px] border border-white/5 bg-white/[0.03]"
-          />
-        ))}
+      <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
+        <div className="h-[520px] animate-pulse rounded-[24px] border border-white/5 bg-white/[0.03]" />
+        <div className="h-[520px] animate-pulse rounded-[24px] border border-white/5 bg-white/[0.03]" />
       </div>
     </div>
   );

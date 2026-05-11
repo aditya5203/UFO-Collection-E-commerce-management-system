@@ -1,13 +1,15 @@
-// client/app/collection/page.tsx
-
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 import CollectionHeader from "@/components/layout/CollectionHeader";
 import MainFooter from "@/components/layout/MainFooter";
+import CollectionHero from "./_components/CollectionHero";
+import CollectionControls from "./_components/CollectionControls";
+import CollectionFilters from "./_components/CollectionFilters";
+import WeatherBanner from "./_components/WeatherBanner";
+import ProductGrid from "./_components/ProductGrid";
 
 type CustomerType = "Men" | "Women" | "Boys" | "Girls";
 type ToastType = "success" | "error" | "info";
@@ -16,8 +18,8 @@ type WeatherMood = "cold" | "mild" | "hot" | "rainy";
 type WeatherCollectionContext = {
   mood: WeatherMood;
   city: string;
-  title: string;
-  message: string;
+  titleKey: string;
+  messageKey: string;
   types: string[];
 };
 
@@ -88,72 +90,54 @@ const shellClass =
 const containerClass =
   "mx-auto w-full max-w-[1480px] px-4 py-6 sm:px-5 sm:py-8 lg:px-8";
 
-const panelClass =
-  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
-
-const primaryBtnClass =
-  "rounded-full bg-white px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 sm:px-6 sm:py-3";
-
-const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 sm:px-6 sm:py-3";
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 26 },
-  show: { opacity: 1, y: 0 },
-};
-
-const fadeLeft = {
-  hidden: { opacity: 0, x: -26 },
-  show: { opacity: 1, x: 0 },
-};
-
-const productGridMotion = {
-  hidden: {},
-  show: {
-    transition: {
-      staggerChildren: 0.055,
-    },
-  },
-};
-
-const productCardMotion = {
-  hidden: { opacity: 0, y: 24, scale: 0.97 },
-  show: { opacity: 1, y: 0, scale: 1 },
-};
-
 const weatherCollectionMap: Record<
   WeatherMood,
   {
-    title: string;
-    message: string;
+    titleKey: string;
+    messageKey: string;
     types: string[];
   }
 > = {
   cold: {
-    title: "Cold Weather Collection",
-    message:
-      "Showing warm outfit picks like hoodies, jackets, sweaters, and sneakers.",
+    titleKey: "collection.weather.coldTitle",
+    messageKey: "collection.weather.coldMessage",
     types: ["Hoodie", "Jacket", "Sweater", "Sneakers"],
   },
   mild: {
-    title: "Comfort Weather Collection",
-    message:
-      "Showing relaxed daily picks like hoodies, shirts, joggers, and sneakers.",
+    titleKey: "collection.weather.mildTitle",
+    messageKey: "collection.weather.mildMessage",
     types: ["Hoodie", "Formal Shirt", "Joggers", "Sneakers"],
   },
   hot: {
-    title: "Warm Weather Collection",
-    message:
-      "Showing breathable outfit picks like t-shirts, shorts, caps, and light shoes.",
+    titleKey: "collection.weather.hotTitle",
+    messageKey: "collection.weather.hotMessage",
     types: ["T-Shirt", "Shorts", "Cap", "Light Shoes"],
   },
   rainy: {
-    title: "Rain Ready Collection",
-    message:
-      "Showing weather-friendly picks like jackets, hoodies, dark pants, and waterproof shoes.",
+    titleKey: "collection.weather.rainyTitle",
+    messageKey: "collection.weather.rainyMessage",
     types: ["Jacket", "Hoodie", "Dark Pants", "Waterproof Shoes"],
   },
 };
+
+const filterTypes = [
+  "T-Shirt",
+  "Jean",
+  "Jacket",
+  "Hoodie",
+  "Sweater",
+  "Sneakers",
+  "Shoes",
+  "Light Shoes",
+  "Waterproof Shoes",
+  "Joggers",
+  "Dark Pants",
+  "Formal Shirt",
+  "Frock",
+  "Wide-leg",
+  "Shorts",
+  "Cap",
+];
 
 function norm(s: unknown) {
   return String(s || "")
@@ -324,195 +308,9 @@ function ToastMessage({
   );
 }
 
-function ProductCard({
-  product,
-  onOutOfStockClick,
-  onInvalidProductClick,
-}: {
-  product: Product;
-  onOutOfStockClick: () => void;
-  onInvalidProductClick: () => void;
-}) {
-  const stockCount = Number(product.stock || 0);
-  const isOutOfStock = stockCount <= 0;
-  const isLowStock = stockCount > 0 && stockCount <= 5;
-  const hasValidId = Boolean(product.id);
-
-  if (isOutOfStock) {
-    return (
-      <button
-        type="button"
-        onClick={onOutOfStockClick}
-        className="group block w-full text-left"
-        aria-label={`${product.name} is out of stock`}
-      >
-        <ProductCardInner
-          product={product}
-          isOutOfStock={isOutOfStock}
-          isLowStock={isLowStock}
-          stockCount={stockCount}
-        />
-      </button>
-    );
-  }
-
-  if (!hasValidId) {
-    return (
-      <button
-        type="button"
-        onClick={onInvalidProductClick}
-        className="group block w-full text-left"
-        aria-label={`${product.name} is unavailable`}
-      >
-        <ProductCardInner
-          product={product}
-          isOutOfStock={false}
-          isLowStock={isLowStock}
-          stockCount={stockCount}
-        />
-      </button>
-    );
-  }
-
-  return (
-    <Link href={`/product/${product.id}`} className="group block">
-      <ProductCardInner
-        product={product}
-        isOutOfStock={isOutOfStock}
-        isLowStock={isLowStock}
-        stockCount={stockCount}
-      />
-    </Link>
-  );
-}
-
-function ProductCardInner({
-  product,
-  isOutOfStock,
-  isLowStock,
-  stockCount,
-}: {
-  product: Product;
-  isOutOfStock: boolean;
-  isLowStock: boolean;
-  stockCount: number;
-}) {
-  return (
-    <motion.div
-      variants={productCardMotion}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-      whileHover={
-        isOutOfStock
-          ? undefined
-          : {
-              y: -8,
-              scale: 1.015,
-              transition: { type: "spring", stiffness: 260, damping: 20 },
-            }
-      }
-      className={`overflow-hidden rounded-[22px] border bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)] ${
-        isOutOfStock
-          ? "border-red-400/25"
-          : "border-[#26293a] hover:border-[#4a506b] hover:shadow-[0_24px_70px_rgba(0,0,0,0.38)]"
-      }`}
-    >
-      <div className="relative aspect-[3.6/5] w-full overflow-hidden bg-[#0d0f17]">
-        <Image
-          src={resolveMediaSrc(product.image)}
-          alt={product.name}
-          fill
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-          className={`object-cover transition duration-500 group-hover:scale-[1.06] ${
-            isOutOfStock ? "opacity-45 grayscale" : ""
-          }`}
-        />
-
-        <div className="absolute left-3 top-3 flex flex-wrap gap-2">
-          {product.customer ? (
-            <span className="rounded-full border border-white/15 bg-black/45 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white backdrop-blur">
-              {product.customer}
-            </span>
-          ) : null}
-        </div>
-
-        {isOutOfStock ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/35">
-            <span className="rounded-full border border-red-300/40 bg-red-500/20 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-red-100 backdrop-blur">
-              Out of Stock
-            </span>
-          </div>
-        ) : (
-          <div className="absolute bottom-3 left-3 right-3 translate-y-2 rounded-full bg-white px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-[#090a12] opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-            View Product
-          </div>
-        )}
-      </div>
-
-      <div className="p-4">
-        <div className="mb-2 flex flex-wrap gap-2">
-          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-[0.14em] text-[#c8cde0]">
-            {product.subCategory || "Fashion"}
-          </span>
-        </div>
-
-        <div className="line-clamp-2 min-h-[46px] text-[15px] font-medium leading-6 text-[#f5f7fb] sm:text-[16px]">
-          {product.name}
-        </div>
-
-        <div className="mt-2.5 flex items-center justify-between gap-3">
-          <div className="text-[14px] font-semibold text-[#d6c7ff] sm:text-[15px]">
-            Rs. {Number(product.price || 0).toFixed(2)}
-          </div>
-
-          <div className="text-[12px] text-[#a7aec4]">
-            ★ {Number(product.rating || 0).toFixed(1)}
-            <span className="ml-1">({Number(product.reviews || 0)})</span>
-          </div>
-        </div>
-
-        <div
-          className={`mt-2.5 text-[11px] font-semibold uppercase tracking-[0.14em] ${
-            isOutOfStock
-              ? "text-red-300"
-              : isLowStock
-                ? "text-yellow-300"
-                : "text-emerald-300"
-          }`}
-        >
-          {isOutOfStock
-            ? "Out of Stock"
-            : isLowStock
-              ? `Only ${stockCount} left`
-              : `${stockCount} in stock`}
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function FilterCheckbox({
-  checked,
-  label,
-  onChange,
-}: {
-  checked: boolean;
-  label: string;
-  onChange: () => void;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center gap-2 rounded-[10px] px-1.5 py-1.5 transition hover:bg-white/5">
-      <input
-        type="checkbox"
-        className="h-4 w-4 accent-white"
-        checked={checked}
-        onChange={onChange}
-      />
-      <span>{label}</span>
-    </label>
-  );
-}
-
 export default function CollectionPage() {
+  const { t } = useI18n();
+
   const [sortValue, setSortValue] = React.useState<
     "low-high" | "high-low" | "newest"
   >("newest");
@@ -567,8 +365,8 @@ export default function CollectionPage() {
 
   const clearFiltersWithToast = React.useCallback(() => {
     clearFilters();
-    showToast("Filters cleared.", "info");
-  }, [clearFilters, showToast]);
+    showToast(t("collection.filtersCleared"), "info");
+  }, [clearFilters, showToast, t]);
 
   React.useEffect(() => {
     return () => {
@@ -598,23 +396,21 @@ export default function CollectionPage() {
 
     const weatherMood = weatherParam as WeatherMood;
     const config = weatherCollectionMap[weatherMood];
+    const city = cityParam || t("collection.weather.yourCity");
 
     setWeatherContext({
       mood: weatherMood,
-      city: cityParam || "your city",
-      title: config.title,
-      message: config.message,
+      city,
+      titleKey: config.titleKey,
+      messageKey: config.messageKey,
       types: config.types,
     });
 
     setSelectedTypes((prev) => [...new Set([...prev, ...config.types])]);
     setSortValue("newest");
 
-    showToast(
-      `Weather outfit picks loaded for ${cityParam || "your city"}.`,
-      "success"
-    );
-  }, [showToast]);
+    showToast(`${t("collection.weatherLoaded")} ${city}.`, "success");
+  }, [showToast, t]);
 
   const fetchAllProducts = React.useCallback(async () => {
     try {
@@ -696,7 +492,7 @@ export default function CollectionPage() {
 
     rec.onstart = () => {
       setListening(true);
-      showToast("Voice search started.", "info");
+      showToast(t("collection.voiceStarted"), "info");
     };
 
     rec.onend = () => {
@@ -705,7 +501,7 @@ export default function CollectionPage() {
 
     rec.onerror = () => {
       setListening(false);
-      showToast("Voice search failed. Please try again.", "error");
+      showToast(t("collection.voiceFailed"), "error");
     };
 
     rec.onresult = (e: any) => {
@@ -715,13 +511,13 @@ export default function CollectionPage() {
       setLastHeard(spoken);
 
       if (!cmd) {
-        showToast("No voice command detected.", "info");
+        showToast(t("collection.noVoiceDetected"), "info");
         return;
       }
 
       if (cmd === "clear" || cmd === "reset" || cmd === "clear filters") {
         clearFilters();
-        showToast("Voice command detected: filters cleared.", "info");
+        showToast(t("collection.voiceFiltersCleared"), "info");
         return;
       }
 
@@ -743,13 +539,8 @@ export default function CollectionPage() {
         nextTypes.push("T-Shirt");
       }
 
-      if (cmd.includes("hoodie")) {
-        nextTypes.push("Hoodie");
-      }
-
-      if (cmd.includes("sweater")) {
-        nextTypes.push("Sweater");
-      }
+      if (cmd.includes("hoodie")) nextTypes.push("Hoodie");
+      if (cmd.includes("sweater")) nextTypes.push("Sweater");
 
       if (cmd.includes("sneaker") || cmd.includes("sneakers")) {
         nextTypes.push("Sneakers");
@@ -763,9 +554,7 @@ export default function CollectionPage() {
         nextTypes.push("Joggers");
       }
 
-      if (cmd.includes("cap")) {
-        nextTypes.push("Cap");
-      }
+      if (cmd.includes("cap")) nextTypes.push("Cap");
 
       if (cmd.includes("windcheater") || cmd.includes("wind cheater")) {
         nextTypes.push("Jacket");
@@ -775,9 +564,7 @@ export default function CollectionPage() {
         nextTypes.push("Jean");
       }
 
-      if (cmd.includes("jacket")) {
-        nextTypes.push("Jacket");
-      }
+      if (cmd.includes("jacket")) nextTypes.push("Jacket");
 
       if (cmd.includes("formal shirt")) {
         nextTypes.push("Formal Shirt");
@@ -785,13 +572,8 @@ export default function CollectionPage() {
         nextTypes.push("Formal Shirt");
       }
 
-      if (cmd.includes("frock")) {
-        nextTypes.push("Frock");
-      }
-
-      if (cmd.includes("shorts")) {
-        nextTypes.push("Shorts");
-      }
+      if (cmd.includes("frock")) nextTypes.push("Frock");
+      if (cmd.includes("shorts")) nextTypes.push("Shorts");
 
       if (cmd.includes("wide leg") || cmd.includes("wide-leg")) {
         nextTypes.push("Wide-leg");
@@ -802,23 +584,23 @@ export default function CollectionPage() {
       setSelectedTypes([...new Set(nextTypes)]);
       setSearch(spoken);
 
-      showToast(`Voice search: ${spoken}`, "success");
+      showToast(`${t("collection.voiceSearch")}: ${spoken}`, "success");
       setMobileFiltersOpen(true);
     };
 
     recognitionRef.current = rec;
-  }, [clearFilters, showToast]);
+  }, [clearFilters, showToast, t]);
 
   const startListening = () => {
     if (!voiceSupported) {
-      showToast("Voice search is not supported in this browser.", "error");
+      showToast(t("collection.voiceNotSupported"), "error");
       return;
     }
 
     try {
       recognitionRef.current?.start?.();
     } catch {
-      showToast("Voice search is already running.", "info");
+      showToast(t("collection.voiceAlreadyRunning"), "info");
     }
   };
 
@@ -885,7 +667,6 @@ export default function CollectionPage() {
 
     list.sort((a, b) => {
       if (sortValue === "low-high") return a.price - b.price;
-
       if (sortValue === "high-low") return b.price - a.price;
 
       return parseDateSafe(b.createdAt) - parseDateSafe(a.createdAt);
@@ -897,25 +678,6 @@ export default function CollectionPage() {
   const activeFiltersCount =
     selectedCustomers.length + selectedTypes.length + (search.trim() ? 1 : 0);
 
-  const filterTypes = [
-    "T-Shirt",
-    "Jean",
-    "Jacket",
-    "Hoodie",
-    "Sweater",
-    "Sneakers",
-    "Shoes",
-    "Light Shoes",
-    "Waterproof Shoes",
-    "Joggers",
-    "Dark Pants",
-    "Formal Shirt",
-    "Frock",
-    "Wide-leg",
-    "Shorts",
-    "Cap",
-  ];
-
   return (
     <>
       <CollectionHeader onSearchClick={focusSearch} />
@@ -924,510 +686,80 @@ export default function CollectionPage() {
 
       <main className={shellClass}>
         <section className={containerClass}>
-          <motion.div
-            initial="hidden"
-            animate="show"
-            variants={fadeUp}
-            transition={{ duration: 0.45 }}
-            className={`${panelClass} overflow-hidden`}
-          >
-            <div className="grid grid-cols-1 gap-6 p-5 sm:p-7 lg:grid-cols-[1.1fr_0.9fr] lg:p-10">
-              <div className="flex flex-col justify-center">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4] sm:text-[12px]">
-                  Explore the Range
-                </div>
+          <CollectionHero
+            onSearchClick={focusSearch}
+            onOpenFilters={() => setMobileFiltersOpen(true)}
+          />
 
-                <h1 className="mt-3 text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[44px] lg:text-[58px]">
-                  All Collections
-                </h1>
+          <CollectionControls
+            search={search}
+            setSearch={setSearch}
+            searchRef={searchRef}
+            sortValue={sortValue}
+            setSortValue={setSortValue}
+            activeFiltersCount={activeFiltersCount}
+            voiceSupported={voiceSupported}
+            listening={listening}
+            lastHeard={lastHeard}
+            onStartListening={startListening}
+            onOpenFilters={() => setMobileFiltersOpen(true)}
+            onClearFilters={clearFiltersWithToast}
+            onClearWeather={() => setWeatherContext(null)}
+            hasWeatherContext={Boolean(weatherContext)}
+            showToast={showToast}
+          />
 
-                <p className="mt-4 max-w-[580px] text-[13px] leading-7 text-[#a7aec4] sm:text-[15px]">
-                  Browse clothing and footwear across categories, use filters,
-                  search by product name, customer type, color, and sort by
-                  newest or price to find your perfect style.
-                </p>
-
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={focusSearch}
-                    className={primaryBtnClass}
-                  >
-                    Search Collection
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setMobileFiltersOpen(true)}
-                    className={`${secondaryBtnClass} lg:hidden`}
-                  >
-                    Open Filters
-                  </button>
-                </div>
-              </div>
-
-              <div className="relative min-h-[240px] overflow-hidden rounded-[22px] border border-[#26293a] bg-[#161824] sm:min-h-[300px]">
-                <Image
-                  src="/images/placeholder.png"
-                  alt="Collection banner"
-                  fill
-                  className="object-cover opacity-70"
-                  priority
-                />
-
-                <div className="absolute inset-0 bg-gradient-to-r from-black/65 via-black/25 to-transparent" />
-
-                <div className="absolute bottom-5 left-5 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-white backdrop-blur">
-                  Premium streetwear & essentials
-                </div>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial="hidden"
-            animate="show"
-            variants={fadeUp}
-            transition={{ duration: 0.45, delay: 0.08 }}
-            className={`mt-6 ${panelClass} p-4 sm:mt-8 sm:p-5`}
-          >
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <div className="text-[20px] font-semibold tracking-[-0.02em] text-white sm:text-[24px]">
-                  Filter & Discover
-                </div>
-
-                <div className="mt-1 text-[12px] text-[#a7aec4] sm:text-[13px]">
-                  Search any product name, customer type, category, color, or
-                  use voice commands.
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                <button
-                  type="button"
-                  onClick={() => setMobileFiltersOpen(true)}
-                  className={`${secondaryBtnClass} lg:hidden`}
-                >
-                  Filters{" "}
-                  {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ""}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={startListening}
-                  disabled={!voiceSupported}
-                  className={`inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:bg-white/10 ${
-                    !voiceSupported ? "cursor-not-allowed opacity-50" : ""
-                  }`}
-                  title={
-                    voiceSupported
-                      ? `Say: "black hoodie", "women jacket", "t-shirt men", "clear"`
-                      : "Voice not supported. Use Chrome."
-                  }
-                >
-                  <Image
-                    src="/images/voice.png"
-                    alt="Voice search"
-                    width={16}
-                    height={16}
-                    className={`h-4 w-4 object-contain brightness-0 invert ${
-                      listening ? "animate-pulse" : ""
-                    }`}
-                  />
-
-                  {listening ? "Listening..." : "Voice"}
-                </button>
-
-                <label htmlFor="sort" className="sr-only">
-                  Sort products
-                </label>
-
-                <select
-                  id="sort"
-                  aria-label="Sort products"
-                  className="h-[42px] min-w-[190px] rounded-full border border-white/15 bg-[#0d0f17] px-4 text-[12px] text-[#f5f7fb] outline-none focus:border-[#d6c7ff]"
-                  value={sortValue}
-                  onChange={(e) =>
-                    setSortValue(
-                      e.target.value as "low-high" | "high-low" | "newest"
-                    )
-                  }
-                >
-                  <option value="low-high">Price: Low to High</option>
-                  <option value="high-low">Price: High to Low</option>
-                  <option value="newest">Newest First</option>
-                </select>
-
-                {activeFiltersCount > 0 || weatherContext ? (
-                  <button
-                    type="button"
-                    onClick={clearFiltersWithToast}
-                    className="rounded-full border border-red-400/30 bg-red-500/10 px-4 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-red-200 transition hover:bg-red-500/15"
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex-1">
-                <label htmlFor="search" className="sr-only">
-                  Search products
-                </label>
-
-                <input
-                  id="search"
-                  ref={searchRef}
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    if (e.target.value.trim()) setWeatherContext(null);
-                  }}
-                  placeholder="Search product name, Men, Women, Boys, Girls, T-Shirt, Jacket..."
-                  className="h-[50px] w-full rounded-full border border-[#2b3042] bg-[#0d0f17] px-5 text-[13px] text-[#f5f7fb] outline-none placeholder:text-[#7f879f] focus:border-[#d6c7ff]"
-                />
-              </div>
-
-              {search.trim() ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearch("");
-                    showToast("Search cleared.", "info");
-                  }}
-                  className={secondaryBtnClass}
-                >
-                  Clear Search
-                </button>
-              ) : null}
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-[12px] text-[#a7aec4]">
-              {voiceSupported ? (
-                <>
-                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                    Try: <span className="text-[#f5f7fb]">black hoodie</span>,{" "}
-                    <span className="text-[#f5f7fb]">women jacket</span>,{" "}
-                    <span className="text-[#f5f7fb]">boys shorts</span>,{" "}
-                    <span className="text-[#f5f7fb]">clear</span>
-                  </span>
-
-                  {lastHeard ? (
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                      Heard:{" "}
-                      <span className="text-[#f5f7fb]">{lastHeard}</span>
-                    </span>
-                  ) : null}
-                </>
-              ) : (
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                  Voice not supported. Use Chrome.
-                </span>
-              )}
-            </div>
-          </motion.div>
-
-          {weatherContext ? (
-            <motion.div
-              initial="hidden"
-              animate="show"
-              variants={fadeUp}
-              transition={{ duration: 0.45, delay: 0.1 }}
-              className="mt-6 overflow-hidden rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]"
-            >
-              <div className="relative overflow-hidden bg-gradient-to-br from-white/[0.08] via-white/[0.03] to-transparent p-5 sm:p-6">
-                <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
-
-                <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                      Weather Based Picks
-                    </div>
-
-                    <h2 className="mt-2 text-[22px] font-semibold tracking-[-0.02em] text-white sm:text-[28px]">
-                      {weatherContext.title}
-                    </h2>
-
-                    <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
-                      {weatherContext.city !== "your city"
-                        ? `Today in ${weatherContext.city}: `
-                        : ""}
-                      {weatherContext.message}
-                    </p>
-
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {weatherContext.types.map((type) => (
-                        <span
-                          key={type}
-                          className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[12px] font-medium text-white/85"
-                        >
-                          {type}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={clearFiltersWithToast}
-                    className="w-fit rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10"
-                  >
-                    Remove Weather Filter
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          ) : null}
+          <WeatherBanner
+            weatherContext={weatherContext}
+            onClear={clearFiltersWithToast}
+          />
 
           <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6">
-            <motion.aside
-              initial="hidden"
-              animate="show"
-              variants={fadeLeft}
-              transition={{ duration: 0.45, delay: 0.14 }}
-              className={`hidden h-fit ${panelClass} p-4 lg:block`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white">
-                  Filters
-                </div>
-
-                {activeFiltersCount > 0 || weatherContext ? (
-                  <button
-                    type="button"
-                    onClick={clearFiltersWithToast}
-                    className="text-[12px] text-[#d6c7ff] hover:underline"
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="mt-5">
-                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
-                  Customers
-                </div>
-
-                <div className="grid gap-2 text-[13px] text-[#d6dbeb]">
-                  {(["Men", "Women", "Boys", "Girls"] as CustomerType[]).map(
-                    (customer) => (
-                      <FilterCheckbox
-                        key={customer}
-                        label={customer}
-                        checked={selectedCustomers.includes(customer)}
-                        onChange={() => toggleCustomer(customer)}
-                      />
-                    )
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
-                  Types
-                </div>
-
-                <div className="grid gap-2 text-[13px] text-[#d6dbeb]">
-                  {filterTypes.map((type) => (
-                    <FilterCheckbox
-                      key={type}
-                      label={type}
-                      checked={selectedTypes.includes(type)}
-                      onChange={() => toggleType(type)}
-                    />
-                  ))}
-                </div>
-              </div>
-            </motion.aside>
+            <CollectionFilters
+              mobileFiltersOpen={mobileFiltersOpen}
+              setMobileFiltersOpen={setMobileFiltersOpen}
+              activeFiltersCount={activeFiltersCount}
+              hasWeatherContext={Boolean(weatherContext)}
+              selectedCustomers={selectedCustomers}
+              selectedTypes={selectedTypes}
+              filterTypes={filterTypes}
+              toggleCustomer={toggleCustomer}
+              toggleType={toggleType}
+              clearFiltersWithToast={clearFiltersWithToast}
+              showToast={showToast}
+            />
 
             <section>
               <div className="mb-4 flex items-center justify-between">
                 <div className="text-[13px] text-[#a7aec4]">
                   {loading
-                    ? "Loading products..."
+                    ? t("collection.loadingProducts")
                     : error
-                      ? "Unable to load products"
-                      : `${filteredAndSortedProducts.length} product${
-                          filteredAndSortedProducts.length === 1 ? "" : "s"
-                        } found`}
+                      ? t("collection.unableToLoad")
+                      : `${filteredAndSortedProducts.length} ${
+                          filteredAndSortedProducts.length === 1
+                            ? t("collection.productFound")
+                            : t("collection.productsFound")
+                        }`}
                 </div>
               </div>
 
-              {loading ? (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-6">
-                  {Array.from({ length: 8 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="overflow-hidden rounded-[22px] border border-[#26293a] bg-[#161824]"
-                    >
-                      <div className="aspect-[3.6/5] animate-pulse bg-white/5" />
-
-                      <div className="p-4">
-                        <div className="h-3 w-20 animate-pulse rounded bg-white/5" />
-                        <div className="mt-3 h-4 w-full animate-pulse rounded bg-white/5" />
-                        <div className="mt-2 h-4 w-24 animate-pulse rounded bg-white/5" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : error ? (
-                <div className="rounded-[20px] border border-red-400/20 bg-red-500/10 p-5 text-[14px] text-red-200">
-                  <div>{`Error: ${error}`}</div>
-
-                  <button
-                    type="button"
-                    onClick={fetchAllProducts}
-                    className={`${primaryBtnClass} mt-4`}
-                  >
-                    Retry
-                  </button>
-                </div>
-              ) : filteredAndSortedProducts.length === 0 ? (
-                <div className={`${panelClass} p-8 text-center`}>
-                  <div className="text-[22px] font-semibold text-white">
-                    No products found
-                  </div>
-
-                  <p className="mx-auto mt-2 max-w-[420px] text-[14px] leading-7 text-[#a7aec4]">
-                    Try searching product name, “T-Shirt”, “Jacket”, “Men”,
-                    “Women”, “Boys”, “Girls”, or remove filters.
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={clearFiltersWithToast}
-                    className={`${primaryBtnClass} mt-5`}
-                  >
-                    Reset Filters
-                  </button>
-                </div>
-              ) : (
-                <motion.div
-                  variants={productGridMotion}
-                  initial="hidden"
-                  animate="show"
-                  className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-6"
-                >
-                  {filteredAndSortedProducts.map((product, index) => (
-                    <ProductCard
-                      key={product.id || `${product.name}-${index}`}
-                      product={product}
-                      onOutOfStockClick={() =>
-                        showToast(
-                          "This product is currently out of stock.",
-                          "error"
-                        )
-                      }
-                      onInvalidProductClick={() =>
-                        showToast(
-                          "This product cannot be opened because product ID is missing.",
-                          "error"
-                        )
-                      }
-                    />
-                  ))}
-                </motion.div>
-              )}
+              <ProductGrid
+                loading={loading}
+                error={error}
+                products={filteredAndSortedProducts}
+                onRetry={fetchAllProducts}
+                onResetFilters={clearFiltersWithToast}
+                onOutOfStockClick={() =>
+                  showToast(t("collection.productOutOfStock"), "error")
+                }
+                onInvalidProductClick={() =>
+                  showToast(t("collection.invalidProduct"), "error")
+                }
+              />
             </section>
           </div>
         </section>
-
-        <AnimatePresence>
-          {mobileFiltersOpen ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[60] bg-black/65 backdrop-blur-sm lg:hidden"
-              onClick={() => setMobileFiltersOpen(false)}
-            >
-              <motion.div
-                initial={{ x: 420 }}
-                animate={{ x: 0 }}
-                exit={{ x: 420 }}
-                transition={{ type: "spring", stiffness: 260, damping: 28 }}
-                className="absolute right-0 top-0 h-full w-[88%] max-w-[380px] overflow-y-auto border-l border-[#26293a] bg-[#11121a] p-5 shadow-[0_20px_80px_rgba(0,0,0,0.45)]"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-white">
-                    Filters
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setMobileFiltersOpen(false)}
-                    className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[12px] text-white"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                {activeFiltersCount > 0 || weatherContext ? (
-                  <button
-                    type="button"
-                    onClick={clearFiltersWithToast}
-                    className="mt-4 w-full rounded-full border border-red-400/30 bg-red-500/10 px-4 py-2.5 text-[12px] font-semibold text-red-200"
-                  >
-                    Clear All
-                  </button>
-                ) : null}
-
-                <div className="mt-6">
-                  <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
-                    Customers
-                  </div>
-
-                  <div className="grid gap-2 text-[13px] text-[#d6dbeb]">
-                    {(["Men", "Women", "Boys", "Girls"] as CustomerType[]).map(
-                      (customer) => (
-                        <FilterCheckbox
-                          key={customer}
-                          label={customer}
-                          checked={selectedCustomers.includes(customer)}
-                          onChange={() => toggleCustomer(customer)}
-                        />
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-7">
-                  <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
-                    Types
-                  </div>
-
-                  <div className="grid gap-2 text-[13px] text-[#d6dbeb]">
-                    {filterTypes.map((type) => (
-                      <FilterCheckbox
-                        key={type}
-                        label={type}
-                        checked={selectedTypes.includes(type)}
-                        onChange={() => toggleType(type)}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMobileFiltersOpen(false);
-
-                    if (activeFiltersCount > 0 || weatherContext) {
-                      showToast("Filters applied.", "success");
-                    }
-                  }}
-                  className={`${primaryBtnClass} mt-7 flex w-full justify-center`}
-                >
-                  Apply Filters
-                </button>
-              </motion.div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
       </main>
 
       <MainFooter />

@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
@@ -82,12 +83,16 @@ const CHECKOUT_ITEMS_KEY = "ufo_checkout_items";
 const CHECKOUT_ADDRESS_KEY = "ufo_checkout_address";
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+
 const containerClass =
   "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
+
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
+
 const primaryBtnClass =
   "inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
+
 const secondaryBtnClass =
   "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
@@ -160,7 +165,9 @@ function getOrderSummary(): OrderSummaryLS | null {
 
 function normalizeNumber(v: unknown): number | undefined {
   if (v === undefined || v === null || v === "") return undefined;
+
   const n = typeof v === "number" ? v : Number(v);
+
   return Number.isFinite(n) ? n : undefined;
 }
 
@@ -175,6 +182,7 @@ function getCheckoutAddressLS(): CheckoutAddressLS | undefined {
     if (!raw) return undefined;
 
     const addr = JSON.parse(raw);
+
     return addr && typeof addr === "object"
       ? (addr as CheckoutAddressLS)
       : undefined;
@@ -286,9 +294,11 @@ function ToastMessage({
         className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 shadow-[0_20px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl ${tone}`}
       >
         <span className={`mt-1 h-2.5 w-2.5 rounded-full ${dot}`} />
+
         <div className="flex-1 text-[13px] font-medium leading-6">
           {toast.message}
         </div>
+
         <button
           type="button"
           onClick={onClose}
@@ -303,10 +313,16 @@ function ToastMessage({
 }
 
 function StepIndicator() {
+  const { t } = useI18n();
+
   const steps = [
-    { label: "Cart", href: "/cartpage", active: false },
-    { label: "Information", href: "/checkout", active: false },
-    { label: "Payment", href: "/payment", active: true },
+    { label: t("paymentPage.cart"), href: "/cartpage", active: false },
+    {
+      label: t("paymentPage.information"),
+      href: "/checkout",
+      active: false,
+    },
+    { label: t("paymentPage.payment"), href: "/payment", active: true },
   ];
 
   return (
@@ -361,6 +377,7 @@ function PaymentIcon({ method }: { method: PayMethod }) {
 export default function PaymentPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useI18n();
 
   const [items, setItems] = React.useState<CartItem[]>([]);
   const [cartReady, setCartReady] = React.useState(false);
@@ -408,13 +425,13 @@ export default function PaymentPage() {
       setItems(parsed);
 
       if (!parsed.length) {
-        showToast("Your cart is empty. Redirecting to cart.", "error");
+        showToast(t("paymentPage.cartEmptyRedirect"), "error");
         router.replace("/cartpage");
         return;
       }
 
       if (hasStockIssue(parsed)) {
-        showToast("Some cart items have stock issues.", "error");
+        showToast(t("paymentPage.stockIssues"), "error");
         router.replace("/cartpage");
         return;
       }
@@ -422,12 +439,12 @@ export default function PaymentPage() {
       localStorage.setItem(CHECKOUT_ITEMS_KEY, JSON.stringify(parsed));
     } catch {
       setItems([]);
-      showToast("Failed to load cart items.", "error");
+      showToast(t("paymentPage.failedLoadCart"), "error");
       router.replace("/cartpage");
     } finally {
       setCartReady(true);
     }
-  }, [router, showToast]);
+  }, [router, showToast, t]);
 
   React.useEffect(() => {
     const s = getOrderSummary();
@@ -437,10 +454,10 @@ export default function PaymentPage() {
     setAddress(a);
 
     if (!a) {
-      showToast("Please add delivery address first.", "error");
+      showToast(t("paymentPage.addDeliveryAddress"), "error");
       router.replace("/checkout");
     }
-  }, [router, showToast]);
+  }, [router, showToast, t]);
 
   const fallbackSubtotal = React.useMemo(() => {
     return items.reduce(
@@ -491,17 +508,17 @@ export default function PaymentPage() {
       safeItems = readCartItems();
     }
 
-    if (!safeItems.length) throw new Error("Cart is empty.");
+    if (!safeItems.length) throw new Error(t("paymentPage.cartEmpty"));
 
     if (hasStockIssue(safeItems)) {
-      throw new Error("Some cart items are out of stock.");
+      throw new Error(t("paymentPage.itemOutOfStock"));
     }
 
     const addrLS = getCheckoutAddressLS();
     const mappedAddress = mapToOrderAddress(addrLS);
 
     if (!mappedAddress) {
-      throw new Error("Delivery address is missing.");
+      throw new Error(t("paymentPage.deliveryAddressMissing"));
     }
 
     const payload: any = {
@@ -534,7 +551,7 @@ export default function PaymentPage() {
     const json = await res.json().catch(() => ({} as any));
 
     if (!res.ok) {
-      throw new Error(json?.message || "Failed to create order.");
+      throw new Error(json?.message || t("paymentPage.failedCreateOrder"));
     }
 
     return json?.data as {
@@ -568,9 +585,9 @@ export default function PaymentPage() {
     const status = searchParams.get("status");
 
     if (status === "failed") {
-      showToast("Payment failed. Please try again.", "error");
+      showToast(t("paymentPage.paymentFailed"), "error");
     }
-  }, [searchParams, showToast]);
+  }, [searchParams, showToast, t]);
 
   React.useEffect(() => {
     if (!cartReady) return;
@@ -586,7 +603,7 @@ export default function PaymentPage() {
       try {
         setPlacing(true);
         sessionStorage.setItem(sessionKey, "1");
-        showToast("Verifying Khalti payment...", "info");
+        showToast(t("paymentPage.verifyingKhalti"), "info");
 
         const vr = await fetch(joinUrl(apiBase, "/payments/khalti/lookup"), {
           method: "POST",
@@ -597,11 +614,15 @@ export default function PaymentPage() {
 
         const vj = await vr.json().catch(() => ({} as any));
 
-        if (!vr.ok) throw new Error(vj?.message || "Khalti lookup failed.");
+        if (!vr.ok) {
+          throw new Error(vj?.message || t("paymentPage.khaltiLookupFailed"));
+        }
 
         if (!vj?.paid) {
           throw new Error(
-            `Khalti not completed. Status: ${vj?.status || "Unknown"}`
+            `${t("paymentPage.khaltiNotCompleted")} Status: ${
+              vj?.status || "Unknown"
+            }`
           );
         }
 
@@ -612,7 +633,10 @@ export default function PaymentPage() {
       } catch (e: any) {
         console.error(e);
         sessionStorage.removeItem(sessionKey);
-        showToast(e?.message || "Failed to finalize Khalti payment.", "error");
+        showToast(
+          e?.message || t("paymentPage.failedFinalizeKhalti"),
+          "error"
+        );
       } finally {
         setPlacing(false);
       }
@@ -620,7 +644,7 @@ export default function PaymentPage() {
 
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cartReady, searchParams, apiBase]);
+  }, [cartReady, searchParams, apiBase, t]);
 
   React.useEffect(() => {
     if (!cartReady) return;
@@ -638,7 +662,7 @@ export default function PaymentPage() {
       try {
         setPlacing(true);
         sessionStorage.setItem(sessionKey, "1");
-        showToast("Verifying eSewa payment...", "info");
+        showToast(t("paymentPage.verifyingEsewa"), "info");
 
         const vr = await fetch(joinUrl(apiBase, "/payments/esewa/verify"), {
           method: "POST",
@@ -649,7 +673,9 @@ export default function PaymentPage() {
 
         const vj = await vr.json().catch(() => ({} as any));
 
-        if (!vr.ok) throw new Error(vj?.message || "eSewa verify failed.");
+        if (!vr.ok) {
+          throw new Error(vj?.message || t("paymentPage.esewaVerifyFailed"));
+        }
 
         const ref =
           String(
@@ -658,13 +684,16 @@ export default function PaymentPage() {
 
         savePaymentMeta("eSewa");
 
-        const payStatus: "Paid" | "Pending" = vj?.statusOk ? "Paid" : "Pending";
+        const payStatus: "Paid" | "Pending" = vj?.statusOk
+          ? "Paid"
+          : "Pending";
+
         const order = await createOrder("eSewa", ref, payStatus);
         finishToThankYou(order);
       } catch (e: any) {
         console.error(e);
         sessionStorage.removeItem(sessionKey);
-        showToast(e?.message || "Failed to finalize eSewa payment.", "error");
+        showToast(e?.message || t("paymentPage.failedFinalizeEsewa"), "error");
       } finally {
         setPlacing(false);
       }
@@ -672,31 +701,31 @@ export default function PaymentPage() {
 
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cartReady, searchParams, apiBase]);
+  }, [cartReady, searchParams, apiBase, t]);
 
   const ensureReadyForPayment = () => {
     if (!cartReady || placing) return false;
 
     if (!items.length) {
-      showToast("Your cart is empty. Redirecting to cart.", "error");
+      showToast(t("paymentPage.cartEmptyRedirect"), "error");
       router.push("/cartpage");
       return false;
     }
 
     if (hasStockIssue(items)) {
-      showToast("Some cart items have stock issues.", "error");
+      showToast(t("paymentPage.stockIssues"), "error");
       router.push("/cartpage");
       return false;
     }
 
     if (!address) {
-      showToast("Please add delivery address first.", "error");
+      showToast(t("paymentPage.addDeliveryAddress"), "error");
       router.push("/checkout");
       return false;
     }
 
     if (total <= 0) {
-      showToast("Invalid order total.", "error");
+      showToast(t("paymentPage.invalidOrderTotal"), "error");
       return false;
     }
 
@@ -707,7 +736,7 @@ export default function PaymentPage() {
     if (!ensureReadyForPayment()) return;
 
     savePaymentMeta("eSewa");
-    showToast("Redirecting to eSewa...", "info");
+    showToast(t("paymentPage.redirectingEsewa"), "info");
 
     window.location.href = joinUrl(
       apiBase,
@@ -721,7 +750,7 @@ export default function PaymentPage() {
     try {
       setPlacing(true);
       savePaymentMeta("Khalti");
-      showToast("Starting Khalti payment...", "info");
+      showToast(t("paymentPage.startingKhalti"), "info");
 
       const res = await fetch(joinUrl(apiBase, "/payments/khalti/initiate"), {
         method: "POST",
@@ -737,7 +766,10 @@ export default function PaymentPage() {
       const data = await res.json().catch(() => ({} as any));
 
       if (!res.ok) {
-        showToast(data?.message || "Failed to initiate Khalti payment.", "error");
+        showToast(
+          data?.message || t("paymentPage.failedInitiateKhalti"),
+          "error"
+        );
         return;
       }
 
@@ -746,9 +778,9 @@ export default function PaymentPage() {
         return;
       }
 
-      showToast("Khalti did not return payment URL.", "error");
+      showToast(t("paymentPage.khaltiNoUrl"), "error");
     } catch (e: any) {
-      showToast(e?.message || "Failed to initiate Khalti payment.", "error");
+      showToast(e?.message || t("paymentPage.failedInitiateKhalti"), "error");
     } finally {
       setPlacing(false);
     }
@@ -763,16 +795,37 @@ export default function PaymentPage() {
     try {
       setPlacing(true);
       savePaymentMeta("Cash on Delivery");
-      showToast("Placing Cash on Delivery order...", "info");
+      showToast(t("paymentPage.placingCod"), "info");
 
       const order = await createOrder("COD", undefined, "Pending");
       finishToThankYou(order);
     } catch (e: any) {
-      showToast(e?.message || "Failed to place COD order.", "error");
+      showToast(e?.message || t("paymentPage.failedPlaceCod"), "error");
     } finally {
       setPlacing(false);
     }
   };
+
+  const paymentMethods = [
+    {
+      key: "esewa" as PayMethod,
+      label: "eSewa",
+      subtitle: t("paymentPage.esewaSubtitle"),
+      badge: t("paymentPage.online"),
+    },
+    {
+      key: "khalti" as PayMethod,
+      label: "Khalti",
+      subtitle: t("paymentPage.khaltiSubtitle"),
+      badge: t("paymentPage.online"),
+    },
+    {
+      key: "cod" as PayMethod,
+      label: "Cash on Delivery",
+      subtitle: t("paymentPage.codSubtitle"),
+      badge: "COD",
+    },
+  ];
 
   return (
     <>
@@ -786,16 +839,15 @@ export default function PaymentPage() {
 
           <div className="mb-8">
             <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-              Payment
+              {t("paymentPage.payment")}
             </div>
 
             <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[44px]">
-              Choose Payment Method
+              {t("paymentPage.choosePaymentMethod")}
             </h1>
 
             <p className="mt-2 max-w-[640px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
-              Select your preferred payment option and complete your UFO
-              Collection order securely.
+              {t("paymentPage.paymentDesc")}
             </p>
           </div>
 
@@ -804,10 +856,11 @@ export default function PaymentPage() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                    Method
+                    {t("paymentPage.method")}
                   </div>
+
                   <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
-                    Payment Options
+                    {t("paymentPage.paymentOptions")}
                   </h2>
                 </div>
 
@@ -817,26 +870,7 @@ export default function PaymentPage() {
               </div>
 
               <div className="mt-6 grid gap-4">
-                {[
-                  {
-                    key: "esewa" as PayMethod,
-                    label: "eSewa",
-                    subtitle: "Pay securely using your eSewa wallet.",
-                    badge: "Online",
-                  },
-                  {
-                    key: "khalti" as PayMethod,
-                    label: "Khalti",
-                    subtitle: "Redirects to Khalti for secure wallet payment.",
-                    badge: "Online",
-                  },
-                  {
-                    key: "cod" as PayMethod,
-                    label: "Cash on Delivery",
-                    subtitle: "Pay in cash when your order is delivered.",
-                    badge: "COD",
-                  },
-                ].map((m) => {
+                {paymentMethods.map((m) => {
                   const active = method === m.key;
 
                   return (
@@ -887,24 +921,21 @@ export default function PaymentPage() {
 
               <div className="mt-6 rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
                 <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#cbd5f5]">
-                  Payment Note
+                  {t("paymentPage.paymentNote")}
                 </div>
 
                 <p className="mt-2 text-[13px] leading-7 text-[#a7aec4]">
-                  {method === "esewa" &&
-                    "You will be redirected to eSewa to complete payment securely. After successful payment, your order will be created automatically."}
-                  {method === "khalti" &&
-                    "You will be redirected to Khalti to complete payment securely. After verification, your order will be confirmed."}
-                  {method === "cod" &&
-                    "Your order will be placed immediately and payment will be collected during delivery."}
+                  {method === "esewa" && t("paymentPage.esewaNote")}
+                  {method === "khalti" && t("paymentPage.khaltiNote")}
+                  {method === "cod" && t("paymentPage.codNote")}
                 </p>
               </div>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-3">
                 {[
-                  ["Secure", "Payment"],
-                  ["Verified", "Order"],
-                  ["Nepal", "Wallets"],
+                  [t("paymentPage.secure"), t("paymentPage.payment")],
+                  [t("paymentPage.verified"), t("paymentPage.order")],
+                  [t("paymentPage.nepal"), t("paymentPage.wallets")],
                 ].map(([a, b]) => (
                   <div
                     key={`${a}-${b}`}
@@ -913,6 +944,7 @@ export default function PaymentPage() {
                     <div className="text-[13px] font-semibold text-white">
                       {a}
                     </div>
+
                     <div className="mt-1 text-[11px] text-[#a7aec4]">{b}</div>
                   </div>
                 ))}
@@ -924,20 +956,20 @@ export default function PaymentPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                      Summary
+                      {t("paymentPage.summary")}
                     </div>
 
                     <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
-                      Order Summary
+                      {t("paymentPage.orderSummary")}
                     </h2>
                   </div>
 
                   <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-[#a7aec4]">
-                    {summary?.itemCount || getItemCount(items) || items.length} item
+                    {summary?.itemCount || getItemCount(items) || items.length}{" "}
                     {(summary?.itemCount || getItemCount(items) || items.length) ===
                     1
-                      ? ""
-                      : "s"}
+                      ? t("paymentPage.item")
+                      : t("paymentPage.items")}
                   </span>
                 </div>
 
@@ -955,10 +987,12 @@ export default function PaymentPage() {
                             <div className="truncate text-[13px] font-semibold text-white">
                               {item.name}
                             </div>
+
                             <div className="mt-1 text-[11px] text-[#a7aec4]">
                               {item.colorLabel || item.color} /{" "}
                               {item.size || "-"} × {item.qty}
                             </div>
+
                             {item.sku ? (
                               <div className="mt-1 text-[11px] text-[#7f879f]">
                                 SKU: {item.sku}
@@ -977,14 +1011,14 @@ export default function PaymentPage() {
 
                 <div className="mt-6 space-y-4 text-sm text-[#a7aec4] sm:text-[15px]">
                   <div className="flex items-center justify-between gap-4">
-                    <span>Subtotal</span>
+                    <span>{t("paymentPage.subtotal")}</span>
                     <span className="text-right text-white">
                       {formatNpr(subtotal)}
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between gap-4">
-                    <span>Shipping</span>
+                    <span>{t("paymentPage.shipping")}</span>
                     <span className="text-right text-white">
                       {formatNpr(shipping)}
                     </span>
@@ -992,9 +1026,10 @@ export default function PaymentPage() {
 
                   <div className="flex items-center justify-between gap-4">
                     <span>
-                      Discount{" "}
+                      {t("paymentPage.discount")}{" "}
                       {summary?.couponCode ? `(${summary.couponCode})` : ""}
                     </span>
+
                     <span className="text-right text-green-400">
                       - {formatNpr(discount)}
                     </span>
@@ -1003,7 +1038,10 @@ export default function PaymentPage() {
                   <div className="h-px bg-[#26293a]" />
 
                   <div className="flex items-center justify-between gap-4 text-[18px] font-semibold">
-                    <span className="text-white">Total</span>
+                    <span className="text-white">
+                      {t("paymentPage.total")}
+                    </span>
+
                     <span className="text-right text-white">
                       {formatNpr(total)}
                     </span>
@@ -1012,20 +1050,23 @@ export default function PaymentPage() {
 
                 <div className="mt-6 rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
                   <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#cbd5f5]">
-                    Delivery To
+                    {t("paymentPage.deliveryTo")}
                   </div>
 
                   {address ? (
                     <div className="mt-3 space-y-2 text-[13px] leading-6 text-[#a7aec4]">
                       <div className="font-semibold text-white">
-                        {fullName || "Customer"}
+                        {fullName || t("paymentPage.customer")}
                       </div>
+
                       {address.phone ? <div>{address.phone}</div> : null}
+
                       <div>
                         {[address.addressLine, address.street]
                           .filter(Boolean)
                           .join(", ")}
                       </div>
+
                       <div>
                         {[
                           address.cityOrMunicipality,
@@ -1039,7 +1080,7 @@ export default function PaymentPage() {
                     </div>
                   ) : (
                     <div className="mt-3 text-[13px] leading-6 text-yellow-100">
-                      No delivery address found. Please return to checkout.
+                      {t("paymentPage.noDeliveryAddress")}
                     </div>
                   )}
 
@@ -1047,7 +1088,7 @@ export default function PaymentPage() {
                     href="/checkout"
                     className="mt-4 inline-flex text-[12px] font-semibold uppercase tracking-[0.16em] text-[#d6c7ff] hover:underline"
                   >
-                    Edit Address
+                    {t("paymentPage.editAddress")}
                   </Link>
                 </div>
 
@@ -1058,10 +1099,10 @@ export default function PaymentPage() {
                   className={`${primaryBtnClass} mt-6 w-full`}
                 >
                   {placing
-                    ? "Processing..."
+                    ? t("paymentPage.processing")
                     : method === "cod"
-                      ? "Place COD Order"
-                      : `Pay with ${selectedMethodLabel}`}
+                      ? t("paymentPage.placeCodOrder")
+                      : `${t("paymentPage.payWith")} ${selectedMethodLabel}`}
                 </button>
 
                 <button
@@ -1070,7 +1111,7 @@ export default function PaymentPage() {
                   disabled={placing}
                   className={`${secondaryBtnClass} mt-3 w-full`}
                 >
-                  Back to Information
+                  {t("paymentPage.backToInformation")}
                 </button>
               </div>
             </aside>

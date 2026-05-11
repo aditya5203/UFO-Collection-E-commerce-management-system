@@ -1,11 +1,15 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { useI18n } from "@/lib/i18n/I18nProvider";
 import CartHeader from "@/components/layout/CartHeader";
 import MainFooter from "@/components/layout/MainFooter";
+import CartToast from "./_components/CartToast";
+import CartHero from "./_components/CartHero";
+import EmptyCart from "./_components/EmptyCart";
+import CartItems from "./_components/CartItems";
+import OrderSummary from "./_components/OrderSummary";
 
 type CartItem = {
   id: string;
@@ -59,17 +63,11 @@ const REDIRECT_AFTER_LOGIN_KEY = "ufo_redirect_after_login";
 const LAST_PRODUCT_ID_KEY = "last_product_id";
 
 const shipping = 100;
-const fallbackProductImage = "/images/product-placeholder.png";
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+
 const containerClass =
   "mx-auto max-w-[1240px] px-4 py-8 sm:px-5 sm:py-10 lg:px-6";
-const panelClass =
-  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
-const primaryBtnClass =
-  "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
-const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0";
 
 function formatNpr(value: number) {
   return `Rs. ${new Intl.NumberFormat("en-NP", {
@@ -150,25 +148,9 @@ function sanitizeCartItems(input: unknown): CartItem[] {
     .filter((item) => item.id && item.price >= 0);
 }
 
-function ColorSwatch({ color }: { color: string }) {
-  const ref = React.useRef<HTMLSpanElement | null>(null);
-
-  React.useEffect(() => {
-    if (!ref.current) return;
-    ref.current.style.backgroundColor = color || "#16191f";
-  }, [color]);
-
-  return (
-    <span
-      ref={ref}
-      className="h-4 w-4 shrink-0 rounded-full border border-[#3a3f58]"
-      aria-hidden="true"
-    />
-  );
-}
-
 export default function CartPage() {
   const router = useRouter();
+  const { t } = useI18n();
 
   const [items, setItems] = React.useState<CartItem[]>([]);
   const [discount, setDiscount] = React.useState("");
@@ -198,6 +180,7 @@ export default function CartPage() {
   React.useEffect(() => {
     try {
       const lastProductId = localStorage.getItem(LAST_PRODUCT_ID_KEY);
+
       if (lastProductId) {
         setBackHref(`/product/${lastProductId}`);
       }
@@ -239,6 +222,7 @@ export default function CartPage() {
     try {
       const raw = localStorage.getItem(CART_KEY);
       const parsed = raw ? JSON.parse(raw) : [];
+
       setItems(sanitizeCartItems(parsed));
     } catch {
       setItems([]);
@@ -247,6 +231,7 @@ export default function CartPage() {
 
   const saveCart = React.useCallback((nextItems: CartItem[]) => {
     const cleanItems = sanitizeCartItems(nextItems);
+
     setItems(cleanItems);
     localStorage.setItem(CART_KEY, JSON.stringify(cleanItems));
     window.dispatchEvent(new Event("ufo_cart_updated"));
@@ -287,10 +272,10 @@ export default function CartPage() {
       localStorage.removeItem(SELECTED_COUPON_KEY);
 
       if (!silent) {
-        showToast("success", "Coupon removed.");
+        showToast("success", t("cart.couponRemoved"));
       }
     },
-    [showToast]
+    [showToast, t]
   );
 
   const buildValidatePayload = React.useCallback(
@@ -366,6 +351,7 @@ export default function CartPage() {
       }
 
       const collectedJson = await safeJson(collectedRes);
+
       const collectedRows: CollectedCouponRow[] = Array.isArray(
         collectedJson?.data
       )
@@ -442,7 +428,7 @@ export default function CartPage() {
         setDiscountAmount(bestDiscountRs);
         setAppliedCouponCode(bestCode);
         setAppliedCouponLabel(bestLabel);
-        setCouponMessage("Best available coupon applied automatically.");
+        setCouponMessage(t("cart.bestCouponApplied"));
         localStorage.setItem(SELECTED_COUPON_KEY, bestCode);
       } else {
         clearAppliedCoupon(true);
@@ -452,7 +438,7 @@ export default function CartPage() {
     } finally {
       setIsApplyingCoupon(false);
     }
-  }, [items, validateCoupon, clearAppliedCoupon]);
+  }, [items, validateCoupon, clearAppliedCoupon, t]);
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -473,12 +459,9 @@ export default function CartPage() {
       : Math.max(1, Math.min(99, qty || 1));
 
     if (hasKnownStock && stock <= 0) {
-      showToast(
-        "error",
-        "This selected variant is out of stock. Please remove it."
-      );
+      showToast("error", t("cart.selectedVariantOutOfStock"));
     } else if (hasKnownStock && qty > stock) {
-      showToast("error", `Only ${stock} item(s) available in stock.`);
+      showToast("error", `${t("cart.onlyLeft")} ${stock} ${t("cart.onlyItemsAvailable")}`);
     }
 
     const next = items.map((it) =>
@@ -495,7 +478,7 @@ export default function CartPage() {
     saveCart(next);
 
     if (removedItem) {
-      showToast("success", "Item removed.", () => {
+      showToast("success", t("cart.itemRemoved"), () => {
         saveCart([...next, removedItem]);
       });
     }
@@ -503,7 +486,7 @@ export default function CartPage() {
 
   const applyManualCoupon = async () => {
     if (!items.length || !discount.trim()) {
-      showToast("error", "Please enter a coupon code.");
+      showToast("error", t("cart.enterCouponCode"));
       return;
     }
 
@@ -517,11 +500,8 @@ export default function CartPage() {
         setDiscountAmount(0);
         setAppliedCouponCode("");
         setAppliedCouponLabel("");
-        setCouponMessage(
-          result.json?.message ||
-            "Coupon is invalid or not applicable for this cart."
-        );
-        showToast("error", "Coupon failed.");
+        setCouponMessage(result.json?.message || t("cart.invalidCoupon"));
+        showToast("error", t("cart.couponFailed"));
         return;
       }
 
@@ -541,18 +521,18 @@ export default function CartPage() {
           })
         );
       } else {
-        setAppliedCouponLabel("Coupon applied successfully.");
+        setAppliedCouponLabel(t("cart.couponAppliedSuccess"));
       }
 
-      setCouponMessage("Coupon applied successfully.");
+      setCouponMessage(t("cart.couponAppliedSuccess"));
       localStorage.setItem(SELECTED_COUPON_KEY, code);
-      showToast("success", "Coupon applied.");
+      showToast("success", t("cart.couponApplied"));
     } catch (err: any) {
       setDiscountAmount(0);
       setAppliedCouponCode("");
       setAppliedCouponLabel("");
-      setCouponMessage(err?.message || "Failed to apply coupon.");
-      showToast("error", "Failed to apply coupon.");
+      setCouponMessage(err?.message || t("cart.failedApplyCoupon"));
+      showToast("error", t("cart.failedApplyCoupon"));
     } finally {
       setIsApplyingCoupon(false);
     }
@@ -560,20 +540,17 @@ export default function CartPage() {
 
   const proceedToCheckout = () => {
     if (!items.length) {
-      showToast("error", "Your cart is empty.");
+      showToast("error", t("cart.cartEmpty"));
       return;
     }
 
     if (hasStockIssue) {
-      showToast(
-        "error",
-        "Some cart items are out of stock or exceed available stock."
-      );
+      showToast("error", t("cart.cartStockIssue"));
       return;
     }
 
     if (!authChecked) {
-      showToast("error", "Checking login status. Please try again.");
+      showToast("error", t("cart.checkingLogin"));
       return;
     }
 
@@ -604,7 +581,7 @@ export default function CartPage() {
 
     if (!isLoggedIn) {
       localStorage.setItem(REDIRECT_AFTER_LOGIN_KEY, "/checkout");
-      showToast("error", "Redirecting to login...");
+      showToast("error", t("cart.redirectingLogin"));
       router.push("/login");
       return;
     }
@@ -616,521 +593,40 @@ export default function CartPage() {
     <>
       <CartHeader backHref={backHref} />
 
-      {toast ? (
-        <div className="fixed right-4 top-24 z-[9999] max-w-[calc(100vw-2rem)]">
-          <div
-            className={`flex items-center gap-3 rounded-2xl border px-5 py-3 text-sm font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur ${
-              toast.type === "error"
-                ? "border-red-400/30 bg-red-500/20 text-red-100"
-                : "border-emerald-400/30 bg-emerald-500/20 text-emerald-100"
-            }`}
-          >
-            <span>{toast.message}</span>
-
-            {toast.undo ? (
-              <button
-                type="button"
-                onClick={() => {
-                  toast.undo?.();
-                  setToast(null);
-                }}
-                className="rounded-full border border-white/20 px-3 py-1 text-xs text-white transition hover:bg-white/10"
-              >
-                Undo
-              </button>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      <CartToast toast={toast} onClose={() => setToast(null)} />
 
       <main className={shellClass}>
         <div className={containerClass}>
-          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                Your Bag
-              </div>
-
-              <h1 className="mt-2 text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-white sm:text-[44px]">
-                Shopping Cart
-              </h1>
-
-              <p className="mt-2 text-[13px] text-[#a7aec4]">
-                Review your selected products before checkout.
-              </p>
-            </div>
-
-            <Link href="/collection" className={secondaryBtnClass}>
-              Continue Shopping
-            </Link>
-          </div>
+          <CartHero />
 
           {items.length === 0 ? (
-            <div className={`${panelClass} p-8 text-center sm:p-12`}>
-              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-[24px] border border-white/10 bg-white/5 text-[28px]">
-                🛒
-              </div>
-
-              <h2 className="mt-5 text-[24px] font-semibold text-white">
-                Your cart is empty
-              </h2>
-
-              <p className="mx-auto mt-2 max-w-[420px] text-[14px] leading-7 text-[#a7aec4]">
-                Browse the latest UFO Collection products and add your favorite
-                items to your cart.
-              </p>
-
-              <button
-                type="button"
-                onClick={() => router.push("/collection")}
-                className={`${primaryBtnClass} mt-6`}
-              >
-                Go to Collection
-              </button>
-            </div>
+            <EmptyCart onGoToCollection={() => router.push("/collection")} />
           ) : (
             <div className="grid gap-8 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-start">
-              <section className={`${panelClass} overflow-hidden`}>
-                <div className="hidden grid-cols-[1.5fr_0.65fr_0.85fr_0.9fr_0.9fr_0.35fr] gap-4 border-b border-[#26293a] px-6 py-4 text-[12px] uppercase tracking-[0.14em] text-[#a7aec4] md:grid">
-                  <div>Product</div>
-                  <div>Size</div>
-                  <div>Color</div>
-                  <div className="text-center">Quantity</div>
-                  <div>Total</div>
-                  <div />
-                </div>
+              <CartItems
+                items={items}
+                updateQty={updateQty}
+                removeItem={removeItem}
+              />
 
-                {items.map((it) => {
-                  const itemKey = getCartItemKey(it);
-                  const productId = it.productId || it.id;
-                  const hasKnownStock = hasRealStockValue(it.stock);
-                  const stock = Number(it.stock || 0);
-                  const qty = Number(it.qty || 0);
-                  const itemTotal = Number(it.price || 0) * qty;
-                  const imageSrc = it.image || fallbackProductImage;
-
-                  const itemHasStockIssue =
-                    hasKnownStock && (stock <= 0 || qty > stock);
-
-                  const lowStockText =
-                    hasKnownStock && stock > 0 && stock <= 5
-                      ? `Only ${stock} left 🔥`
-                      : "";
-
-                  return (
-                    <div
-                      key={itemKey}
-                      className={`border-b px-4 py-5 last:border-0 sm:px-5 md:px-6 md:py-6 ${
-                        itemHasStockIssue
-                          ? "border-red-400/20 bg-red-500/5"
-                          : "border-[#1b2034]"
-                      }`}
-                    >
-                      <div className="hidden grid-cols-[1.5fr_0.65fr_0.85fr_0.9fr_0.9fr_0.35fr] items-center gap-4 md:grid">
-                        <div className="flex min-w-0 items-center gap-4">
-                          <Link
-                            href={`/product/${productId}`}
-                            className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-[18px] border border-[#2b2f45] bg-[#0d0f17]"
-                          >
-                            <Image
-                              src={imageSrc}
-                              alt={it.name}
-                              fill
-                              className={`object-cover ${
-                                itemHasStockIssue ? "opacity-50 grayscale" : ""
-                              }`}
-                              sizes="72px"
-                            />
-                          </Link>
-
-                          <div className="min-w-0">
-                            <Link
-                              href={`/product/${productId}`}
-                              className="block truncate font-medium text-white transition hover:text-[#d6c7ff]"
-                            >
-                              {it.name}
-                            </Link>
-
-                            <div className="mt-1 text-[12px] text-[#a7aec4]">
-                              {formatNpr(it.price)} × {it.qty} ={" "}
-                              {formatNpr(itemTotal)}
-                            </div>
-
-                            {it.sku ? (
-                              <div className="mt-1 text-[11px] text-[#7f879f]">
-                                SKU: {it.sku}
-                              </div>
-                            ) : null}
-
-                            {hasKnownStock ? (
-                              <div
-                                className={`mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                                  itemHasStockIssue
-                                    ? "text-red-300"
-                                    : lowStockText
-                                      ? "text-orange-300"
-                                      : "text-emerald-300"
-                                }`}
-                              >
-                                {stock <= 0
-                                  ? "Out of Stock"
-                                  : lowStockText || `${stock} in stock`}
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        <span className="text-[#d6dbeb]">
-                          {it.size || "-"}
-                        </span>
-
-                        <div className="flex items-center gap-2">
-                          <ColorSwatch color={it.color} />
-
-                          <span className="truncate text-[#d6dbeb]">
-                            {it.colorLabel || "Color"}
-                          </span>
-                        </div>
-
-                        <div className="flex justify-center">
-                          <div className="flex items-center rounded-full border border-[#3a3f58] bg-[#0d0f17] p-1">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateQty(itemKey, Number(it.qty || 1) - 1)
-                              }
-                              disabled={hasKnownStock && stock <= 0}
-                              className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                              aria-label={`Decrease quantity for ${it.name}`}
-                            >
-                              -
-                            </button>
-
-                            <span className="min-w-[38px] text-center text-sm font-semibold text-white">
-                              {it.qty}
-                            </span>
-
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateQty(itemKey, Number(it.qty || 1) + 1)
-                              }
-                              disabled={hasKnownStock && stock <= 0}
-                              className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                              aria-label={`Increase quantity for ${it.name}`}
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="font-semibold text-[#d6c7ff]">
-                            {formatNpr(itemTotal)}
-                          </div>
-
-                          <div className="mt-1 text-[11px] text-[#a7aec4]">
-                            {formatNpr(it.price)} × {it.qty}
-                          </div>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => removeItem(itemKey)}
-                          className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 transition hover:bg-red-500/15"
-                          aria-label={`Remove ${it.name} from cart`}
-                        >
-                          <Image
-                            src="/images/delete.png"
-                            width={18}
-                            height={18}
-                            alt="Remove icon"
-                            className="brightness-0 invert"
-                          />
-                        </button>
-                      </div>
-
-                      <div className="flex gap-4 md:hidden">
-                        <Link
-                          href={`/product/${productId}`}
-                          className="relative h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[18px] border border-[#2b2f45] bg-[#0d0f17]"
-                        >
-                          <Image
-                            src={imageSrc}
-                            alt={it.name}
-                            fill
-                            className={`object-cover ${
-                              itemHasStockIssue ? "opacity-50 grayscale" : ""
-                            }`}
-                            sizes="88px"
-                          />
-                        </Link>
-
-                        <div className="min-w-0 flex-1">
-                          <Link
-                            href={`/product/${productId}`}
-                            className="block truncate text-[15px] font-semibold text-white transition hover:text-[#d6c7ff]"
-                          >
-                            {it.name}
-                          </Link>
-
-                          {hasKnownStock ? (
-                            <div
-                              className={`mt-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-                                itemHasStockIssue
-                                  ? "text-red-300"
-                                  : lowStockText
-                                    ? "text-orange-300"
-                                    : "text-emerald-300"
-                              }`}
-                            >
-                              {stock <= 0
-                                ? "Out of Stock"
-                                : lowStockText || `${stock} in stock`}
-                            </div>
-                          ) : null}
-
-                          <div className="mt-2 grid gap-1 text-sm text-[#a7aec4]">
-                            <div>Size: {it.size || "-"}</div>
-
-                            <div className="flex items-center gap-2">
-                              <span>Color:</span>
-
-                              <ColorSwatch color={it.color} />
-
-                              <span className="truncate">
-                                {it.colorLabel || "Color"}
-                              </span>
-                            </div>
-
-                            {it.sku ? (
-                              <div className="text-[12px] text-[#7f879f]">
-                                SKU: {it.sku}
-                              </div>
-                            ) : null}
-
-                            <div className="font-semibold text-[#d6c7ff]">
-                              {formatNpr(it.price)} × {it.qty} ={" "}
-                              {formatNpr(itemTotal)}
-                            </div>
-                          </div>
-
-                          <div className="mt-4 flex flex-wrap items-center gap-3">
-                            <div className="flex items-center rounded-full border border-[#3a3f58] bg-[#0d0f17] p-1">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateQty(itemKey, Number(it.qty || 1) - 1)
-                                }
-                                disabled={hasKnownStock && stock <= 0}
-                                className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                                aria-label={`Decrease quantity for ${it.name}`}
-                              >
-                                -
-                              </button>
-
-                              <span className="min-w-[38px] text-center text-sm font-semibold text-white">
-                                {it.qty}
-                              </span>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateQty(itemKey, Number(it.qty || 1) + 1)
-                                }
-                                disabled={hasKnownStock && stock <= 0}
-                                className="h-8 w-8 rounded-full text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
-                                aria-label={`Increase quantity for ${it.name}`}
-                              >
-                                +
-                              </button>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => removeItem(itemKey)}
-                              className="rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white transition hover:bg-red-500/15"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </section>
-
-              <aside className="xl:sticky xl:top-[104px]">
-                <div className={`${panelClass} p-5 sm:p-6`}>
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                        Summary
-                      </div>
-
-                      <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.02em] text-white">
-                        Order Summary
-                      </h2>
-                    </div>
-
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[12px] text-[#a7aec4]">
-                      {items.length} item{items.length === 1 ? "" : "s"}
-                    </span>
-                  </div>
-
-                  {hasStockIssue ? (
-                    <div className="mt-5 rounded-[16px] border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-200">
-                      Some cart items are out of stock or exceed available
-                      stock. Please update or remove them before checkout.
-                    </div>
-                  ) : null}
-
-                  <div className="mt-6 rounded-[20px] border border-[#26293a] bg-[#161824] p-4">
-                    <div className="flex flex-col gap-3">
-                      <label htmlFor="discount-code" className="sr-only">
-                        Discount code
-                      </label>
-
-                      <input
-                        id="discount-code"
-                        value={discount}
-                        onChange={(e) =>
-                          setDiscount(e.target.value.toUpperCase())
-                        }
-                        placeholder="Discount code"
-                        className="h-[48px] w-full rounded-full border border-[#26293a] bg-[#0d0f17] px-4 text-white outline-none placeholder:text-[#7c86b1] transition focus:border-[#d6c7ff]"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={applyManualCoupon}
-                        disabled={isApplyingCoupon}
-                        className={secondaryBtnClass}
-                      >
-                        {isApplyingCoupon ? "Applying..." : "Apply Coupon"}
-                      </button>
-                    </div>
-
-                    <div className="mt-3 text-[12px] leading-5 text-[#a7aec4]">
-                      Collect coupons from{" "}
-                      <Link href="/discounts" className="text-white underline">
-                        Discounts
-                      </Link>{" "}
-                      and the best valid coupon will auto-apply here.
-                    </div>
-
-                    {appliedCouponCode ? (
-                      <div className="mt-4 rounded-[16px] border border-green-500/20 bg-green-500/10 px-4 py-3">
-                        <div className="text-[11px] uppercase tracking-[0.14em] text-green-300">
-                          Applied Coupon
-                        </div>
-
-                        <div className="mt-1 text-sm font-semibold text-white">
-                          {appliedCouponCode}
-                        </div>
-
-                        {appliedCouponLabel ? (
-                          <div className="mt-1 text-xs text-green-200">
-                            {appliedCouponLabel}
-                          </div>
-                        ) : null}
-
-                        <button
-                          type="button"
-                          onClick={() => clearAppliedCoupon(false)}
-                          className="mt-3 rounded-full border border-green-300/20 px-3 py-1 text-xs font-semibold text-green-100 transition hover:bg-green-500/10"
-                        >
-                          Remove Coupon
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {couponMessage ? (
-                      <div className="mt-4 text-[12px] text-[#a7aec4]">
-                        {couponMessage}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-6 space-y-4 text-sm text-[#a7aec4] sm:text-[15px]">
-                    <div className="flex items-center justify-between gap-4">
-                      <span>Subtotal</span>
-                      <span className="text-right text-white">
-                        {formatNpr(subtotal)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-4">
-                      <span>Shipping</span>
-                      <span className="text-right text-white">
-                        {formatNpr(items.length ? shipping : 0)}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-4">
-                      <span>Discount</span>
-                      <span className="text-right text-green-400">
-                        - {formatNpr(discountAmount)}
-                      </span>
-                    </div>
-
-                    <div className="h-px bg-[#26293a]" />
-
-                    <div className="flex items-center justify-between gap-4 text-[18px] font-semibold">
-                      <span className="text-white">Total</span>
-                      <span className="text-right text-white">
-                        {formatNpr(total)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={proceedToCheckout}
-                    disabled={hasStockIssue || !authChecked}
-                    className={`${primaryBtnClass} mt-8 w-full justify-center`}
-                  >
-                    {hasStockIssue
-                      ? "Fix Stock Issues"
-                      : !authChecked
-                        ? "Checking..."
-                        : "Proceed to Checkout"}
-                  </button>
-
-                  <div className="mt-5 grid grid-cols-3 gap-2">
-                    {[
-                      ["/images/payment.png", "Secure", "Payment"],
-                      ["/images/return.png", "Easy", "Return"],
-                      ["/images/cod.png", "COD", "Available"],
-                    ].map(([icon, a, b]) => (
-                      <div
-                        key={`${a}-${b}`}
-                        className="rounded-[16px] border border-[#26293a] bg-[#161824] p-3 text-center"
-                      >
-                        <div className="mx-auto mb-2 flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
-                          <Image
-                            src={icon}
-                            alt={`${a} ${b}`}
-                            width={18}
-                            height={18}
-                            className="object-contain"
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none";
-                            }}
-                          />
-                        </div>
-
-                        <div className="text-[12px] font-semibold text-white">
-                          {a}
-                        </div>
-
-                        <div className="text-[11px] text-[#a7aec4]">{b}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </aside>
+              <OrderSummary
+                itemsLength={items.length}
+                hasStockIssue={hasStockIssue}
+                discount={discount}
+                setDiscount={setDiscount}
+                applyManualCoupon={applyManualCoupon}
+                isApplyingCoupon={isApplyingCoupon}
+                appliedCouponCode={appliedCouponCode}
+                appliedCouponLabel={appliedCouponLabel}
+                clearAppliedCoupon={clearAppliedCoupon}
+                couponMessage={couponMessage}
+                subtotal={subtotal}
+                shippingAmount={items.length ? shipping : 0}
+                discountAmount={discountAmount}
+                total={total}
+                authChecked={authChecked}
+                proceedToCheckout={proceedToCheckout}
+              />
             </div>
           )}
         </div>

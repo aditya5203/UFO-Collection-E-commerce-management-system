@@ -3,17 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
 import {
   DELIVERY_ENDPOINTS,
   DeliveryOrder,
   DeliveryOtpChannel,
-  DeliveryStatus,
   formatDateLong,
   formatDateTime,
-  formatNPR,
   getDeliveryBlockedReason,
-  getDeliveryStatusTone,
   getGoogleMapsUrl,
   hasLatLng,
   isDeliveryBlockedByOrderStatus,
@@ -23,485 +19,24 @@ import {
   safeStr,
 } from "@/app/lib/delivery";
 
-type DeliveryTaskType =
-  | "NORMAL_DELIVERY"
-  | "RETURN_PICKUP"
-  | "EXCHANGE_PICKUP"
-  | "REPLACEMENT_DELIVERY";
-
-type TaskStatus =
-  | "Assigned"
-  | "Picked Up"
-  | "Out for Delivery"
-  | "Delivered"
-  | "Failed Delivery"
-  | "Returned"
-  | "Returned to Store";
-
-type TimelineStep = {
-  label: string;
-  date: string;
-  status: "done" | "current" | "upcoming";
-};
-
-type ToastType = "success" | "error" | "info";
-
-type Toast = {
-  type: ToastType;
-  message: string;
-};
-
-const panelClass =
-  "rounded-[26px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
-
-const softPanelClass =
-  "rounded-[22px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)]";
-
-const secondaryBtnClass =
-  "inline-flex items-center justify-center rounded-full border border-white/15 bg-white/5 px-5 py-2.5 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60";
-
-const primaryBtnClass =
-  "inline-flex items-center justify-center rounded-full bg-white px-6 py-2.5 text-[12px] font-bold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60";
-
-const inputClass =
-  "w-full rounded-[16px] border border-[#26293a] bg-[#0d0f17] px-4 py-3 text-sm text-white placeholder:text-[#7f879f] outline-none transition focus:border-[#8b5cf6] focus:ring-4 focus:ring-[#8b5cf6]/10 disabled:cursor-not-allowed disabled:opacity-60";
-
-function getInitials(name?: string) {
-  const safe = safeStr(name).trim();
-  if (!safe) return "CU";
-
-  const parts = safe.split(/\s+/).filter(Boolean);
-  const initials = parts
-    .slice(0, 2)
-    .map((x) => x[0]?.toUpperCase())
-    .join("");
-
-  return initials || "CU";
-}
-
-function getColorDotClass(color?: string) {
-  const c = safeStr(color).trim().toLowerCase();
-
-  const colorMap: Record<string, string> = {
-    black: "bg-black",
-    "#000": "bg-black",
-    "#000000": "bg-black",
-    white: "bg-white",
-    "#fff": "bg-white",
-    "#ffffff": "bg-white",
-    red: "bg-red-500",
-    "#ef4444": "bg-red-500",
-    blue: "bg-blue-500",
-    "#3b82f6": "bg-blue-500",
-    green: "bg-green-500",
-    "#22c55e": "bg-green-500",
-    yellow: "bg-yellow-400",
-    "#eab308": "bg-yellow-400",
-    gray: "bg-gray-500",
-    grey: "bg-gray-500",
-    "#808080": "bg-gray-500",
-    pink: "bg-pink-500",
-    "#ec4899": "bg-pink-500",
-    purple: "bg-purple-500",
-    "#a855f7": "bg-purple-500",
-    orange: "bg-orange-500",
-    "#f97316": "bg-orange-500",
-    navy: "bg-blue-950",
-    "navy blue": "bg-blue-950",
-    "#000080": "bg-blue-950",
-    brown: "bg-amber-900",
-    maroon: "bg-red-900",
-    cream: "bg-yellow-100",
-    beige: "bg-stone-300",
-  };
-
-  return colorMap[c] || "bg-[#161824]";
-}
-
-function getTaskLabel(taskType: DeliveryTaskType) {
-  if (taskType === "RETURN_PICKUP") return "Return Pickup";
-  if (taskType === "EXCHANGE_PICKUP") return "Exchange Pickup";
-  if (taskType === "REPLACEMENT_DELIVERY") return "Replacement Delivery";
-  return "Normal Delivery";
-}
-
-function getTaskTone(taskType: DeliveryTaskType) {
-  if (taskType === "RETURN_PICKUP") {
-    return "border-orange-400/30 bg-orange-500/10 text-orange-200";
-  }
-
-  if (taskType === "EXCHANGE_PICKUP") {
-    return "border-purple-400/30 bg-purple-500/10 text-purple-200";
-  }
-
-  if (taskType === "REPLACEMENT_DELIVERY") {
-    return "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
-  }
-
-  return "border-blue-400/30 bg-blue-500/10 text-blue-200";
-}
-
-function normalizeTaskType(value?: string | null): DeliveryTaskType {
-  const task = safeStr(value).toUpperCase();
-
-  if (task === "RETURN_PICKUP") return "RETURN_PICKUP";
-  if (task === "EXCHANGE_PICKUP") return "EXCHANGE_PICKUP";
-  if (task === "REPLACEMENT_DELIVERY") return "REPLACEMENT_DELIVERY";
-
-  return "NORMAL_DELIVERY";
-}
-
-function getTaskAssignment(order: any, taskType: DeliveryTaskType) {
-  if (taskType === "RETURN_PICKUP") {
-    return order?.returnPickupAssignment || order?.taskAssignment || null;
-  }
-
-  if (taskType === "EXCHANGE_PICKUP") {
-    return order?.exchangePickupAssignment || order?.taskAssignment || null;
-  }
-
-  if (taskType === "REPLACEMENT_DELIVERY") {
-    return order?.replacementDeliveryAssignment || order?.taskAssignment || null;
-  }
-
-  return order?.deliveryAssignment || order?.taskAssignment || null;
-}
-
-function getDefaultTaskFromOrder(order: any): DeliveryTaskType {
-  const explicit = safeStr(order?.taskType || order?.taskAssignment?.taskType);
-
-  if (explicit) return normalizeTaskType(explicit);
-
-  if (order?.returnPickupAssignment?.deliveryManId) return "RETURN_PICKUP";
-  if (order?.exchangePickupAssignment?.deliveryManId) return "EXCHANGE_PICKUP";
-  if (order?.replacementDeliveryAssignment?.deliveryManId) {
-    return "REPLACEMENT_DELIVERY";
-  }
-
-  return "NORMAL_DELIVERY";
-}
-
-function StatusPill({ children }: { children: React.ReactNode }) {
-  const tone = getDeliveryStatusTone(String(children));
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}
-    >
-      <span className="mr-2 h-1.5 w-1.5 rounded-full bg-current" />
-      {children}
-    </span>
-  );
-}
-
-function TaskPill({ taskType }: { taskType: DeliveryTaskType }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${getTaskTone(
-        taskType,
-      )}`}
-    >
-      <span className="mr-2 h-1.5 w-1.5 rounded-full bg-current" />
-      {getTaskLabel(taskType)}
-    </span>
-  );
-}
-
-function Dot({ status }: { status: TimelineStep["status"] }) {
-  const base =
-    "grid h-8 w-8 shrink-0 place-items-center rounded-full border text-sm font-bold";
-
-  if (status === "done") {
-    return (
-      <div
-        className={`${base} border-emerald-400/20 bg-emerald-500/15 text-emerald-300`}
-      >
-        ✓
-      </div>
-    );
-  }
-
-  if (status === "current") {
-    return (
-      <div
-        className={`${base} border-[#8b5cf6]/40 bg-[#8b5cf6]/15 text-[#d6c7ff]`}
-      >
-        •
-      </div>
-    );
-  }
-
-  return (
-    <div className={`${base} border-white/10 bg-white/[0.03] text-[#7f879f]`}>
-      •
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  hint,
-  index,
-}: {
-  label: string;
-  value: React.ReactNode;
-  hint?: string;
-  index: number;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05, duration: 0.4, ease: "easeOut" }}
-      className={`${softPanelClass} relative min-w-0 overflow-hidden p-5 transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]`}
-    >
-      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-[#8b5cf6]/10 blur-2xl" />
-
-      <div className="relative min-w-0">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#a7aec4]">
-          {label}
-        </div>
-
-        <div className="mt-3 break-words text-[20px] font-semibold tracking-[-0.03em] text-white">
-          {value}
-        </div>
-
-        {hint ? (
-          <div className="mt-2 break-words text-[12px] text-[#7f879f]">
-            {hint}
-          </div>
-        ) : null}
-      </div>
-    </motion.div>
-  );
-}
-
-function LineItem({
-  label,
-  value,
-  valueClassName = "text-white",
-}: {
-  label: string;
-  value: React.ReactNode;
-  valueClassName?: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <span className="text-sm text-[#a7aec4]">{label}</span>
-      <span className={`break-words text-right text-sm ${valueClassName}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function getAllowedTransitions(
-  currentStatus: string,
-  taskType: DeliveryTaskType,
-): TaskStatus[] {
-  const s = safeStr(currentStatus).toLowerCase();
-
-  if (taskType === "RETURN_PICKUP" || taskType === "EXCHANGE_PICKUP") {
-    if (!s || s === "assigned") {
-      return ["Assigned", "Picked Up", "Failed Delivery"];
-    }
-
-    if (s === "picked up") {
-      return ["Picked Up", "Returned to Store", "Failed Delivery"];
-    }
-
-    if (s === "returned to store") {
-      return ["Returned to Store"];
-    }
-
-    if (s === "failed delivery") {
-      return ["Failed Delivery"];
-    }
-
-    return ["Assigned", "Picked Up", "Returned to Store", "Failed Delivery"];
-  }
-
-  if (taskType === "REPLACEMENT_DELIVERY") {
-    if (!s || s === "assigned") {
-      return ["Assigned", "Picked Up", "Out for Delivery", "Failed Delivery"];
-    }
-
-    if (s === "picked up") {
-      return ["Picked Up", "Out for Delivery", "Failed Delivery"];
-    }
-
-    if (s === "out for delivery") {
-      return ["Out for Delivery", "Delivered", "Failed Delivery"];
-    }
-
-    if (s === "delivered") {
-      return ["Delivered"];
-    }
-
-    if (s === "failed delivery") {
-      return ["Failed Delivery"];
-    }
-
-    return ["Assigned", "Picked Up", "Out for Delivery", "Failed Delivery"];
-  }
-
-  if (!s || s === "assigned") {
-    return ["Assigned", "Picked Up", "Failed Delivery", "Returned"];
-  }
-
-  if (s === "picked up") {
-    return ["Picked Up", "Out for Delivery", "Failed Delivery", "Returned"];
-  }
-
-  if (s === "out for delivery") {
-    return ["Out for Delivery", "Failed Delivery", "Returned"];
-  }
-
-  if (s === "delivered") {
-    return ["Delivered"];
-  }
-
-  if (s === "failed delivery") {
-    return ["Failed Delivery", "Returned"];
-  }
-
-  if (s === "returned") {
-    return ["Returned"];
-  }
-
-  return ["Assigned", "Picked Up", "Failed Delivery", "Returned"];
-}
-
-function buildTimeline(
-  taskType: DeliveryTaskType,
-  currentStatus: string,
-  assignment: any,
-  placedOn: string,
-  assignedAt: string,
-): TimelineStep[] {
-  if (taskType === "RETURN_PICKUP" || taskType === "EXCHANGE_PICKUP") {
-    return [
-      { label: "Task Created", date: placedOn, status: "done" },
-      {
-        label: "Assigned",
-        date: assignedAt,
-        status:
-          currentStatus === "Assigned"
-            ? "current"
-            : assignedAt !== "-"
-              ? "done"
-              : "upcoming",
-      },
-      {
-        label: "Picked Up",
-        date: safeStr(assignment?.pickedUpAt)
-          ? formatDateLong(assignment?.pickedUpAt)
-          : "—",
-        status:
-          currentStatus === "Picked Up"
-            ? "current"
-            : ["Returned to Store", "Failed Delivery"].includes(currentStatus)
-              ? "done"
-              : "upcoming",
-      },
-      {
-        label: "Returned to Store",
-        date: safeStr(assignment?.returnedToStoreAt)
-          ? formatDateLong(assignment?.returnedToStoreAt)
-          : "—",
-        status:
-          currentStatus === "Returned to Store" ? "current" : "upcoming",
-      },
-    ];
-  }
-
-  if (taskType === "REPLACEMENT_DELIVERY") {
-    return [
-      { label: "Replacement Assigned", date: assignedAt, status: "done" },
-      {
-        label: "Picked Up",
-        date: safeStr(assignment?.pickedUpAt)
-          ? formatDateLong(assignment?.pickedUpAt)
-          : "—",
-        status:
-          currentStatus === "Picked Up"
-            ? "current"
-            : ["Out for Delivery", "Delivered", "Failed Delivery"].includes(
-                  currentStatus,
-                )
-              ? "done"
-              : "upcoming",
-      },
-      {
-        label: "Out for Delivery",
-        date: safeStr(assignment?.outForDeliveryAt)
-          ? formatDateLong(assignment?.outForDeliveryAt)
-          : "—",
-        status:
-          currentStatus === "Out for Delivery"
-            ? "current"
-            : ["Delivered", "Failed Delivery"].includes(currentStatus)
-              ? "done"
-              : "upcoming",
-      },
-      {
-        label: "Delivered",
-        date: safeStr(assignment?.deliveredAt)
-          ? formatDateLong(assignment?.deliveredAt)
-          : "—",
-        status: currentStatus === "Delivered" ? "current" : "upcoming",
-      },
-    ];
-  }
-
-  return [
-    { label: "Order Placed", date: placedOn, status: "done" },
-    {
-      label: "Assigned",
-      date: assignedAt,
-      status:
-        currentStatus === "Assigned"
-          ? "current"
-          : assignedAt !== "-"
-            ? "done"
-            : "upcoming",
-    },
-    {
-      label: "Picked Up",
-      date: safeStr(assignment?.pickedUpAt)
-        ? formatDateLong(assignment?.pickedUpAt)
-        : "—",
-      status:
-        currentStatus === "Picked Up"
-          ? "current"
-          : ["Out for Delivery", "Delivered", "Failed Delivery", "Returned"].includes(
-                currentStatus,
-              )
-            ? "done"
-            : "upcoming",
-    },
-    {
-      label: "Out for Delivery",
-      date: safeStr(assignment?.outForDeliveryAt)
-        ? formatDateLong(assignment?.outForDeliveryAt)
-        : "—",
-      status:
-        currentStatus === "Out for Delivery"
-          ? "current"
-          : ["Delivered", "Failed Delivery", "Returned"].includes(currentStatus)
-            ? "done"
-            : "upcoming",
-    },
-    {
-      label: "Delivered",
-      date: safeStr(assignment?.deliveredAt)
-        ? formatDateLong(assignment?.deliveredAt)
-        : "—",
-      status: currentStatus === "Delivered" ? "current" : "upcoming",
-    },
-  ];
-}
+import DeliveryOrderHero from "./_components/DeliveryOrderHero";
+import DeliveryOrderItems from "./_components/DeliveryOrderItems";
+import DeliverySidePanels from "./_components/DeliverySidePanels";
+import DeliverySkeleton from "./_components/DeliverySkeleton";
+import DeliveryTaskTimeline from "./_components/DeliveryTaskTimeline";
+import { ToastView } from "./_components/DeliveryOrderShared";
+import {
+  DeliveryTaskType,
+  TaskStatus,
+  Toast,
+  buildTimeline,
+  getAllowedTransitions,
+  getDefaultTaskFromOrder,
+  getTaskAssignment,
+  normalizeTaskType,
+  panelClass,
+  secondaryBtnClass,
+} from "./_components/deliveryOrderTypes";
 
 export default function DeliveryOrderDetailsPage() {
   const params = useParams<{ id: string }>();
@@ -578,7 +113,7 @@ export default function DeliveryOrderDetailsPage() {
         const assignment = getTaskAssignment(nextOrder, resolvedTask);
 
         setDeliveryStatus(
-          (safeStr(assignment?.status) || "Assigned") as TaskStatus,
+          (safeStr(assignment?.status) || "Assigned") as TaskStatus
         );
         setDeliveryNote(safeStr(assignment?.note));
       } catch {
@@ -589,7 +124,7 @@ export default function DeliveryOrderDetailsPage() {
         setRefreshing(false);
       }
     },
-    [id, taskFromUrl],
+    [id, taskFromUrl]
   );
 
   React.useEffect(() => {
@@ -636,21 +171,21 @@ export default function DeliveryOrderDetailsPage() {
       };
 
       if (taskType === "RETURN_PICKUP" || taskType === "EXCHANGE_PICKUP") {
-  endpoint = DELIVERY_ENDPOINTS.pickupTaskStatus(orderId);
-  body = {
-    taskType,
-    status: deliveryStatus,
-    note: deliveryNote.trim(),
-  };
-}
+        endpoint = DELIVERY_ENDPOINTS.pickupTaskStatus(orderId);
+        body = {
+          taskType,
+          status: deliveryStatus,
+          note: deliveryNote.trim(),
+        };
+      }
 
       if (taskType === "REPLACEMENT_DELIVERY") {
-  endpoint = DELIVERY_ENDPOINTS.replacementTaskStatus(orderId);
-  body = {
-    status: deliveryStatus,
-    note: deliveryNote.trim(),
-  };
-}
+        endpoint = DELIVERY_ENDPOINTS.replacementTaskStatus(orderId);
+        body = {
+          status: deliveryStatus,
+          note: deliveryNote.trim(),
+        };
+      }
 
       const res = await fetch(endpoint, {
         method: "PATCH",
@@ -678,7 +213,7 @@ export default function DeliveryOrderDetailsPage() {
       const updatedAssignment = getTaskAssignment(updatedOrder, taskType);
 
       setDeliveryStatus(
-        (safeStr(updatedAssignment?.status) || deliveryStatus) as TaskStatus,
+        (safeStr(updatedAssignment?.status) || deliveryStatus) as TaskStatus
       );
       setDeliveryNote(safeStr(updatedAssignment?.note));
       setOtpMessage("");
@@ -727,15 +262,12 @@ export default function DeliveryOrderDetailsPage() {
       setOtpMessage("");
       setToast(null);
 
-      const res = await fetch(
-        `${DELIVERY_ENDPOINTS.orders}/${orderId}/send-otp`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ channel: otpChannel }),
-        },
-      );
+      const res = await fetch(`${DELIVERY_ENDPOINTS.orders}/${orderId}/send-otp`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel: otpChannel }),
+      });
 
       const json = await safeJson(res);
 
@@ -797,7 +329,7 @@ export default function DeliveryOrderDetailsPage() {
     }
 
     const confirmed = window.confirm(
-      "Are you sure you want to verify OTP and mark this order as delivered?",
+      "Are you sure you want to verify OTP and mark this order as delivered?"
     );
 
     if (!confirmed) return;
@@ -815,7 +347,7 @@ export default function DeliveryOrderDetailsPage() {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ otp: cleanOtp }),
-        },
+        }
       );
 
       const json = await safeJson(res);
@@ -832,7 +364,7 @@ export default function DeliveryOrderDetailsPage() {
       setOrder(updatedOrder);
       setDeliveryStatus(
         (safeStr(updatedOrder?.deliveryAssignment?.status) ||
-          "Delivered") as TaskStatus,
+          "Delivered") as TaskStatus
       );
       setDeliveryNote(safeStr(updatedOrder?.deliveryAssignment?.note));
       setOtpInput("");
@@ -852,28 +384,7 @@ export default function DeliveryOrderDetailsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="-m-6 min-h-screen overflow-x-hidden bg-[#0a0a0f] p-4 text-[#f5f7fb] sm:p-6 lg:p-8">
-        <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.14),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(96,165,250,0.08),transparent_30%)]" />
-
-        <div className="relative max-w-full space-y-5 overflow-x-hidden">
-          <SkeletonHero />
-
-          <div className="grid min-w-0 max-w-full gap-5 2xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
-            <div className="min-w-0 space-y-5">
-              <SkeletonPanel rows={6} />
-              <SkeletonPanel rows={5} />
-            </div>
-
-            <div className="min-w-0 space-y-5">
-              <SkeletonPanel rows={4} />
-              <SkeletonPanel rows={5} />
-              <SkeletonPanel rows={4} />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <DeliverySkeleton />;
   }
 
   if (!order) {
@@ -907,8 +418,10 @@ export default function DeliveryOrderDetailsPage() {
   const currentStatus = safeStr(assignment?.status) || "Assigned";
 
   const orderLifecycleStatus = normalizeOrderStatus(order?.orderStatus);
+
   const blockedByOrderStatus =
     taskType === "NORMAL_DELIVERY" && isDeliveryBlockedByOrderStatus(order);
+
   const blockedReason = getDeliveryBlockedReason(order);
 
   const allowedStatuses = blockedByOrderStatus
@@ -926,20 +439,25 @@ export default function DeliveryOrderDetailsPage() {
     currentStatus,
     assignment,
     placedOn,
-    assignedAt,
+    assignedAt
   );
 
   const addr = order.address || null;
   const addrTitle = addr?.label ? safeStr(addr.label) : "Shipping Address";
+
   const addrName =
     safeStr(addr?.fullName) || safeStr(order?.customer?.name) || "-";
+
   const addrPhone =
     safeStr(addr?.phone) || safeStr(order?.customer?.phone) || "-";
+
   const addrStreet = safeStr(addr?.street);
+
   const addrArea =
     safeStr(addr?.addressLine) ||
     safeStr(addr?.area) ||
     safeStr(addr?.district);
+
   const addrCity =
     safeStr(addr?.cityOrMunicipality) ||
     safeStr(addr?.city) ||
@@ -959,6 +477,7 @@ export default function DeliveryOrderDetailsPage() {
 
   const customerPhoneLink =
     addrPhone && addrPhone !== "-" ? `tel:${addrPhone}` : "";
+
   const mapsLink = hasLatLng(addr) ? getGoogleMapsUrl(addr) : "";
 
   const isFinalState =
@@ -984,871 +503,75 @@ export default function DeliveryOrderDetailsPage() {
       <ToastView toast={toast} />
 
       <div className="relative max-w-full space-y-6 overflow-x-hidden">
-        <motion.section
-          initial={{ opacity: 0, y: 22 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-          className={`${panelClass} relative min-w-0 max-w-full overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.24),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(96,165,250,0.12),transparent_34%),linear-gradient(135deg,#11121a,#0d0f17)] p-5 sm:p-6 lg:p-7`}
-        >
-          <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-[#8b5cf6]/10 blur-3xl" />
-          <div className="pointer-events-none absolute bottom-0 left-0 h-px w-full bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-
-          <div className="relative flex min-w-0 flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div className="min-w-0">
-              <div className="break-words text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                Delivery <span className="mx-2 text-[#7f879f]">/</span> Tasks{" "}
-                <span className="mx-2 text-[#7f879f]">/</span>{" "}
-                {order.orderCode || orderId}
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <h1 className="break-words text-[28px] font-semibold tracking-[-0.045em] text-white sm:text-[38px]">
-                  {order.orderCode || orderId}
-                </h1>
-
-                <TaskPill taskType={taskType} />
-                <StatusPill>{currentStatus}</StatusPill>
-
-                {orderLifecycleStatus &&
-                orderLifecycleStatus !== "Pending" &&
-                orderLifecycleStatus !== currentStatus ? (
-                  <StatusPill>{orderLifecycleStatus}</StatusPill>
-                ) : null}
-              </div>
-
-              <p className="mt-2 max-w-[720px] text-[13px] leading-7 text-[#a7aec4] sm:text-[14px]">
-                {getTaskLabel(taskType)} assigned on {assignedAt}
-                {order?.paymentMethod ? (
-                  <>
-                    <span className="mx-2 text-[#7f879f]">•</span>
-                    <span>{safeStr(order.paymentMethod)}</span>
-                  </>
-                ) : null}
-              </p>
-
-              {blockedByOrderStatus ? (
-                <div className="mt-4 rounded-[18px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] leading-6 text-red-200">
-                  <div className="font-semibold">Delivery blocked</div>
-                  <div className="mt-1">{blockedReason}</div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => loadOrder("refresh")}
-                disabled={refreshing}
-                className={primaryBtnClass}
-              >
-                {refreshing ? (
-                  <>
-                    <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-[#090a12]/30 border-t-[#090a12]" />
-                    Refreshing
-                  </>
-                ) : (
-                  "Refresh"
-                )}
-              </button>
-
-              {customerPhoneLink ? (
-                <a href={customerPhoneLink} className={secondaryBtnClass}>
-                  Call Customer
-                </a>
-              ) : null}
-
-              {mapsLink ? (
-                <a
-                  href={mapsLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={secondaryBtnClass}
-                >
-                  Open Map
-                </a>
-              ) : null}
-
-              <Link href="/delivery/orders" className={secondaryBtnClass}>
-                Back
-              </Link>
-            </div>
-          </div>
-
-          <div className="relative mt-6 grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryCard
-              index={0}
-              label="Customer"
-              value={order.customer?.name || addrName || "-"}
-              hint={order.customer?.email || "No email"}
-            />
-
-            <SummaryCard
-              index={1}
-              label="Task Type"
-              value={getTaskLabel(taskType)}
-              hint="Assigned delivery task"
-            />
-
-            <SummaryCard
-              index={2}
-              label="Items"
-              value={String(items.length)}
-              hint="Products / variants in this order"
-            />
-
-            <SummaryCard
-              index={3}
-              label="Assigned Date"
-              value={assignedAt}
-              hint={formatDateTime(assignment?.assignedAt)}
-            />
-          </div>
-        </motion.section>
+        <DeliveryOrderHero
+          orderCode={safeStr(order.orderCode)}
+          orderId={orderId}
+          taskType={taskType}
+          currentStatus={currentStatus}
+          orderLifecycleStatus={orderLifecycleStatus}
+          assignedAt={assignedAt}
+          assignedAtFull={formatDateTime(assignment?.assignedAt)}
+          paymentMethod={safeStr(order.paymentMethod)}
+          blockedByOrderStatus={blockedByOrderStatus}
+          blockedReason={blockedReason}
+          refreshing={refreshing}
+          customerPhoneLink={customerPhoneLink}
+          mapsLink={mapsLink}
+          customerName={order.customer?.name || addrName || "-"}
+          customerEmail={safeStr(order.customer?.email)}
+          itemsCount={items.length}
+          onRefresh={() => loadOrder("refresh")}
+        />
 
         <div className="grid min-w-0 max-w-full gap-5 2xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,0.9fr)]">
           <div className="min-w-0 space-y-5">
-            <motion.section
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, ease: "easeOut" }}
-              className={`${panelClass} min-w-0 max-w-full overflow-hidden`}
-            >
-              <div className="border-b border-[#26293a] px-5 py-4 sm:px-6">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                  Products
-                </div>
+            <DeliveryOrderItems items={items} />
 
-                <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  Order Items
-                </h2>
-
-                <p className="mt-1 text-[13px] text-[#a7aec4]">
-                  Product variant, SKU, quantity, color, size, and pricing
-                </p>
-              </div>
-
-              <div className="hidden max-w-full overflow-x-auto lg:block">
-                <table className="w-full min-w-[900px] border-collapse text-[13px] xl:min-w-[1120px]">
-                  <thead>
-                    <tr className="border-b border-[#26293a] text-left text-[11px] uppercase tracking-[0.16em] text-[#a7aec4]">
-                      <th className="px-4 py-4 font-medium xl:px-5">Product</th>
-                      <th className="px-4 py-4 font-medium xl:px-5">
-                        Variant / SKU
-                      </th>
-                      <th className="px-4 py-4 font-medium xl:px-5">Size</th>
-                      <th className="px-4 py-4 font-medium xl:px-5">Color</th>
-                      <th className="px-4 py-4 text-center font-medium xl:px-5">
-                        Qty
-                      </th>
-                      <th className="px-4 py-4 text-right font-medium xl:px-5">
-                        Price
-                      </th>
-                      <th className="px-4 py-4 text-right font-medium xl:px-5">
-                        Total
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {items.length ? (
-                      items.map((it: any, i: number) => {
-                        const productId = safeStr(it?.productId);
-                        const variantId = safeStr(it?.variantId);
-                        const sku = safeStr(it?.sku);
-                        const colorValue = safeStr(it?.color);
-                        const colorLabel = safeStr(it?.colorLabel);
-                        const colorClass = getColorDotClass(
-                          colorValue || colorLabel,
-                        );
-                        const qty = Number(it?.qty || 0);
-                        const pricePaisa = Number(it?.pricePaisa || 0);
-                        const lineTotalPaisa = qty * pricePaisa;
-
-                        return (
-                          <motion.tr
-                            key={`${productId}-${variantId || i}`}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{
-                              delay: i * 0.035,
-                              duration: 0.3,
-                              ease: "easeOut",
-                            }}
-                            className="border-t border-[#26293a] transition hover:bg-white/[0.03]"
-                          >
-                            <td className="px-4 py-4 xl:px-5">
-                              <div className="max-w-[240px] truncate font-semibold text-white">
-                                {it?.name || "-"}
-                              </div>
-
-                              {productId ? (
-                                <div className="mt-1 max-w-[240px] truncate text-xs text-[#7f879f]">
-                                  Product ID: {productId}
-                                </div>
-                              ) : null}
-                            </td>
-
-                            <td className="px-4 py-4 xl:px-5">
-                              <div className="space-y-1">
-                                {sku ? (
-                                  <div className="inline-flex max-w-[220px] rounded-full border border-[#8b5cf6]/20 bg-[#8b5cf6]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#d6c7ff]">
-                                    <span className="truncate">SKU: {sku}</span>
-                                  </div>
-                                ) : (
-                                  <div className="text-[12px] text-[#7f879f]">
-                                    No SKU
-                                  </div>
-                                )}
-
-                                {variantId ? (
-                                  <div className="max-w-[220px] truncate text-[11px] text-[#7f879f]">
-                                    Variant ID: {variantId}
-                                  </div>
-                                ) : (
-                                  <div className="text-[11px] text-[#7f879f]">
-                                    Legacy stock item
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-
-                            <td className="px-4 py-4 xl:px-5">
-                              {safeStr(it?.size) ? (
-                                <span className="inline-flex rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-white">
-                                  {safeStr(it.size)}
-                                </span>
-                              ) : (
-                                <span className="text-[#d1d5db]">-</span>
-                              )}
-                            </td>
-
-                            <td className="px-4 py-4 xl:px-5">
-                              {colorValue || colorLabel ? (
-                                <div className="flex items-center gap-2 text-[#d1d5db]">
-                                  <span
-                                    className={`h-4 w-4 shrink-0 rounded-full border border-white/20 ${colorClass}`}
-                                    aria-hidden="true"
-                                  />
-                                  <span className="max-w-[120px] truncate">
-                                    {colorLabel || colorValue}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span className="text-[#d1d5db]">-</span>
-                              )}
-                            </td>
-
-                            <td className="px-4 py-4 text-center text-[#d1d5db] xl:px-5">
-                              {qty || "-"}
-                            </td>
-
-                            <td className="px-4 py-4 text-right text-[#d1d5db] xl:px-5">
-                              {formatNPR(pricePaisa)}
-                            </td>
-
-                            <td className="px-4 py-4 text-right font-semibold text-[#d6c7ff] xl:px-5">
-                              {formatNPR(lineTotalPaisa)}
-                            </td>
-                          </motion.tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan={7}
-                          className="px-5 py-8 text-center text-[#a7aec4]"
-                        >
-                          No items found.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="grid gap-4 p-4 lg:hidden">
-                {items.length ? (
-                  items.map((it: any, i: number) => {
-                    const productId = safeStr(it?.productId);
-                    const variantId = safeStr(it?.variantId);
-                    const sku = safeStr(it?.sku);
-                    const colorValue = safeStr(it?.color);
-                    const colorLabel = safeStr(it?.colorLabel);
-                    const colorClass = getColorDotClass(
-                      colorValue || colorLabel,
-                    );
-                    const qty = Number(it?.qty || 0);
-                    const pricePaisa = Number(it?.pricePaisa || 0);
-                    const lineTotalPaisa = qty * pricePaisa;
-
-                    return (
-                      <motion.div
-                        key={`${productId}-${variantId || i}`}
-                        initial={{ opacity: 0, y: 14 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{
-                          delay: i * 0.035,
-                          duration: 0.35,
-                          ease: "easeOut",
-                        }}
-                        className="rounded-[20px] border border-white/10 bg-white/[0.035] p-4"
-                      >
-                        <div className="font-semibold text-white">
-                          {it?.name || "-"}
-                        </div>
-
-                        {productId ? (
-                          <div className="mt-1 break-all text-xs text-[#7f879f]">
-                            Product ID: {productId}
-                          </div>
-                        ) : null}
-
-                        <div className="mt-4 grid gap-3">
-                          <MobileInfo
-                            label="SKU"
-                            value={
-                              sku ? (
-                                <span className="break-all text-[#d6c7ff]">
-                                  {sku}
-                                </span>
-                              ) : (
-                                "-"
-                              )
-                            }
-                          />
-
-                          <MobileInfo
-                            label="Variant ID"
-                            value={
-                              variantId ? (
-                                <span className="break-all">{variantId}</span>
-                              ) : (
-                                "Legacy stock item"
-                              )
-                            }
-                          />
-
-                          <MobileInfo
-                            label="Size"
-                            value={safeStr(it?.size) || "-"}
-                          />
-
-                          <MobileInfo
-                            label="Color"
-                            value={
-                              colorValue || colorLabel ? (
-                                <span className="inline-flex items-center gap-2">
-                                  <span
-                                    className={`h-4 w-4 shrink-0 rounded-full border border-white/20 ${colorClass}`}
-                                    aria-hidden="true"
-                                  />
-                                  {colorLabel || colorValue}
-                                </span>
-                              ) : (
-                                "-"
-                              )
-                            }
-                          />
-
-                          <MobileInfo label="Qty" value={qty || "-"} />
-
-                          <MobileInfo
-                            label="Price"
-                            value={formatNPR(pricePaisa)}
-                          />
-
-                          <MobileInfo
-                            label="Line Total"
-                            value={formatNPR(lineTotalPaisa)}
-                          />
-                        </div>
-                      </motion.div>
-                    );
-                  })
-                ) : (
-                  <div className="rounded-[20px] border border-white/10 bg-white/[0.035] px-4 py-8 text-center text-[13px] text-[#a7aec4]">
-                    No items found.
-                  </div>
-                )}
-              </div>
-            </motion.section>
-
-            <motion.section
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, ease: "easeOut" }}
-              className={`${panelClass} min-w-0 max-w-full overflow-hidden p-5 sm:p-6`}
-            >
-              <div className="mb-5">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                  Progress
-                </div>
-
-                <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  Task Timeline
-                </h2>
-
-                <p className="mt-1 text-[13px] text-[#a7aec4]">
-                  Current progress of this delivery task
-                </p>
-              </div>
-
-              <div className="space-y-5">
-                {timeline.map((t, index) => (
-                  <motion.div
-                    key={t.label}
-                    initial={{ opacity: 0, x: -12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{
-                      delay: index * 0.045,
-                      duration: 0.32,
-                      ease: "easeOut",
-                    }}
-                    className="flex gap-4"
-                  >
-                    <div className="flex flex-col items-center">
-                      <Dot status={t.status} />
-
-                      {index !== timeline.length - 1 ? (
-                        <div className="mt-2 h-10 w-px bg-[#26293a]" />
-                      ) : null}
-                    </div>
-
-                    <div className="pt-1">
-                      <div className="text-sm font-semibold text-white">
-                        {t.label}
-                      </div>
-
-                      <div className="mt-1 text-xs text-[#a7aec4]">
-                        {t.date}
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </motion.section>
+            <DeliveryTaskTimeline timeline={timeline} />
           </div>
 
-          <div className="min-w-0 space-y-5">
-            <SidePanel>
-              <div className="flex items-start gap-4">
-                <div className="grid h-14 w-14 shrink-0 place-items-center rounded-[18px] border border-white/10 bg-white/[0.05] text-base font-bold text-white shadow-[0_0_30px_rgba(139,92,246,0.12)]">
-                  {getInitials(order.customer?.name || addrName)}
-                </div>
-
-                <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                    Customer
-                  </div>
-
-                  <h2 className="mt-1 text-[20px] font-semibold text-white">
-                    Customer Details
-                  </h2>
-
-                  <div className="mt-4 space-y-3">
-                    <LineItem label="Name" value={addrName} />
-                    <LineItem
-                      label="Email"
-                      value={safeStr(order.customer?.email) || "-"}
-                    />
-                    <LineItem label="Phone" value={addrPhone} />
-                  </div>
-                </div>
-              </div>
-            </SidePanel>
-
-            <SidePanel>
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                  Address
-                </div>
-
-                <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  {addrTitle}
-                </h2>
-
-                <div className="mt-5 space-y-3">
-                  <LineItem label="Street" value={addrStreet || "-"} />
-                  <LineItem label="Area" value={addrArea || "-"} />
-                  <LineItem label="City" value={addrCity || "-"} />
-
-                  {hasLatLng(addr) ? (
-                    <LineItem
-                      label="Map"
-                      value={
-                        <a
-                          href={getGoogleMapsUrl(addr)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-semibold text-[#d6c7ff] hover:text-white"
-                        >
-                          Open location
-                        </a>
-                      }
-                    />
-                  ) : (
-                    <LineItem label="Map" value="No map location" />
-                  )}
-                </div>
-              </div>
-            </SidePanel>
-
-            <SidePanel>
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                  Management
-                </div>
-
-                <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  Update Task Status
-                </h2>
-
-                <p className="mt-1 text-[13px] leading-6 text-[#a7aec4]">
-                  You are updating{" "}
-                  <span className="font-semibold text-white">
-                    {getTaskLabel(taskType)}
-                  </span>
-                  . Follow the flow carefully.
-                </p>
-
-                {blockedByOrderStatus ? (
-                  <div className="mt-4 rounded-[16px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] leading-6 text-red-200">
-                    {blockedReason}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="mt-5 space-y-5">
-                <Field label="Task Status">
-                  <select
-                    value={deliveryStatus}
-                    onChange={(e) =>
-                      setDeliveryStatus(e.target.value as TaskStatus)
-                    }
-                    disabled={isFinalState}
-                    className={inputClass}
-                    title="Task status"
-                    aria-label="Task status"
-                  >
-                    {allowedStatuses.map((status) => (
-                      <option
-                        key={status}
-                        value={status}
-                        className="bg-[#11121a]"
-                      >
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-
-                <Field label="Task Note">
-                  <textarea
-                    value={deliveryNote}
-                    onChange={(e) => setDeliveryNote(e.target.value)}
-                    disabled={isFinalState}
-                    rows={4}
-                    placeholder="Add task note, failed reason, pickup condition, landmark, etc."
-                    className={`${inputClass} min-h-[120px] resize-none`}
-                    title="Task note"
-                    aria-label="Task note"
-                  />
-                </Field>
-
-                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-5">
-                  <div className="text-[12px] text-[#7f879f]">
-                    {hasStatusChanges
-                      ? "You have unsaved changes."
-                      : "No unsaved changes."}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={saveChanges}
-                    disabled={saving || !hasStatusChanges || isFinalState}
-                    className={primaryBtnClass}
-                  >
-                    {saving ? (
-                      <>
-                        <span className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-[#090a12]/30 border-t-[#090a12]" />
-                        Saving
-                      </>
-                    ) : (
-                      "Save Status"
-                    )}
-                  </button>
-                </div>
-              </div>
-            </SidePanel>
-
-            <SidePanel>
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                  Verification
-                </div>
-
-                <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  Delivery OTP Verification
-                </h2>
-
-                <p className="mt-1 text-[13px] leading-6 text-[#a7aec4]">
-                  OTP is required only for normal customer delivery. Return
-                  pickup, exchange pickup, and replacement delivery can be
-                  updated using task status.
-                </p>
-              </div>
-
-              {taskType !== "NORMAL_DELIVERY" ? (
-                <div className="mt-5 rounded-[16px] border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-[13px] leading-6 text-blue-200">
-                  OTP is disabled for {getTaskLabel(taskType)}.
-                </div>
-              ) : blockedByOrderStatus ? (
-                <div className="mt-5 rounded-[16px] border border-red-500/30 bg-red-500/10 px-4 py-3 text-[13px] leading-6 text-red-200">
-                  OTP is disabled. {blockedReason}
-                </div>
-              ) : null}
-
-              {!canSendOtp &&
-              !otpVerified &&
-              !blockedByOrderStatus &&
-              taskType === "NORMAL_DELIVERY" ? (
-                <div className="mt-5 rounded-[16px] border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-[13px] leading-6 text-amber-200">
-                  OTP can be sent only when delivery status is Out for Delivery.
-                </div>
-              ) : null}
-
-              {otpVerified ? (
-                <div className="mt-5 rounded-[16px] border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-[13px] leading-6 text-emerald-200">
-                  OTP already verified. This order is marked as delivered.
-                </div>
-              ) : null}
-
-              <div className="mt-5 space-y-5">
-                <Field label="OTP Channel">
-                  <select
-                    value={otpChannel}
-                    onChange={(e) =>
-                      setOtpChannel(e.target.value as DeliveryOtpChannel)
-                    }
-                    disabled={!canSendOtp || otpVerified}
-                    className={inputClass}
-                    title="OTP channel"
-                    aria-label="OTP channel"
-                  >
-                    <option value="phone" className="bg-[#11121a]">
-                      Phone
-                    </option>
-                    <option value="email" className="bg-[#11121a]">
-                      Email
-                    </option>
-                  </select>
-                </Field>
-
-                <button
-                  type="button"
-                  onClick={sendOtp}
-                  disabled={!canSendOtp || otpVerified || otpSending}
-                  className={secondaryBtnClass}
-                >
-                  {otpSending ? "Sending OTP..." : "Send OTP"}
-                </button>
-
-                <Field label="Enter OTP">
-                  <input
-                    value={otpInput}
-                    onChange={(e) =>
-                      setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 4))
-                    }
-                    disabled={!canSendOtp || otpVerified}
-                    placeholder="4 digit OTP"
-                    inputMode="numeric"
-                    maxLength={4}
-                    className={inputClass}
-                    title="OTP"
-                    aria-label="OTP"
-                  />
-                </Field>
-
-                <button
-                  type="button"
-                  onClick={verifyOtp}
-                  disabled={
-                    !canSendOtp ||
-                    otpVerified ||
-                    otpVerifying ||
-                    otpInput.trim().length !== 4
-                  }
-                  className={primaryBtnClass}
-                >
-                  {otpVerifying ? "Verifying..." : "Verify & Deliver"}
-                </button>
-
-                {otpSentTo || otpChannelUsed || otpExpiresAt ? (
-                  <div className="space-y-3 rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
-                    <LineItem label="Sent To" value={otpSentTo || "-"} />
-                    <LineItem label="Channel" value={otpChannelUsed || "-"} />
-                    <LineItem
-                      label="Expires"
-                      value={otpExpiresAt ? formatDateTime(otpExpiresAt) : "-"}
-                    />
-                  </div>
-                ) : null}
-
-                {otpMessage ? (
-                  <div className="rounded-[16px] border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-[13px] leading-6 text-emerald-200">
-                    {otpMessage}
-                  </div>
-                ) : null}
-
-                {otpError ? (
-                  <div className="rounded-[16px] border border-red-400/20 bg-red-500/10 px-4 py-3 text-[13px] leading-6 text-red-200">
-                    {otpError}
-                  </div>
-                ) : null}
-              </div>
-            </SidePanel>
-
-            <SidePanel>
-              <div>
-                <div className="text-[11px] uppercase tracking-[0.22em] text-[#a7aec4]">
-                  Billing
-                </div>
-
-                <h2 className="mt-1 text-[20px] font-semibold text-white">
-                  Payment Summary
-                </h2>
-              </div>
-
-              <div className="mt-5 space-y-3 rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
-                <LineItem
-                  label="Payment"
-                  value={safeStr(order.paymentMethod) || "-"}
-                />
-                <LineItem
-                  label="Payment Status"
-                  value={safeStr(order.paymentStatus) || "-"}
-                />
-                <LineItem label="Subtotal" value={formatNPR(subtotalPaisa)} />
-                <LineItem label="Shipping" value={formatNPR(shippingPaisa)} />
-                <LineItem
-                  label="Discount"
-                  value={`- ${formatNPR(discountPaisa)}`}
-                  valueClassName="text-emerald-300"
-                />
-
-                <div className="border-t border-white/10 pt-3">
-                  <LineItem
-                    label="Collection Total"
-                    value={formatNPR(totalPaisa)}
-                    valueClassName="text-base font-bold text-white"
-                  />
-                </div>
-              </div>
-            </SidePanel>
-          </div>
+          <DeliverySidePanels
+            order={order}
+            taskType={taskType}
+            addr={addr}
+            addrTitle={addrTitle}
+            addrName={addrName}
+            addrPhone={addrPhone}
+            addrStreet={addrStreet}
+            addrArea={addrArea}
+            addrCity={addrCity}
+            blockedByOrderStatus={blockedByOrderStatus}
+            blockedReason={blockedReason}
+            allowedStatuses={allowedStatuses}
+            deliveryStatus={deliveryStatus}
+            setDeliveryStatus={setDeliveryStatus}
+            deliveryNote={deliveryNote}
+            setDeliveryNote={setDeliveryNote}
+            hasStatusChanges={hasStatusChanges}
+            isFinalState={isFinalState}
+            saving={saving}
+            saveChanges={saveChanges}
+            canSendOtp={canSendOtp}
+            otpVerified={otpVerified}
+            otpChannel={otpChannel}
+            setOtpChannel={setOtpChannel}
+            otpInput={otpInput}
+            setOtpInput={setOtpInput}
+            otpSending={otpSending}
+            otpVerifying={otpVerifying}
+            sendOtp={sendOtp}
+            verifyOtp={verifyOtp}
+            otpSentTo={otpSentTo}
+            otpChannelUsed={otpChannelUsed}
+            otpExpiresAt={otpExpiresAt}
+            otpMessage={otpMessage}
+            otpError={otpError}
+            subtotalPaisa={subtotalPaisa}
+            shippingPaisa={shippingPaisa}
+            discountPaisa={discountPaisa}
+            totalPaisa={totalPaisa}
+          />
         </div>
-      </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.16em] text-[#a7aec4]">
-        {label}
-      </label>
-
-      {children}
-    </div>
-  );
-}
-
-function SidePanel({ children }: { children: React.ReactNode }) {
-  return (
-    <section className={`${panelClass} min-w-0 max-w-full p-5 sm:p-6`}>
-      {children}
-    </section>
-  );
-}
-
-function MobileInfo({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-[16px] border border-white/10 bg-[#0d0f17]/70 px-4 py-3">
-      <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7f879f]">
-        {label}
-      </div>
-
-      <div className="mt-1 break-words font-semibold text-white">{value}</div>
-    </div>
-  );
-}
-
-function ToastView({ toast }: { toast: Toast | null }) {
-  return (
-    <AnimatePresence>
-      {toast ? (
-        <motion.div
-          initial={{ opacity: 0, y: -18 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -18 }}
-          className={[
-            "fixed right-5 top-5 z-[1200] max-w-[380px] rounded-[18px] border px-5 py-4 text-[13px] font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur",
-            toast.type === "success"
-              ? "border-emerald-400/20 bg-emerald-500/15 text-emerald-200"
-              : toast.type === "info"
-                ? "border-blue-400/20 bg-blue-500/15 text-blue-200"
-                : "border-red-400/20 bg-red-500/15 text-red-200",
-          ].join(" ")}
-        >
-          {toast.message}
-        </motion.div>
-      ) : null}
-    </AnimatePresence>
-  );
-}
-
-function SkeletonHero() {
-  return (
-    <div className={`${panelClass} p-6`}>
-      <div className="h-4 w-48 animate-pulse rounded-full bg-white/10" />
-      <div className="mt-5 h-10 w-full max-w-[420px] animate-pulse rounded-full bg-white/10" />
-      <div className="mt-4 h-4 w-full max-w-[620px] animate-pulse rounded-full bg-white/10" />
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <div
-            key={index}
-            className="h-[110px] animate-pulse rounded-[22px] bg-white/[0.05]"
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function SkeletonPanel({ rows }: { rows: number }) {
-  return (
-    <div className={`${panelClass} p-6`}>
-      <div className="h-4 w-40 animate-pulse rounded-full bg-white/10" />
-      <div className="mt-5 space-y-4">
-        {Array.from({ length: rows }).map((_, index) => (
-          <div
-            key={index}
-            className="h-4 w-full animate-pulse rounded-full bg-white/10"
-          />
-        ))}
       </div>
     </div>
   );
