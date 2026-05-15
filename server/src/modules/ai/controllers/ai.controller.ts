@@ -3,6 +3,31 @@ import { productService } from "../../product/services/product.service";
 import { aiService } from "../services/ai.service";
 import { AppError } from "../../../middleware/error.middleware";
 
+type GarmentCategory = "tops" | "bottoms" | "one-pieces" | "shoes";
+
+function normalizeGarmentCategory(value: any): GarmentCategory {
+  const clean = String(value || "").trim().toLowerCase();
+
+  if (clean === "bottoms" || clean === "lower_body") return "bottoms";
+
+  if (
+    clean === "one-pieces" ||
+    clean === "one_pieces" ||
+    clean === "one pieces" ||
+    clean === "onepiece" ||
+    clean === "dress" ||
+    clean === "dresses"
+  ) {
+    return "one-pieces";
+  }
+
+  if (clean === "shoes" || clean === "shoe" || clean === "footwear") {
+    return "shoes";
+  }
+
+  return "tops";
+}
+
 function buildAbsoluteImageUrl(src: string) {
   const apiBase = process.env.PUBLIC_API_BASE_URL || "http://localhost:8080";
   const base = apiBase.replace(/\/$/, "");
@@ -41,14 +66,14 @@ const tryOn = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const file = req.file as any;
 
-    const personImageUrl =
-      file?.path || file?.secure_url || file?.url || file?.filename || "";
+    const personImageUrl = file?.secure_url || file?.path || file?.url || "";
 
     if (!personImageUrl) {
       throw new AppError("personImage is required", 400);
     }
 
     const productId = String(req.body?.productId || "").trim();
+
     if (!productId) {
       throw new AppError("productId is required", 400);
     }
@@ -56,7 +81,10 @@ const tryOn = async (req: Request, res: Response, next: NextFunction) => {
     const mirrorMode =
       String(req.body?.mirrorMode || "false").toLowerCase() === "true";
 
+    const garmentCategory = normalizeGarmentCategory(req.body?.garmentCategory);
+
     const product = await productService.getById(productId);
+
     if (!product) {
       throw new AppError("Product not found", 404);
     }
@@ -75,6 +103,7 @@ const tryOn = async (req: Request, res: Response, next: NextFunction) => {
       garmentImageUrl,
       garmentDescription,
       mirrorMode,
+      garmentCategory,
     });
 
     return res.json({
@@ -83,6 +112,7 @@ const tryOn = async (req: Request, res: Response, next: NextFunction) => {
       source: result.provider,
       warning: result.warning || null,
       mirrorMode,
+      garmentCategory,
     });
   } catch (err) {
     return next(err);

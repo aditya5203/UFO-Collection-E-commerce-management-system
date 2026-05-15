@@ -1,10 +1,15 @@
-import { Client, handle_file } from "@gradio/client";
+async function getGradioClient(): Promise<any> {
+  return await Function("return import('@gradio/client')")();
+}
+
+type GarmentCategory = "tops" | "bottoms" | "one-pieces" | "shoes";
 
 type RunTryOnInput = {
   personImageUrl: string;
   garmentImageUrl: string;
   garmentDescription?: string;
   mirrorMode?: boolean;
+  garmentCategory?: GarmentCategory;
 };
 
 type ReplicatePrediction = {
@@ -17,7 +22,7 @@ type ReplicatePrediction = {
   message?: string;
 };
 
-type TryOnProvider = "replicate" | "huggingface" | "demo";
+type TryOnProvider = "huhu" | "pincel" | "replicate" | "huggingface" | "demo";
 
 type RunTryOnResult = {
   imageUrl: string;
@@ -25,16 +30,49 @@ type RunTryOnResult = {
   warning?: string;
 };
 
+type HuggingFaceSpaceType = "fashn" | "kolors";
+
+type HuggingFaceSpaceConfig = {
+  id: string;
+  apiName: string;
+  type: HuggingFaceSpaceType;
+};
+
+const DEFAULT_HF_SPACES: HuggingFaceSpaceConfig[] = [
+  {
+    id: "Kwai-Kolors/Kolors-Virtual-Try-On",
+    apiName: "/tryon",
+    type: "kolors",
+  },
+  {
+    id: "fashn-ai/fashn-vton-1.5",
+    apiName: "/try_on",
+    type: "fashn",
+  },
+];
+
 function ensureEnv(name: string) {
   const value = process.env[name];
+
   if (!value) {
     throw new Error(`${name} is missing in environment variables`);
   }
+
   return value;
 }
 
 function getEnv(name: string, fallback = "") {
   return process.env[name] || fallback;
+}
+
+function isHuhuConfigured() {
+  return Boolean(process.env.HUHU_API_KEY && process.env.HUHU_TRYON_URL);
+}
+
+function isPincelConfigured() {
+  return Boolean(
+    process.env.PINCEL_API_KEY && process.env.PINCEL_CLOTHES_SWAP_URL
+  );
 }
 
 function isReplicateConfigured() {
@@ -43,8 +81,93 @@ function isReplicateConfigured() {
   );
 }
 
-function isHuggingFaceConfigured() {
-  return Boolean(getEnv("HF_SPACE_ID", "yisol/IDM-VTON"));
+function normalizeGarmentCategory(value: any): GarmentCategory {
+  const clean = String(value || "").trim().toLowerCase();
+
+  if (clean === "bottoms" || clean === "lower_body") return "bottoms";
+
+  if (
+    clean === "one-pieces" ||
+    clean === "one_pieces" ||
+    clean === "one pieces" ||
+    clean === "onepiece" ||
+    clean === "dress" ||
+    clean === "dresses"
+  ) {
+    return "one-pieces";
+  }
+
+  if (clean === "shoes" || clean === "shoe" || clean === "footwear") {
+    return "shoes";
+  }
+
+  return "tops";
+}
+
+function toPincelCategory(value: any) {
+  const category = normalizeGarmentCategory(value);
+
+  if (category === "bottoms") return "lower_body";
+  if (category === "one-pieces") return "dresses";
+
+  return "upper_body";
+}
+
+function normalizeSpaceType(value: any): HuggingFaceSpaceType {
+  const clean = String(value || "").trim().toLowerCase();
+
+  if (clean === "kolors") return "kolors";
+
+  return "fashn";
+}
+
+function guessSpaceType(spaceId: string, fallback: HuggingFaceSpaceType) {
+  const clean = spaceId.toLowerCase();
+
+  if (clean.includes("kolors")) return "kolors";
+  if (clean.includes("fashn")) return "fashn";
+
+  return fallback;
+}
+
+function getHuggingFaceSpaces(): HuggingFaceSpaceConfig[] {
+  const primaryId = getEnv("HF_SPACE_ID", "Kwai-Kolors/Kolors-Virtual-Try-On");
+  const primaryType = normalizeSpaceType(getEnv("HF_SPACE_TYPE", "kolors"));
+
+  const primaryApi = getEnv(
+    "HF_SPACE_API_NAME",
+    primaryType === "kolors" ? "/tryon" : "/try_on"
+  );
+
+  const backupIds = getEnv("HF_BACKUP_SPACE_IDS", "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  const spaces: HuggingFaceSpaceConfig[] = [
+    {
+      id: primaryId,
+      apiName: primaryApi,
+      type: primaryType,
+    },
+    ...backupIds.map((id) => {
+      const type = guessSpaceType(id, "fashn");
+
+      return {
+        id,
+        apiName: type === "kolors" ? "/tryon" : "/try_on",
+        type,
+      };
+    }),
+  ];
+
+  const unique = new Map<string, HuggingFaceSpaceConfig>();
+
+  for (const space of spaces.length ? spaces : DEFAULT_HF_SPACES) {
+    unique.set(`${space.id}:${space.apiName}:${space.type}`, space);
+  }
+
+  return Array.from(unique.values());
 }
 
 async function sleep(ms: number) {
@@ -68,6 +191,29 @@ async function withTimeout<T>(
       }, ms);
     }),
   ]);
+}
+
+async function imageUrlToBase64(url: string) {
+  const res = await withTimeout(
+    fetch(url),
+    30000,
+    "HuHu image download"
+  );
+
+  if (!res.ok) {
+    throw new Error(`Failed to download image for HuHu: ${res.status}`);
+  }
+
+  const contentType = res.headers.get("content-type") || "image/jpeg";
+
+  if (!contentType.startsWith("image/")) {
+    throw new Error(`HuHu image download returned invalid type: ${contentType}`);
+  }
+
+  const arrayBuffer = await res.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  return buffer.toString("base64");
 }
 
 function extractOutputImage(data: ReplicatePrediction) {
@@ -97,6 +243,7 @@ function findFirstUrl(value: any): string | null {
     ) {
       return value;
     }
+
     return null;
   }
 
@@ -105,14 +252,30 @@ function findFirstUrl(value: any): string | null {
       const found = findFirstUrl(item);
       if (found) return found;
     }
+
     return null;
   }
 
   if (typeof value === "object") {
-    const directKeys = ["url", "path", "orig_name", "name"];
+    const directKeys = [
+      "url",
+      "path",
+      "orig_name",
+      "name",
+      "image",
+      "image_url",
+      "imageUrl",
+      "output",
+      "output_url",
+      "outputUrl",
+      "result",
+      "result_url",
+      "resultUrl",
+    ];
 
     for (const key of directKeys) {
       const val = value?.[key];
+
       if (
         typeof val === "string" &&
         (val.startsWith("http://") ||
@@ -142,6 +305,7 @@ function normalizeHuggingFaceResultUrl(url: string, spaceId: string) {
   const appHost = `https://${spaceId.replace("/", "-")}.hf.space`;
 
   if (url.startsWith("/")) return `${appHost}${url}`;
+
   return `${appHost}/${url}`;
 }
 
@@ -160,8 +324,268 @@ function isRetriableHuggingFaceError(message: string) {
     text.includes("503") ||
     text.includes("loading") ||
     text.includes("sleeping") ||
-    text.includes("building")
+    text.includes("building") ||
+    text.includes("queue") ||
+    text.includes("too busy") ||
+    text.includes("capacity")
   );
+}
+
+async function runHuhuTryOn({
+  personImageUrl,
+  garmentImageUrl,
+}: RunTryOnInput): Promise<RunTryOnResult> {
+  if (!isHuhuConfigured()) {
+    throw new Error("HuHu AI is not configured");
+  }
+
+  const apiKey = ensureEnv("HUHU_API_KEY");
+  const endpoint = ensureEnv("HUHU_TRYON_URL");
+
+  const modelBase64 = await imageUrlToBase64(personImageUrl);
+  const garmentBase64 = await imageUrlToBase64(garmentImageUrl);
+
+  const startRes = await withTimeout(
+    fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model_images: [{ base64: modelBase64 }],
+        garment_images: [{ base64: garmentBase64 }],
+        num_output_images: 1,
+      }),
+    }),
+    60000,
+    "HuHu quick try-on start"
+  );
+
+  const startData: any = await startRes.json().catch(() => ({}));
+
+  if (!startRes.ok) {
+    console.error("HuHu start status:", startRes.status);
+    console.error("HuHu start response:", startData);
+
+    throw new Error(
+      startData?.message ||
+        startData?.error ||
+        startData?.detail ||
+        `HuHu start failed with status ${startRes.status}`
+    );
+  }
+
+  const projectId =
+    startData?.project_id ||
+    startData?.projectId ||
+    startData?.project?.id;
+
+  const firstTask = Array.isArray(startData?.tasks)
+    ? startData.tasks[0]
+    : null;
+
+  const tryonId =
+    firstTask?.tryon_id ||
+    firstTask?.tryonId ||
+    startData?.tryon_id ||
+    startData?.tryonId;
+
+  if (!projectId || !tryonId) {
+    console.error("HuHu start response missing IDs:", startData);
+    throw new Error("HuHu project_id or tryon_id missing");
+  }
+
+  for (let i = 0; i < 40; i++) {
+    await sleep(3000);
+
+    const pollUrl = `${endpoint}?tryon_id=${encodeURIComponent(
+      tryonId
+    )}&project_id=${encodeURIComponent(projectId)}`;
+
+    const pollRes = await withTimeout(
+      fetch(pollUrl, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      }),
+      30000,
+      "HuHu quick try-on poll"
+    );
+
+    const pollData: any = await pollRes.json().catch(() => ({}));
+
+    if (!pollRes.ok) {
+      console.error("HuHu poll status:", pollRes.status);
+      console.error("HuHu poll response:", pollData);
+
+      throw new Error(
+        pollData?.message ||
+          pollData?.error ||
+          pollData?.detail ||
+          `HuHu polling failed with status ${pollRes.status}`
+      );
+    }
+
+    const status = String(
+      pollData?.status || pollData?.task?.status || ""
+    ).toLowerCase();
+
+    if (
+      status === "succeeded" ||
+      status === "success" ||
+      status === "completed" ||
+      status === "complete"
+    ) {
+      const imageUrl =
+        pollData?.output_images?.[0]?.image_url ||
+        pollData?.output_images?.[0]?.url ||
+        pollData?.images?.[0]?.image_url ||
+        pollData?.images?.[0]?.url ||
+        findFirstUrl(pollData);
+
+      if (!imageUrl) {
+        console.error("HuHu completed but no image:", pollData);
+        throw new Error("HuHu returned no output image");
+      }
+
+      return {
+        imageUrl: String(imageUrl),
+        provider: "huhu",
+      };
+    }
+
+    if (
+      status === "failed" ||
+      status === "error" ||
+      status === "canceled" ||
+      status === "cancelled"
+    ) {
+      throw new Error(
+        pollData?.message || pollData?.error || "HuHu generation failed"
+      );
+    }
+  }
+
+  throw new Error("HuHu timed out");
+}
+
+async function runPincelTryOn({
+  personImageUrl,
+  garmentImageUrl,
+  garmentCategory = "tops",
+}: RunTryOnInput): Promise<RunTryOnResult> {
+  if (!isPincelConfigured()) {
+    throw new Error("Pincel is not configured");
+  }
+
+  const apiKey = ensureEnv("PINCEL_API_KEY");
+  const endpoint = ensureEnv("PINCEL_CLOTHES_SWAP_URL");
+  const category = toPincelCategory(garmentCategory);
+
+  const startRes = await withTimeout(
+    fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "X-API-Key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model_image: personImageUrl,
+        garment_image: garmentImageUrl,
+        category,
+        action: "startPrediction",
+      }),
+    }),
+    60000,
+    "Pincel start prediction"
+  );
+
+  const startData: any = await startRes.json().catch(() => ({}));
+
+  if (!startRes.ok) {
+    throw new Error(
+      startData?.message ||
+        startData?.error ||
+        startData?.detail ||
+        "Pincel start prediction failed"
+    );
+  }
+
+  const predictionId =
+    startData?.prediction ||
+    startData?.predictionId ||
+    startData?.id ||
+    startData?.data?.prediction ||
+    startData?.data?.predictionId;
+
+  if (!predictionId) {
+    throw new Error("Pincel prediction ID missing");
+  }
+
+  for (let i = 0; i < 40; i++) {
+    await sleep(3000);
+
+    const pollRes = await withTimeout(
+      fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "X-API-Key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          predictionId,
+          action: "getPrediction",
+        }),
+      }),
+      30000,
+      "Pincel poll prediction"
+    );
+
+    const pollData: any = await pollRes.json().catch(() => ({}));
+
+    if (!pollRes.ok) {
+      throw new Error(
+        pollData?.message ||
+          pollData?.error ||
+          pollData?.detail ||
+          "Pincel polling failed"
+      );
+    }
+
+    const status = String(pollData?.status || "").toLowerCase();
+
+    if (
+      status === "succeeded" ||
+      status === "success" ||
+      status === "completed"
+    ) {
+      const output = pollData?.output || pollData?.result || pollData?.image;
+
+      const imageUrl =
+        Array.isArray(output) && output.length > 0
+          ? output[0]
+          : findFirstUrl(output) || findFirstUrl(pollData);
+
+      if (!imageUrl) {
+        throw new Error("Pincel returned no output image");
+      }
+
+      return {
+        imageUrl: String(imageUrl),
+        provider: "pincel",
+      };
+    }
+
+    if (status === "failed" || status === "canceled" || status === "cancelled") {
+      throw new Error(
+        pollData?.message || pollData?.error || "Pincel generation failed"
+      );
+    }
+  }
+
+  throw new Error("Pincel timed out");
 }
 
 async function runReplicateTryOn({
@@ -197,8 +621,8 @@ async function runReplicateTryOn({
     "Replicate create"
   );
 
-  const created = ((await createRes.json().catch(() => ({}))) ||
-    {}) as ReplicatePrediction;
+  const created: ReplicatePrediction =
+    (await createRes.json().catch(() => ({}))) || {};
 
   if (!createRes.ok) {
     throw new Error(
@@ -208,12 +632,14 @@ async function runReplicateTryOn({
 
   if (created.status === "succeeded") {
     const image = extractOutputImage(created);
+
     if (image) {
       return {
         imageUrl: image,
         provider: "replicate",
       };
     }
+
     throw new Error("Replicate succeeded but no output image was returned");
   }
 
@@ -221,12 +647,14 @@ async function runReplicateTryOn({
 
   if (!predictionId) {
     const image = extractOutputImage(created);
+
     if (image) {
       return {
         imageUrl: image,
         provider: "replicate",
       };
     }
+
     throw new Error("Replicate prediction id missing");
   }
 
@@ -245,8 +673,8 @@ async function runReplicateTryOn({
       "Replicate poll"
     );
 
-    const polled = ((await pollRes.json().catch(() => ({}))) ||
-      {}) as ReplicatePrediction;
+    const polled: ReplicatePrediction =
+      (await pollRes.json().catch(() => ({}))) || {};
 
     if (!pollRes.ok) {
       throw new Error(extractErrorMessage(polled, "Replicate polling failed"));
@@ -254,12 +682,14 @@ async function runReplicateTryOn({
 
     if (polled.status === "succeeded") {
       const image = extractOutputImage(polled);
+
       if (image) {
         return {
           imageUrl: image,
           provider: "replicate",
         };
       }
+
       throw new Error("Replicate succeeded but no output image was returned");
     }
 
@@ -271,126 +701,185 @@ async function runReplicateTryOn({
   throw new Error("AI try-on timed out. Please try again.");
 }
 
-async function predictOnHuggingFace(
+async function predictOnFashnHuggingFace(
   app: any,
   apiName: string,
   personImageUrl: string,
   garmentImageUrl: string,
-  garmentDescription: string
+  garmentCategory: GarmentCategory
 ) {
-  const enableAutoMask = getEnv("HF_TRYON_AUTOMASK", "true") === "true";
-  const enableCrop = getEnv("HF_TRYON_CROP", "false") === "true";
-  const steps = Number(getEnv("HF_TRYON_STEPS", "30"));
-  const seed = Number(getEnv("HF_TRYON_SEED", "42"));
+  const { handle_file } = await getGradioClient();
 
   return withTimeout(
     app.predict(apiName, [
-      {
-        background: await handle_file(personImageUrl),
-        layers: [],
-        composite: null,
-      },
+      await handle_file(personImageUrl),
       await handle_file(garmentImageUrl),
-      garmentDescription,
-      enableAutoMask,
-      enableCrop,
-      steps,
-      seed,
+      normalizeGarmentCategory(garmentCategory),
+      "model",
+      50,
+      2.0,
+      42,
+      true,
     ]),
-    90000,
-    "Hugging Face predict"
+    180000,
+    "FASHN Hugging Face predict"
   );
 }
 
-async function runHuggingFaceTryOn({
-  personImageUrl,
-  garmentImageUrl,
-  garmentDescription = "fashion clothing",
-}: RunTryOnInput): Promise<RunTryOnResult> {
-  if (!isHuggingFaceConfigured()) {
-    throw new Error("Hugging Face is not configured");
+async function predictOnKolorsHuggingFace(
+  app: any,
+  apiName: string,
+  personImageUrl: string,
+  garmentImageUrl: string
+) {
+  const { handle_file } = await getGradioClient();
+
+  return withTimeout(
+    app.predict(apiName, [
+      await handle_file(personImageUrl),
+      await handle_file(garmentImageUrl),
+      42,
+      true,
+    ]),
+    180000,
+    "Kolors Hugging Face predict"
+  );
+}
+
+async function runSingleHuggingFaceSpace(
+  space: HuggingFaceSpaceConfig,
+  input: RunTryOnInput
+): Promise<RunTryOnResult> {
+  const { Client } = await getGradioClient();
+
+  const hfToken = getEnv("HF_TOKEN", "");
+  const safeCategory = normalizeGarmentCategory(input.garmentCategory);
+
+  const connectOptions = hfToken
+    ? {
+        token: hfToken,
+        status_callback: (status: any) => {
+          console.log(`[HF Space status: ${space.id}]`, status);
+        },
+      }
+    : {
+        status_callback: (status: any) => {
+          console.log(`[HF Space status: ${space.id}]`, status);
+        },
+      };
+
+  const app = await withTimeout(
+    Client.connect(space.id, connectOptions as any),
+    30000,
+    `Hugging Face connect ${space.id}`
+  );
+
+  const result =
+    space.type === "kolors"
+      ? await predictOnKolorsHuggingFace(
+          app,
+          space.apiName,
+          input.personImageUrl,
+          input.garmentImageUrl
+        )
+      : await predictOnFashnHuggingFace(
+          app,
+          space.apiName,
+          input.personImageUrl,
+          input.garmentImageUrl,
+          safeCategory
+        );
+
+  console.log(
+    `[HF raw result: ${space.id} (${space.type})]`,
+    JSON.stringify(result, null, 2)
+  );
+
+  const rawUrl = findFirstUrl((result as any)?.data) || findFirstUrl(result);
+
+  if (!rawUrl) {
+    throw new Error(`Hugging Face returned no output image from ${space.id}`);
   }
 
-  const spaceId = getEnv("HF_SPACE_ID", "yisol/IDM-VTON");
-  const apiName = getEnv("HF_SPACE_API_NAME", "/tryon");
-  const hfToken = getEnv("HF_TOKEN", "");
+  return {
+    imageUrl: normalizeHuggingFaceResultUrl(rawUrl, space.id),
+    provider: "huggingface",
+  };
+}
 
-  let lastError = "Unknown Hugging Face error";
+async function runHuggingFaceTryOn(
+  input: RunTryOnInput
+): Promise<RunTryOnResult> {
+  const spaces = getHuggingFaceSpaces();
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const connectOptions = hfToken
-        ? {
-            token: hfToken,
-            status_callback: (status: any) => {
-              console.log("[HF Space status]", status);
-            },
-          }
-        : {
-            status_callback: (status: any) => {
-              console.log("[HF Space status]", status);
-            },
-          };
+  if (!spaces.length) {
+    throw new Error("No Hugging Face Spaces configured");
+  }
 
-      const app = await withTimeout(
-        Client.connect(spaceId, connectOptions as any),
-        30000,
-        `Hugging Face connect (attempt ${attempt})`
-      );
+  const errors: string[] = [];
 
-      const result = await predictOnHuggingFace(
-        app,
-        apiName,
-        personImageUrl,
-        garmentImageUrl,
-        garmentDescription
-      );
+  for (const space of spaces) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        console.log(
+          `[HF] Trying ${space.id} ${space.apiName} (${space.type}) attempt ${attempt}`
+        );
 
-      console.log("[HF raw result]", JSON.stringify(result, null, 2));
+        return await runSingleHuggingFaceSpace(space, input);
+      } catch (error: any) {
+        const message = error?.message || "Hugging Face failed";
+        const fullMessage = `${space.id} attempt ${attempt}: ${message}`;
 
-      const rawUrl = findFirstUrl((result as any)?.data) || findFirstUrl(result);
+        errors.push(fullMessage);
+        console.error("Hugging Face try-on failed:", fullMessage);
 
-      if (!rawUrl) {
-        throw new Error("Hugging Face returned no output image");
+        if (attempt < 2 && isRetriableHuggingFaceError(message)) {
+          await sleep(4000);
+          continue;
+        }
+
+        break;
       }
-
-      return {
-        imageUrl: normalizeHuggingFaceResultUrl(rawUrl, spaceId),
-        provider: "huggingface",
-      };
-    } catch (error: any) {
-      lastError = error?.message || "Hugging Face failed";
-      console.error(`Hugging Face try-on failed (attempt ${attempt}):`, lastError);
-
-      if (attempt < 2 && isRetriableHuggingFaceError(lastError)) {
-        await sleep(4000);
-        continue;
-      }
-
-      break;
     }
   }
 
-  throw new Error(lastError);
+  throw new Error(errors.join(" | ") || "All Hugging Face Spaces failed");
 }
 
 export const aiService = {
   async runTryOn(input: RunTryOnInput): Promise<RunTryOnResult> {
-    let replicateError = "";
-    let huggingFaceError = "";
+    const errors: string[] = [];
+
+    try {
+      return await runHuhuTryOn(input);
+    } catch (error: any) {
+      const message = error?.message || "HuHu AI failed";
+      errors.push(`HuHu AI: ${message}`);
+      console.error("HuHu AI try-on failed:", message);
+    }
+
+    try {
+      return await runPincelTryOn(input);
+    } catch (error: any) {
+      const message = error?.message || "Pincel failed";
+      errors.push(`Pincel: ${message}`);
+      console.error("Pincel try-on failed:", message);
+    }
 
     try {
       return await runReplicateTryOn(input);
     } catch (error: any) {
-      replicateError = error?.message || "Replicate failed";
-      console.error("Replicate try-on failed:", replicateError);
+      const message = error?.message || "Replicate failed";
+      errors.push(`Replicate: ${message}`);
+      console.error("Replicate try-on failed:", message);
     }
 
     try {
       return await runHuggingFaceTryOn(input);
     } catch (error: any) {
-      huggingFaceError = error?.message || "Hugging Face failed";
-      console.error("Hugging Face try-on failed:", huggingFaceError);
+      const message = error?.message || "Hugging Face failed";
+      errors.push(`Hugging Face: ${message}`);
+      console.error("Hugging Face try-on failed:", message);
     }
 
     const demoImage =
@@ -400,7 +889,9 @@ export const aiService = {
     return {
       imageUrl: demoImage,
       provider: "demo",
-      warning: `Replicate failed: ${replicateError}. Hugging Face failed: ${huggingFaceError}. Demo fallback used.`,
+      warning:
+        "AI try-on preview mode is active because live AI providers are currently unavailable. " +
+        errors.join(" | "),
     };
   },
 };

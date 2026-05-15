@@ -1,12 +1,16 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
-import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import ProductHeader from "@/components/layout/ProductHeader";
 import MainFooter from "@/components/layout/MainFooter";
 import AITryOnModal from "./AITryOnModal";
+import ProductToast from "./_components/ProductToast";
+import ProductBreadcrumb from "./_components/ProductBreadcrumb";
+import ProductPreviewGallery from "./_components/ProductPreviewGallery";
+import ProductInfoPanel from "./_components/ProductInfoPanel";
+import ProductDetailsTabs from "./_components/ProductDetailsTabs";
+import ProductRecommendations from "./_components/ProductRecommendations";
 
 type Size = "S" | "M" | "L" | "XL" | "XXL";
 type ReviewSort = "latest" | "highest" | "lowest";
@@ -80,23 +84,13 @@ const DEFAULT_SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
 const PRODUCT_PLACEHOLDER = "/images/products/placeholder.png";
 const LAST_PRODUCT_ID_KEY = "last_product_id";
 
-const FIXED_DESCRIPTION =
-  "UFO Collection is an e-commerce website that allows customers to browse and purchase products online with ease. It functions as a digital marketplace where products are organized into well-defined collections, such as clothing and accessories, enabling users to explore items efficiently. Each collection displays product images, names, prices, and brief details to help customers compare options quickly. When a product is selected from a collection, the user is taken to a dedicated product page that provides complete information, including descriptions, available sizes, colors, and pricing. UFO Collection offers a convenient, accessible, and user-friendly shopping experience, allowing customers to shop anytime and from anywhere with global reach.";
-
-const NO_PRODUCT_DESCRIPTION =
-  "No product description has been added for this product yet.";
-
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
+
 const containerClass =
   "mx-auto w-full max-w-[1240px] px-4 pb-20 pt-7 sm:px-5 lg:px-6";
-const panelClass =
-  "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
-const softPanelClass =
-  "rounded-[20px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)]";
+
 const primaryBtnClass =
   "rounded-full bg-white px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#090a12] transition hover:-translate-y-0.5 hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-gray-500 disabled:text-gray-200 disabled:hover:translate-y-0";
-const secondaryBtnClass =
-  "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
 
 function toNumber(v: any, fallback = 0) {
   if (typeof v === "number") return Number.isFinite(v) ? v : fallback;
@@ -111,10 +105,6 @@ function toNumber(v: any, fallback = 0) {
 
 function toStr(v: any, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
-}
-
-function formatNPR(value: number) {
-  return `Rs. ${Number(value || 0).toLocaleString("en-NP")}`;
 }
 
 function normalizeSizes(sizes: any): Size[] {
@@ -268,27 +258,21 @@ function descriptionToPoints(description: string) {
     )
     .filter(Boolean);
 
-  if (lineBasedPoints.length > 1) {
-    return lineBasedPoints;
-  }
+  if (lineBasedPoints.length > 1) return lineBasedPoints;
 
   const sentencePoints = clean
     .split(/\.|;|\|/)
     .map((point) => point.trim())
     .filter((point) => point.length > 8);
 
-  if (sentencePoints.length > 1) {
-    return sentencePoints;
-  }
+  if (sentencePoints.length > 1) return sentencePoints;
 
   const capitalSplitPoints = clean
     .split(/(?<=[a-z0-9])\s+(?=[A-Z][a-z])/g)
     .map((point) => point.trim())
     .filter((point) => point.length > 8);
 
-  if (capitalSplitPoints.length > 1) {
-    return capitalSplitPoints;
-  }
+  if (capitalSplitPoints.length > 1) return capitalSplitPoints;
 
   return [clean];
 }
@@ -355,97 +339,6 @@ function mapProductCard(raw: any): RelatedProduct {
     price: toNumber(raw?.price, 0),
     image: getProductImageSrc(raw?.image),
   };
-}
-
-function ColorDot({ color }: { color: string }) {
-  const ref = React.useRef<HTMLSpanElement | null>(null);
-
-  React.useEffect(() => {
-    if (!ref.current) return;
-    ref.current.style.backgroundColor = color;
-  }, [color]);
-
-  return (
-    <span
-      ref={ref}
-      aria-hidden="true"
-      className="h-5 w-5 shrink-0 rounded-full border border-white/30"
-    />
-  );
-}
-
-function RatingBarFill({ percent }: { percent: number }) {
-  const ref = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    if (!ref.current) return;
-
-    const safePercent = Math.max(0, Math.min(100, Number(percent) || 0));
-    ref.current.style.width = `${safePercent}%`;
-  }, [percent]);
-
-  return (
-    <div
-      ref={ref}
-      className="h-full rounded-full bg-[#d6c7ff] transition-all duration-500"
-    />
-  );
-}
-
-function PreviewTransformLayer({
-  pan,
-  zoomLevel,
-  children,
-}: {
-  pan: { x: number; y: number };
-  zoomLevel: number;
-  children: React.ReactNode;
-}) {
-  const ref = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    if (!ref.current) return;
-
-    ref.current.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoomLevel})`;
-    ref.current.style.transformOrigin = "center center";
-  }, [pan.x, pan.y, zoomLevel]);
-
-  return (
-    <div
-      ref={ref}
-      className="relative h-full w-full transition-transform duration-200 ease-out"
-    >
-      {children}
-    </div>
-  );
-}
-
-function RelatedCard({ item }: { item: RelatedProduct }) {
-  return (
-    <Link href={`/product/${item.id}`} className="group block">
-      <div className="overflow-hidden rounded-[20px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]">
-        <div className="relative aspect-[4/5] w-full overflow-hidden bg-[#0d0f17]">
-          <Image
-            src={item.image}
-            alt={item.name}
-            fill
-            className="object-cover transition duration-500 group-hover:scale-[1.06]"
-            unoptimized={item.image.startsWith("http")}
-          />
-        </div>
-
-        <div className="p-4">
-          <h3 className="line-clamp-2 min-h-[42px] text-[14px] font-medium leading-5 text-white">
-            {item.name}
-          </h3>
-
-          <div className="mt-2 text-[14px] font-semibold text-[#d6c7ff]">
-            {formatNPR(item.price)}
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
 }
 
 export default function ProductPage() {
@@ -589,7 +482,6 @@ export default function ProductPage() {
     };
 
     window.addEventListener("storage", onStorage);
-
     setRecentlyViewed(readRecentlyViewed());
 
     return () => {
@@ -604,9 +496,7 @@ export default function ProductPage() {
         setLoading(true);
         setError(null);
 
-        if (!id) {
-          throw new Error("Missing product id in route.");
-        }
+        if (!id) throw new Error("Missing product id in route.");
 
         const res = await fetch(`${API_BASE}/products/${id}`, {
           cache: "no-store",
@@ -780,7 +670,6 @@ export default function ProductPage() {
 
   React.useEffect(() => {
     if (!product?.id) return;
-
     localStorage.setItem(LAST_PRODUCT_ID_KEY, product.id);
   }, [product?.id]);
 
@@ -886,6 +775,7 @@ export default function ProductPage() {
   );
 
   const totalProductStock = Number(product?.stock ?? 0);
+
   const selectedVariantStock = hasVariantInventory
     ? Number(selectedVariant?.stock ?? 0)
     : totalProductStock;
@@ -1227,630 +1117,86 @@ export default function ProductPage() {
     <>
       <ProductHeader cartCount={cartCount} />
 
-      {toast ? (
-        <div className="fixed right-4 top-24 z-[9999]">
-          <div
-            className={`rounded-2xl border px-5 py-3 text-sm font-semibold shadow-[0_18px_60px_rgba(0,0,0,0.45)] backdrop-blur ${
-              toast.type === "error"
-                ? "border-red-400/30 bg-red-500/20 text-red-100"
-                : "border-emerald-400/30 bg-emerald-500/20 text-emerald-100"
-            }`}
-          >
-            {toast.message}
-          </div>
-        </div>
-      ) : null}
+      <ProductToast toast={toast} />
 
       <main className={shellClass}>
         <div className={containerClass}>
-          <div className="mb-6 text-[13px] text-[#a7aec4]">
-            <Link href="/homepage" className="hover:text-white">
-              Home
-            </Link>
-            <span className="mx-2">/</span>
-            <Link href="/collection" className="hover:text-white">
-              Collection
-            </Link>
-            <span className="mx-2">/</span>
-            <span className="text-white">{product.name}</span>
-          </div>
+          <ProductBreadcrumb productName={product.name} />
 
           <section className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-8">
-            <div className={`${panelClass} h-fit p-4 sm:p-5`}>
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#a7aec4]">
-                    Live Product Preview
-                  </div>
+            <ProductPreviewGallery
+              productName={product.name}
+              currentImage={currentImage}
+              allImages={allImages}
+              currentImageIndex={currentImageIndex}
+              isOutOfStock={isOutOfStock}
+              zoomLevel={zoomLevel}
+              pan={pan}
+              dragging={dragging}
+              onPrev={goToPrevImage}
+              onNext={goToNextImage}
+              onZoomOut={zoomOut}
+              onZoomIn={zoomIn}
+              onReset={resetPreview}
+              onSelectImage={selectImage}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={() => setDragging(false)}
+              onPointerLeave={() => setDragging(false)}
+              onWheel={handleWheelZoom}
+              onDoubleClick={handleDoubleClickZoom}
+            />
 
-                  <p className="mt-1 text-[12px] text-[#a7aec4]">
-                    Double click to zoom • Drag to explore • Swipe left/right
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {[
-                    ["Prev", goToPrevImage],
-                    ["Next", goToNextImage],
-                    ["-", zoomOut],
-                    ["+", zoomIn],
-                    ["Reset", resetPreview],
-                  ].map(([label, action]) => (
-                    <button
-                      key={String(label)}
-                      type="button"
-                      onClick={action as () => void}
-                      className="rounded-full border border-white/15 bg-white/5 px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-white/10"
-                    >
-                      {String(label)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div
-                className={`relative aspect-[4/5] w-full overflow-hidden rounded-[20px] border border-[#26293a] bg-[#0d0f17] ${
-                  zoomLevel > 1
-                    ? "cursor-grab active:cursor-grabbing"
-                    : "cursor-zoom-in"
-                }`}
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerCancel={() => setDragging(false)}
-                onPointerLeave={() => setDragging(false)}
-                onWheel={handleWheelZoom}
-                onDoubleClick={handleDoubleClickZoom}
-              >
-                <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
-                  🔍 Zoom {Math.round(zoomLevel * 100)}%
-                </div>
-
-                <div className="pointer-events-none absolute bottom-4 right-4 z-20 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
-                  {currentImageIndex + 1} / {allImages.length || 1}
-                </div>
-
-                {isOutOfStock ? (
-                  <div className="pointer-events-none absolute right-4 top-4 z-20 rounded-full border border-red-400/30 bg-red-500/20 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-red-100 backdrop-blur">
-                    Out of Stock
-                  </div>
-                ) : null}
-
-                <PreviewTransformLayer pan={pan} zoomLevel={zoomLevel}>
-                  <Image
-                    src={currentImage}
-                    alt={product.name}
-                    fill
-                    className={`select-none object-cover object-top ${
-                      isOutOfStock ? "opacity-60 grayscale" : ""
-                    }`}
-                    priority
-                    draggable={false}
-                    unoptimized={currentImage.startsWith("http")}
-                  />
-                </PreviewTransformLayer>
-              </div>
-
-              {allImages.length > 1 ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {allImages.map((img, index) => {
-                    const active = currentImage === img;
-
-                    return (
-                      <button
-                        key={`${img}-${index}`}
-                        type="button"
-                        aria-label={`View product image ${index + 1}`}
-                        title={`View product image ${index + 1}`}
-                        onClick={() => selectImage(img)}
-                        className={`relative h-[76px] w-[76px] overflow-hidden rounded-[14px] border transition ${
-                          active
-                            ? "border-[#d6c7ff] ring-2 ring-[#d6c7ff]/25"
-                            : "border-[#26293a] hover:border-[#4a506b]"
-                        }`}
-                      >
-                        <Image
-                          src={img}
-                          alt={`${product.name} ${index + 1}`}
-                          fill
-                          className={`object-cover ${
-                            isOutOfStock ? "opacity-60 grayscale" : ""
-                          }`}
-                          unoptimized={img.startsWith("http")}
-                        />
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-            </div>
-
-            <div className={`${panelClass} p-5 sm:p-7 lg:p-8`}>
-              <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                Product Details
-              </div>
-
-              <h1 className="mt-3 text-[30px] font-semibold leading-[1.1] tracking-[-0.04em] text-white sm:text-[42px]">
-                {product.name}
-              </h1>
-
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[13px] font-semibold text-white">
-                  ★ {displayRating.toFixed(1)}
-                </span>
-
-                <span className="text-[13px] text-[#a7aec4]">
-                  {displayReviewCount} reviews
-                </span>
-
-                {hasVariantInventory ? (
-                  <span className="rounded-full border border-[#d6c7ff]/30 bg-[#d6c7ff]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#d6c7ff]">
-                    Variant stock enabled
-                  </span>
-                ) : null}
-              </div>
-
-              <div className="mt-5 text-[26px] font-semibold text-[#d6c7ff]">
-                {formatNPR(product.price)}
-              </div>
-
-              <div
-                className={`mt-3 inline-flex rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-[0.14em] ${
-                  isOutOfStock
-                    ? "border-red-400/30 bg-red-500/10 text-red-200"
-                    : selectedVariantStock <= 5
-                      ? "border-orange-400/30 bg-orange-500/10 text-orange-200"
-                      : "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"
-                }`}
-              >
-                {stockText}
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] font-semibold text-[#a7aec4]">
-                <span>Total product stock: {totalProductStock}</span>
-
-                {selectedVariant?.sku ? (
-                  <>
-                    <span className="text-[#4a506b]">•</span>
-                    <span>SKU: {selectedVariant.sku}</span>
-                  </>
-                ) : null}
-              </div>
-
-              <div className="mt-5 rounded-[20px] border border-[#26293a] bg-[#0d0f17]/70 p-4">
-                {descriptionPoints.length > 0 ? (
-                  <ul className="space-y-2.5">
-                    {descriptionPoints.map((point, index) => (
-                      <li
-                        key={`${point}-${index}`}
-                        className="flex gap-3 text-[14px] leading-7 text-[#a7aec4]"
-                      >
-                        <span className="mt-[10px] h-2 w-2 shrink-0 rounded-full bg-[#d6c7ff]" />
-                        <span>{point}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-[14px] leading-7 text-[#7f879f]">
-                    {NO_PRODUCT_DESCRIPTION}
-                  </p>
-                )}
-              </div>
-
-              <div className="mt-7">
-                <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#cbd5f5]">
-                  Size
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {sizes.map((s) => {
-                    const active = selectedSize === s;
-
-                    const variantForSize = hasVariantInventory
-                      ? activeVariants.find(
-                          (variant) =>
-                            variant.color === selectedColor &&
-                            variant.size === s
-                        )
-                      : null;
-
-                    const disabled = hasVariantInventory
-                      ? !variantForSize || Number(variantForSize.stock || 0) <= 0
-                      : totalProductStock <= 0;
-
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => setSelectedSize(s)}
-                        disabled={disabled}
-                        title={
-                          disabled
-                            ? "This size is not available for selected color"
-                            : `${s} available`
-                        }
-                        className={`min-w-[48px] rounded-full border px-4 py-2 text-[13px] font-semibold transition ${
-                          disabled
-                            ? "cursor-not-allowed border-[#374151] bg-[#111827] text-[#6b7280]"
-                            : active
-                              ? "border-white bg-white text-[#090a12]"
-                              : "border-white/15 bg-white/5 text-white hover:bg-white/10"
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {colors.length > 0 ? (
-                <div className="mt-7">
-                  <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#cbd5f5]">
-                    Color
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
-                    {colors.map((color) => {
-                      const active = selectedColor === color.value;
-
-                      const colorStock = hasVariantInventory
-                        ? activeVariants
-                            .filter((variant) => variant.color === color.value)
-                            .reduce(
-                              (sum, variant) =>
-                                sum + Number(variant.stock || 0),
-                              0
-                            )
-                        : totalProductStock;
-
-                      const disabled = colorStock <= 0;
-
-                      return (
-                        <button
-                          key={`${color.value}-${color.label}`}
-                          type="button"
-                          onClick={() => handleColorSelect(color.value)}
-                          disabled={disabled}
-                          title={color.label}
-                          aria-label={`Color ${color.label}`}
-                          className={`flex items-center gap-2 rounded-full border px-4 py-2 transition ${
-                            disabled
-                              ? "cursor-not-allowed border-[#374151] bg-[#111827] opacity-60"
-                              : active
-                                ? "border-white bg-white/10"
-                                : "border-white/15 bg-white/5 hover:bg-white/10"
-                          }`}
-                        >
-                          <ColorDot color={color.value} />
-
-                          <span className="text-[13px] font-semibold text-white">
-                            {color.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={addToCart}
-                  disabled={isOutOfStock}
-                  className={primaryBtnClass}
-                >
-                  {isOutOfStock ? "Out Of Stock" : "Add To Cart"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleBuyNow}
-                  disabled={isOutOfStock}
-                  className="rounded-full bg-[#8b5cf6] px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-[#7c3aed] disabled:cursor-not-allowed disabled:bg-gray-500 disabled:text-gray-200 disabled:hover:translate-y-0"
-                >
-                  Buy Now
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setAiOpen(true)}
-                  className={secondaryBtnClass}
-                >
-                  Try On With AI
-                </button>
-
-                <button
-                  type="button"
-                  onClick={shareProduct}
-                  className={secondaryBtnClass}
-                >
-                  Share Product
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={copyProductLink}
-                className="mt-3 text-[13px] font-semibold text-[#a7aec4] transition hover:text-white"
-              >
-                Copy product link
-              </button>
-
-              <div className="mt-7 grid gap-3 sm:grid-cols-3">
-                {[
-                  ["Original", "100% original products"],
-                  ["COD", "Cash on delivery"],
-                  ["Return", "7 days easy return"],
-                ].map(([title, text]) => (
-                  <div key={title} className={`${softPanelClass} p-4`}>
-                    <div className="text-[13px] font-semibold text-white">
-                      {title}
-                    </div>
-
-                    <div className="mt-1 text-[12px] leading-5 text-[#a7aec4]">
-                      {text}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ProductInfoPanel
+              product={product}
+              descriptionPoints={descriptionPoints}
+              displayRating={displayRating}
+              displayReviewCount={displayReviewCount}
+              hasVariantInventory={hasVariantInventory}
+              totalProductStock={totalProductStock}
+              selectedVariant={selectedVariant}
+              selectedVariantStock={selectedVariantStock}
+              isOutOfStock={isOutOfStock}
+              stockText={stockText}
+              sizes={sizes}
+              selectedSize={selectedSize}
+              setSelectedSize={setSelectedSize}
+              colors={colors}
+              selectedColor={selectedColor}
+              activeVariants={activeVariants}
+              handleColorSelect={handleColorSelect}
+              addToCart={addToCart}
+              handleBuyNow={handleBuyNow}
+              openAi={() => setAiOpen(true)}
+              shareProduct={shareProduct}
+              copyProductLink={copyProductLink}
+            />
           </section>
 
-          <section className={`${panelClass} mt-8 p-5 sm:p-7`}>
-            <div className="flex gap-7 border-b border-[#26293a] text-[14px]">
-              <button
-                type="button"
-                onClick={() => setActiveTab("description")}
-                className={`pb-3 ${
-                  activeTab === "description"
-                    ? "border-b-2 border-white text-white"
-                    : "text-[#a7aec4]"
-                }`}
-              >
-                Description
-              </button>
+          <ProductDetailsTabs
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            displayReviewCount={displayReviewCount}
+            displayRating={displayRating}
+            sizes={sizes}
+            colors={colors}
+            stockText={stockText}
+            selectedVariant={selectedVariant}
+            ratingBreakdown={ratingBreakdown}
+            reviewSort={reviewSort}
+            setReviewSort={setReviewSort}
+            reviewsLoading={reviewsLoading}
+            reviewsError={reviewsError}
+            sortedReviews={sortedReviews}
+          />
 
-              <button
-                type="button"
-                onClick={() => setActiveTab("reviews")}
-                className={`pb-3 ${
-                  activeTab === "reviews"
-                    ? "border-b-2 border-white text-white"
-                    : "text-[#a7aec4]"
-                }`}
-              >
-                Reviews ({displayReviewCount})
-              </button>
-            </div>
-
-            <div className="mt-5 text-[14px] leading-7 text-[#a7aec4]">
-              {activeTab === "description" ? (
-                <div className="space-y-5">
-                  <div className={`${softPanelClass} p-5`}>
-                    <h3 className="text-[18px] font-semibold text-white">
-                      About UFO Collection
-                    </h3>
-
-                    <p className="mt-4 text-[14px] leading-7 text-[#a7aec4]">
-                      {FIXED_DESCRIPTION}
-                    </p>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className={`${softPanelClass} p-4`}>
-                      <div className="text-[13px] font-semibold text-white">
-                        Available Sizes
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {sizes.map((size) => (
-                          <span
-                            key={size}
-                            className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-[#a7aec4]"
-                          >
-                            {size}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className={`${softPanelClass} p-4`}>
-                      <div className="text-[13px] font-semibold text-white">
-                        Available Colors
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {colors.length > 0 ? (
-                          colors.map((color) => (
-                            <span
-                              key={`${color.value}-${color.label}`}
-                              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-[#a7aec4]"
-                            >
-                              <ColorDot color={color.value} />
-                              {color.label}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-[12px] text-[#7f879f]">
-                            Default
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className={`${softPanelClass} p-4`}>
-                      <div className="text-[13px] font-semibold text-white">
-                        Stock Status
-                      </div>
-
-                      <div className="mt-2 text-[12px] font-semibold text-[#d6c7ff]">
-                        {stockText}
-                      </div>
-
-                      {selectedVariant?.sku ? (
-                        <div className="mt-1 text-[11px] text-[#7f879f]">
-                          SKU: {selectedVariant.sku}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  <div className={`${softPanelClass} p-5`}>
-                    <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-                      <div>
-                        <div className="text-[32px] font-bold text-white">
-                          {displayRating.toFixed(1)}
-                          <span className="ml-2 text-base text-[#a7aec4]">
-                            / 5
-                          </span>
-                        </div>
-
-                        <div className="mt-1 text-sm text-[#a7aec4]">
-                          Based on {displayReviewCount} reviews
-                        </div>
-                      </div>
-
-                      <div className="w-full max-w-[520px] space-y-2">
-                        {ratingBreakdown.map((row) => (
-                          <div
-                            key={row.star}
-                            className="flex items-center gap-3 text-xs"
-                          >
-                            <span className="w-10 text-white">
-                              {row.star}★
-                            </span>
-
-                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-                              <RatingBarFill percent={row.percent} />
-                            </div>
-
-                            <span className="w-8 text-right text-[#a7aec4]">
-                              {row.count}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-
-                      <select
-                        value={reviewSort}
-                        title="Sort reviews"
-                        aria-label="Sort reviews"
-                        onChange={(e) =>
-                          setReviewSort(e.target.value as ReviewSort)
-                        }
-                        className="rounded-full border border-white/15 bg-[#0d0f17] px-4 py-2 text-sm font-semibold text-white outline-none"
-                      >
-                        <option value="latest">Latest</option>
-                        <option value="highest">Highest Rated</option>
-                        <option value="lowest">Lowest Rated</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {reviewsLoading ? (
-                    <div className={`${softPanelClass} p-4`}>
-                      Loading reviews...
-                    </div>
-                  ) : reviewsError ? (
-                    <div className="rounded-[18px] border border-red-500/40 bg-red-500/10 p-4 text-red-200">
-                      {reviewsError}
-                    </div>
-                  ) : sortedReviews.length === 0 ? (
-                    <div className={`${softPanelClass} p-4`}>
-                      No reviews yet.
-                    </div>
-                  ) : (
-                    sortedReviews.map((r, index) => (
-                      <div
-                        key={r.id || r._id || `${r.orderCode}-${index}`}
-                        className={`${softPanelClass} p-4`}
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="font-semibold text-white">
-                              {r.title?.trim() ? r.title : "Review"}
-                            </div>
-
-                            {r.createdAt ? (
-                              <div className="mt-1 text-xs text-[#a7aec4]">
-                                {new Date(r.createdAt).toLocaleDateString()}
-                              </div>
-                            ) : null}
-                          </div>
-
-                          <div className="font-semibold text-[#d6c7ff]">
-                            {Number(r.rating || 0).toFixed(1)} / 5
-                          </div>
-                        </div>
-
-                        <p className="mt-2 text-sm leading-relaxed text-[#a7aec4]">
-                          {r.comment?.trim()
-                            ? r.comment
-                            : "No comment provided."}
-                        </p>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="mt-12">
-            <div className="mb-6">
-              <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                You May Also Like
-              </div>
-
-              <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.02em] text-white">
-                Related Products
-              </h2>
-            </div>
-
-            {relatedLoading ? (
-              <div className={`${panelClass} p-5 text-[#a7aec4]`}>
-                Loading related products...
-              </div>
-            ) : relatedError ? (
-              <div className="rounded-[20px] border border-red-500/40 bg-red-500/10 p-5 text-red-200">
-                {relatedError}
-              </div>
-            ) : relatedProducts.length === 0 ? (
-              <div className={`${panelClass} p-5 text-[#a7aec4]`}>
-                No related products found.
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-5">
-                {relatedProducts.map((item) => (
-                  <RelatedCard key={item.id} item={item} />
-                ))}
-              </div>
-            )}
-          </section>
-
-          {recentlyViewed.length > 0 ? (
-            <section className="mt-12">
-              <div className="mb-6">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
-                  Continue Shopping
-                </div>
-
-                <h2 className="mt-2 text-[26px] font-semibold tracking-[-0.02em] text-white">
-                  Recently Viewed Products
-                </h2>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 lg:gap-5">
-                {recentlyViewed.slice(0, 4).map((item) => (
-                  <RelatedCard key={item.id} item={item} />
-                ))}
-              </div>
-            </section>
-          ) : null}
+          <ProductRecommendations
+            relatedLoading={relatedLoading}
+            relatedError={relatedError}
+            relatedProducts={relatedProducts}
+            recentlyViewed={recentlyViewed}
+          />
         </div>
       </main>
 
@@ -1864,4 +1210,4 @@ export default function ProductPage() {
       />
     </>
   );
-}
+} 

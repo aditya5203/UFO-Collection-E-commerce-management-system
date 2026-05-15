@@ -18,6 +18,7 @@ type ProductPreview = {
 };
 
 type CameraFacingMode = "user" | "environment";
+type GarmentCategory = "tops" | "bottoms" | "one-pieces" | "shoes";
 
 function getImageUrl(src?: string) {
   const value = typeof src === "string" ? src.trim() : "";
@@ -36,6 +37,10 @@ function getImageUrl(src?: string) {
 
 function getSourceLabel(source?: string) {
   switch ((source || "").toLowerCase()) {
+    case "huhu":
+      return "HuHu AI";
+    case "pincel":
+      return "Pincel AI";
     case "replicate":
       return "Replicate AI";
     case "huggingface":
@@ -63,9 +68,7 @@ async function mirrorImageFile(file: File): Promise<File> {
     canvas.height = img.naturalHeight || img.height;
 
     const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      throw new Error("Canvas is not supported in this browser.");
-    }
+    if (!ctx) throw new Error("Canvas is not supported in this browser.");
 
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
@@ -78,6 +81,7 @@ async function mirrorImageFile(file: File): Promise<File> {
             reject(new Error("Failed to mirror image."));
             return;
           }
+
           resolve(output);
         },
         file.type || "image/jpeg",
@@ -85,10 +89,9 @@ async function mirrorImageFile(file: File): Promise<File> {
       );
     });
 
-    const ext =
-      file.name.includes(".")
-        ? file.name.slice(file.name.lastIndexOf("."))
-        : ".jpg";
+    const ext = file.name.includes(".")
+      ? file.name.slice(file.name.lastIndexOf("."))
+      : ".jpg";
 
     const mirroredName = file.name.replace(ext, "") + "-mirrored" + ext;
 
@@ -127,6 +130,8 @@ export default function AITryOnModal({
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
 
   const [mirrorMode, setMirrorMode] = React.useState(false);
+  const [garmentCategory, setGarmentCategory] =
+    React.useState<GarmentCategory>("tops");
 
   const [loading, setLoading] = React.useState(false);
   const [loadingText, setLoadingText] = React.useState("Generating...");
@@ -151,6 +156,7 @@ export default function AITryOnModal({
 
   React.useEffect(() => {
     if (typeof navigator === "undefined") return;
+
     setHasCameraSupport(
       Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
     );
@@ -184,6 +190,7 @@ export default function AITryOnModal({
     setSource(null);
     setWarning(null);
     setMirrorMode(false);
+    setGarmentCategory("tops");
     setCameraOpen(false);
     setCameraLoading(false);
     setCameraError(null);
@@ -207,6 +214,7 @@ export default function AITryOnModal({
         });
 
         const json = await res.json().catch(() => ({} as any));
+
         if (!res.ok) {
           throw new Error(json?.message || "Failed to load product preview");
         }
@@ -256,15 +264,18 @@ export default function AITryOnModal({
     };
 
     window.addEventListener("keydown", onKey);
+
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose, loading, cameraLoading]);
 
   React.useEffect(() => {
     return () => {
       abortRef.current?.abort();
+
       if (progressTimerRef.current) {
         window.clearTimeout(progressTimerRef.current);
       }
+
       stopCamera();
     };
   }, [stopCamera]);
@@ -393,6 +404,7 @@ export default function AITryOnModal({
   const switchCamera = async () => {
     const nextMode: CameraFacingMode =
       cameraFacingMode === "user" ? "environment" : "user";
+
     setCameraFacingMode(nextMode);
     await startCamera(nextMode);
   };
@@ -406,6 +418,7 @@ export default function AITryOnModal({
 
   const capturePhoto = async () => {
     const video = videoRef.current;
+
     if (!video) {
       setCameraError("Camera preview is not ready.");
       return;
@@ -424,6 +437,7 @@ export default function AITryOnModal({
     canvas.height = height;
 
     const ctx = canvas.getContext("2d");
+
     if (!ctx) {
       setCameraError("Canvas is not supported in this browser.");
       return;
@@ -487,6 +501,7 @@ export default function AITryOnModal({
       fd.append("personImage", uploadFile);
       fd.append("productId", productId);
       fd.append("mirrorMode", String(mirrorMode));
+      fd.append("garmentCategory", garmentCategory);
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -521,6 +536,7 @@ export default function AITryOnModal({
       }
 
       const out = data?.imageUrl || data?.outputUrl || data?.resultUrl;
+
       if (!out) {
         throw new Error("AI output missing.");
       }
@@ -724,7 +740,9 @@ export default function AITryOnModal({
                     src={previewUrl}
                     alt="Person preview"
                     fill
-                    className={`object-cover ${mirrorMode ? "scale-x-[-1]" : ""}`}
+                    className={`object-cover ${
+                      mirrorMode ? "scale-x-[-1]" : ""
+                    }`}
                     unoptimized
                   />
                 </div>
@@ -793,6 +811,36 @@ export default function AITryOnModal({
                   className="object-contain"
                   unoptimized={productImg.startsWith("http")}
                 />
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-[12px] border border-[#111827] bg-[#050816] p-3">
+              <div className="text-[12px] font-semibold text-white">
+                Garment Category
+              </div>
+
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {(["tops", "bottoms", "one-pieces", "shoes"] as GarmentCategory[]).map(
+  (category) => (
+    <button
+      key={category}
+      type="button"
+      onClick={() => setGarmentCategory(category)}
+      disabled={loading || cameraLoading}
+      className={`rounded-[10px] border px-3 py-2 text-[11px] font-semibold capitalize transition disabled:cursor-not-allowed disabled:opacity-50 ${
+        garmentCategory === category
+          ? "border-[#1d9bf0] bg-[#1d9bf0] text-white"
+          : "border-[#2b2f45] bg-[#050816] text-[#cbd5e1] hover:bg-[#0b0f1a]"
+      }`}
+    >
+      {category === "one-pieces"
+        ? "One-piece"
+        : category === "shoes"
+          ? "Shoes"
+          : category}
+    </button>
+  )
+)}
               </div>
             </div>
 
