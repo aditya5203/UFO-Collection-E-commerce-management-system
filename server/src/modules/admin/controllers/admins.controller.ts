@@ -27,6 +27,7 @@ function sanitizePermissions(input: any): IAdminPermissions {
     orderView: !!input.orderView,
     orderUpdate: !!input.orderUpdate,
     orderDelete: !!input.orderDelete,
+    returnsRefundsView: !!input.returnsRefundsView,
 
     deliveryView: !!input.deliveryView,
     deliveryUpdate: !!input.deliveryUpdate,

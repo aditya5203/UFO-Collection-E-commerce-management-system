@@ -152,11 +152,12 @@ export function getDefaultTaskFromOrder(order: any): DeliveryTaskType {
 
   if (explicit) return normalizeTaskType(explicit);
 
-  if (order?.returnPickupAssignment?.deliveryManId) return "RETURN_PICKUP";
-  if (order?.exchangePickupAssignment?.deliveryManId) return "EXCHANGE_PICKUP";
   if (order?.replacementDeliveryAssignment?.deliveryManId) {
     return "REPLACEMENT_DELIVERY";
   }
+
+  if (order?.returnPickupAssignment?.deliveryManId) return "RETURN_PICKUP";
+  if (order?.exchangePickupAssignment?.deliveryManId) return "EXCHANGE_PICKUP";
 
   return "NORMAL_DELIVERY";
 }

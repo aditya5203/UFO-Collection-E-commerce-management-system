@@ -50,6 +50,13 @@ function getTaskTypeForRider(o: any, riderId?: any): DeliveryTaskType {
 
   if (
     rider &&
+    String(o?.replacementDeliveryAssignment?.deliveryManId || "") === rider
+  ) {
+    return "REPLACEMENT_DELIVERY";
+  }
+
+  if (
+    rider &&
     String(o?.returnPickupAssignment?.deliveryManId || "") === rider
   ) {
     return "RETURN_PICKUP";
@@ -60,13 +67,6 @@ function getTaskTypeForRider(o: any, riderId?: any): DeliveryTaskType {
     String(o?.exchangePickupAssignment?.deliveryManId || "") === rider
   ) {
     return "EXCHANGE_PICKUP";
-  }
-
-  if (
-    rider &&
-    String(o?.replacementDeliveryAssignment?.deliveryManId || "") === rider
-  ) {
-    return "REPLACEMENT_DELIVERY";
   }
 
   return "NORMAL_DELIVERY";

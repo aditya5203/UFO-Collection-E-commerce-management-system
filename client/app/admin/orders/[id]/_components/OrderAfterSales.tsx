@@ -286,7 +286,9 @@ export default function OrderAfterSales({
               </>
             }
             actions={
-              exchangeStatus === "RECEIVED" ? (
+  exchangeStatus === "RECEIVED" &&
+  !order.replacementDeliveryAssignment?.deliveryManId &&
+  !order.exchange?.replacementAssignedAt ? (
                 <button
                   type="button"
                   onClick={() => openRequestAction("assignReplacement")}

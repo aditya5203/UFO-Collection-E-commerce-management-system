@@ -140,11 +140,12 @@ function getTaskType(item: any): DeliveryTaskType {
   const explicit = safeStr(item.taskType || item.taskAssignment?.taskType);
   if (explicit) return explicit.toUpperCase() as DeliveryTaskType;
 
-  if (item.returnPickupAssignment?.deliveryManId) return "RETURN_PICKUP";
-  if (item.exchangePickupAssignment?.deliveryManId) return "EXCHANGE_PICKUP";
   if (item.replacementDeliveryAssignment?.deliveryManId) {
     return "REPLACEMENT_DELIVERY";
   }
+
+  if (item.returnPickupAssignment?.deliveryManId) return "RETURN_PICKUP";
+  if (item.exchangePickupAssignment?.deliveryManId) return "EXCHANGE_PICKUP";
 
   return "NORMAL_DELIVERY";
 }
