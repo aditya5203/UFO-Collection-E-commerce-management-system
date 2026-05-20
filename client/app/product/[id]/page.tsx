@@ -189,37 +189,71 @@ function isHexColor(v: string) {
 
 const COLOR_NAME_TO_HEX: Record<string, string> = {
   black: "#000000",
+  charcoal: "#111111",
+  "charcoal black": "#111111",
+
   white: "#ffffff",
   "off white": "#f5f5f5",
   cream: "#f8f4ec",
   "cream white": "#f8f4ec",
   ivory: "#fffaf0",
   beige: "#b89b72",
+  linen: "#faf0e6",
+
   red: "#ef4444",
+  "dark red": "#dc2626",
+  "rust red": "#9e3d35",
+  burgundy: "#7b1e2b",
+  "dark maroon": "#410606",
+  rose: "#be123c",
+
   blue: "#4287f5",
   "light blue": "#8fb6d6",
   "sky blue": "#89b7e3",
   "navy blue": "#243b6b",
   navy: "#243b6b",
+  "blue denim": "#2f5d8c",
+
   green: "#22c55e",
+  "dark green": "#16a34a",
   olive: "#6b785e",
   "olive green": "#6b785e",
+  "dark olive": "#383428",
+
   yellow: "#eab308",
+  "light yellow": "#facc15",
+
   grey: "#808080",
   gray: "#808080",
+  "ash grey": "#7d7d7d",
+  "ash gray": "#7d7d7d",
+  "washed grey": "#8a8178",
+  "washed gray": "#8a8178",
   "dark grey": "#2b2d30",
+  "dark gray": "#2b2d30",
+
   pink: "#ec4899",
+  "light pink": "#f9a8d4",
+
   purple: "#9510e8",
   orange: "#f97316",
+
   brown: "#7b5a46",
-  burgundy: "#7b1e2b",
+  "dark brown": "#78350f",
+  "chocolate brown": "#4b2e24",
 };
 
 const HEX_TO_COLOR_NAME: Record<string, string> = {
   "#000000": "Black",
+  "#111111": "Black",
   "#16191f": "Black",
+  "#0f0f0f": "Black",
   "#2b2b2b": "Charcoal Black",
+
   "#302b2b": "Dark Brown",
+  "#4b2e2b": "Brown",
+  "#4b2e24": "Chocolate Brown",
+
   "#ffffff": "White",
   "#f5f5f5": "Off White",
   "#f3f2f2": "White",
@@ -227,13 +261,16 @@ const HEX_TO_COLOR_NAME: Record<string, string> = {
   "#fffaf0": "Ivory",
   "#fdf6ec": "Beige",
   "#faf0e6": "Linen",
+
   "#808080": "Grey",
   "#9ca3af": "Grey",
   "#8a8f98": "Ash Grey",
+  "#7d7d7d": "Ash Grey",
   "#8a8178": "Washed Grey",
   "#b7b7b7": "Grey",
   "#2b2d30": "Dark Grey",
   "#4a4f54": "Grey",
+
   "#ef4444": "Red",
   "#dc2626": "Dark Red",
   "#eb4034": "Red",
@@ -241,6 +278,7 @@ const HEX_TO_COLOR_NAME: Record<string, string> = {
   "#7b1e2b": "Burgundy",
   "#410606": "Dark Maroon",
   "#be123c": "Rose",
+
   "#3b82f6": "Blue",
   "#4287f5": "Blue",
   "#2f5d8c": "Blue Denim",
@@ -252,25 +290,32 @@ const HEX_TO_COLOR_NAME: Record<string, string> = {
   "#243b6b": "Navy Blue",
   "#1e2f6f": "Navy Blue",
   "#1f2e5a": "Navy Blue",
+
   "#22c55e": "Green",
   "#16a34a": "Dark Green",
   "#6b7054": "Olive Green",
   "#6b785e": "Olive Green",
   "#383428": "Dark Olive",
+
   "#eab308": "Yellow",
   "#facc15": "Light Yellow",
+
   "#ec4899": "Pink",
   "#f9a8d4": "Light Pink",
+
   "#a855f7": "Purple",
   "#9510e8": "Purple",
+
   "#f97316": "Orange",
+
   "#92400e": "Brown",
   "#78350f": "Dark Brown",
   "#7b5a46": "Brown",
-  "#4b2e24": "Chocolate Brown",
   "#8b4e3b": "Brown",
+
   "#c2b59b": "Beige",
   "#b89b72": "Beige",
+
   "#334155": "Slate",
 };
 

@@ -179,7 +179,9 @@ export default function OrdersPage() {
   };
 
   const paidCount = rows.filter((o) => o.paymentStatus === "Paid").length;
-  const pendingCount = rows.filter((o) => o.orderStatus === "Pending").length;
+  const pendingCount = rows.filter(
+  (o) => o.paymentStatus === "Pending"
+).length;
   const afterSalesCount = rows.filter((o) => getAfterSalesLabels(o).length > 0)
     .length;
 
