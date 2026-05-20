@@ -142,6 +142,19 @@ function buildWelcomeEmailHtml(name: string) {
   `;
 }
 
+function sendWelcomeEmailAsync(email: string, name: string) {
+  emailService
+    .sendMail({
+      to: email,
+      subject: "Welcome to UFO Collection",
+      html: buildWelcomeEmailHtml(name),
+    })
+    .then(() => console.log("✅ Welcome email sent to:", email))
+    .catch((err: any) =>
+      console.error("❌ Welcome email failed:", err?.message || err)
+    );
+}
+
 export const authController = {
   register: async (
     req: Request,
@@ -186,16 +199,7 @@ export const authController = {
         console.log("Register notification failed (ignored):", err?.message);
       }
 
-      emailService
-        .sendMail({
-          to: result.user.email,
-          subject: "Welcome to UFO Collection",
-          html: buildWelcomeEmailHtml(result.user.name),
-        })
-        .then(() => console.log("✅ Welcome email sent to:", result.user.email))
-        .catch((err: any) =>
-          console.error("❌ Welcome email failed:", err?.message || err)
-        );
+      sendWelcomeEmailAsync(result.user.email, result.user.name);
 
       res.status(201).json({
         success: true,
@@ -844,6 +848,8 @@ export const authController = {
             err?.message
           );
         }
+
+        sendWelcomeEmailAsync(result.user.email, result.user.name);
       }
 
       const base = process.env.CLIENT_BASE_URL || "http://localhost:3000";
@@ -898,6 +904,8 @@ export const authController = {
             err?.message
           );
         }
+
+        sendWelcomeEmailAsync(result.user.email, result.user.name);
       }
 
       res.status(200).json({

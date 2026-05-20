@@ -226,51 +226,46 @@ export const authService = {
   },
 
   loginWithGoogle: async (payload: {
-    email: string;
-    name: string;
-    providerId: string;
-    avatar?: string;
-  }) => {
-    const email = String(payload.email || "").trim().toLowerCase();
-    const name = String(payload.name || "").trim();
+  email: string;
+  name: string;
+  providerId: string;
+  avatar?: string;
+}) => {
+  const email = String(payload.email || "").trim().toLowerCase();
+  const name = String(payload.name || "").trim();
 
-    let user = await User.findOne({ email });
-    let isNewUser = false;
+  let user = await User.findOne({ email });
+  let isNewUser = false;
 
-    if (user && (user as any).isDeleted) {
-      throw new AppError(
-        "This account has been deleted. Please register again.",
-        403
-      );
-    }
+  if (user && (user as any).isDeleted) {
+    throw new AppError(
+      "This account has been deleted. Please register again.",
+      403
+    );
+  }
 
-    if (user && (user as any).isBlocked) {
-      throw new AppError("Your account has been blocked by admin.", 403);
-    }
+  if (user && (user as any).isBlocked) {
+    throw new AppError("Your account has been blocked by admin.", 403);
+  }
 
-    if (user && user.provider !== "google") {
-      throw new AppError(
-        "This email is already registered with email/password login.",
-        409
-      );
-    }
+  if (!user) {
+    isNewUser = true;
 
-    if (!user) {
-      isNewUser = true;
-      user = new User({
-        email,
-        name,
-        provider: "google",
-        providerId: payload.providerId,
-        avatar: payload.avatar,
-        role: "customer",
-        isBlocked: false,
-        blockedAt: null,
-        isDeleted: false,
-        deletedAt: null,
-      });
-    }
-
+    user = new User({
+      email,
+      name,
+      provider: "google",
+      providerId: payload.providerId,
+      avatar: payload.avatar,
+      role: "customer",
+      status: "active",
+      isBlocked: false,
+      blockedAt: null,
+      isDeleted: false,
+      deletedAt: null,
+      lastLogin: new Date(),
+    });
+  } else {
     if (String(user.role || "").toLowerCase() !== "customer") {
       throw new AppError(
         "Google login is only available for customer accounts.",
@@ -278,17 +273,38 @@ export const authService = {
       );
     }
 
+    if (user.providerId && user.providerId !== payload.providerId) {
+      throw new AppError(
+        "This email is already linked with another Google account.",
+        409
+      );
+    }
+
+    // Link existing email/password customer account with Google
+    if (!user.providerId) {
+      (user as any).providerId = payload.providerId;
+    }
+
+    // Keep existing provider as credentials so password login still works
+    // but Google login also works through providerId.
+    if (!user.avatar && payload.avatar) {
+      user.avatar = payload.avatar;
+    }
+
     (user as any).lastLogin = new Date();
-    await user.save();
+  }
 
-    const token = generateToken({
-      userId: user._id.toString(),
-      email: user.email,
-      role: user.role,
-    });
+  await user.save();
 
-    return { user: sanitizeUserForResponse(user), token, isNewUser };
-  },
+  const token = generateToken({
+    userId: user._id.toString(),
+    email: user.email,
+    role: user.role,
+  });
+
+  return { user: sanitizeUserForResponse(user), token, isNewUser };
+},
+
 
   logoutUser: async (userId: string) => {
     const user = await User.findById(userId);
