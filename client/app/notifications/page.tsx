@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -178,7 +180,7 @@ export default function NotificationsPage() {
   const router = useRouter();
 
   const BASE = (
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
+    API_BASE_URL
   ).replace(/\/+$/, "");
 
   const API_BASE = `${BASE}/api`;

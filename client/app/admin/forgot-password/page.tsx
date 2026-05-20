@@ -1,11 +1,13 @@
 // client/app/admin/forgot-password/page.tsx
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import Link from "next/link";
 import * as React from "react";
 
 const API_BASE = (
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
+  API_BASE_URL
 ).replace(/\/+$/, "");
 
 type ForgotPasswordResponse = {

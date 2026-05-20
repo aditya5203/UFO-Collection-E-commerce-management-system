@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL as PUBLIC_API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -12,8 +14,7 @@ import {
   normalizeAdminPermissions,
 } from "./adminPermissions";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API_BASE_URL = PUBLIC_API_BASE_URL;
 
 async function safeJson(res: Response) {
   const text = await res.text();

@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { authService } from "../services/auth.service";
 import { RegisterDto, LoginDto } from "../types/auth.types";
 import { AppError } from "../../../middleware/error.middleware";
-import { config } from "../../../config";
+import { clientBaseUrl, getCookieOptions } from "../../../config/runtime";
 import { User } from "../../../models/User.model";
 import { emailService } from "../../../services/email.services";
 import { notificationService } from "../../notifications/services/notification.service";
@@ -59,28 +59,6 @@ function validateNepaliPhone(phone: string) {
   }
 
   return clean;
-}
-
-function getCookieOptions() {
-  const isProd = config.nodeEnv === "production";
-
-  if (!isProd) {
-    return {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax" as const,
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    };
-  }
-
-  return {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none" as const,
-    path: "/",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  };
 }
 
 function setCookie(res: Response, cookieName: string, token: string) {
@@ -417,9 +395,8 @@ export const authController = {
       (user as any).resetPasswordExpires = new Date(Date.now() + 15 * 60 * 1000);
       await user.save();
 
-      const clientBase = process.env.CLIENT_BASE_URL || "http://localhost:3000";
       const role = String((user as any).role || "").toLowerCase();
-      const resetLink = `${clientBase}/reset-password?token=${rawToken}&role=${role}`;
+      const resetLink = `${clientBaseUrl}/reset-password?token=${rawToken}&role=${role}`;
 
       await emailService.sendMail({
         to: user.email,
@@ -852,8 +829,7 @@ export const authController = {
         sendWelcomeEmailAsync(result.user.email, result.user.name);
       }
 
-      const base = process.env.CLIENT_BASE_URL || "http://localhost:3000";
-      res.redirect(`${base}/homepage`);
+      res.redirect(`${clientBaseUrl}/homepage`);
       return;
     } catch (error) {
       next(error);

@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "@/lib/i18n/I18nProvider";
@@ -55,8 +57,7 @@ type Toast = {
 };
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-  "http://localhost:8080/api";
+  API_URL;
 
 const CART_KEY = "ufo_cart";
 const SELECTED_COUPON_KEY = "ufo_coupon_selected";

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { config } from "../../../config";
+import { getCookieOptions } from "../../../config/runtime";
 import { JwtPayload } from "../types/auth.types";
 import { AppError } from "../../../middleware/error.middleware";
 import { User } from "../../../models";
@@ -19,7 +20,7 @@ export type AuthRequest = Request & {
 };
 
 function clearAuthCookie(res: Response, cookieName: string) {
-  res.clearCookie(cookieName, { path: "/" });
+  res.clearCookie(cookieName, getCookieOptions());
 }
 
 export const makeAuthMiddleware =

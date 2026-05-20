@@ -1,6 +1,8 @@
 // client/app/admin/customer-tickets/page.tsx
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -53,7 +55,7 @@ type ToastState = {
 };
 
 const RAW_API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 
 const CLEAN_API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 

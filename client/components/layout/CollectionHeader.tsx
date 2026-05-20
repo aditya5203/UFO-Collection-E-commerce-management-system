@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -44,8 +46,7 @@ export default function CollectionHeader({
   const { t } = useI18n();
 
   const API_BASE =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-    "http://localhost:8080/api";
+    API_URL;
 
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [user, setUser] = React.useState<UserLite | null>(null);

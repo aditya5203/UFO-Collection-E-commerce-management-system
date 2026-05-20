@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import React from "react";
 import { useParams, useRouter } from "next/navigation";
 import ProductHeader from "@/components/layout/ProductHeader";
@@ -99,7 +101,7 @@ type Toast = {
   message: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const API_BASE = API_URL;
 
 const DEFAULT_SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
 

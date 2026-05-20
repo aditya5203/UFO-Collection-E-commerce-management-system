@@ -1,6 +1,8 @@
 // client/app/support-ticket/page.tsx
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -17,7 +19,7 @@ type TicketType =
 type ToastType = "success" | "error" | "info";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 const API = `${API_BASE}/api`;
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";

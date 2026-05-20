@@ -1,6 +1,8 @@
 // client/app/admin/delivery/staff/[id]/page.tsx
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -8,7 +10,7 @@ import Image from "next/image";
 import AdminPageGuard from "../../../_components/AdminPageGuard";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 
 type DeliveryStaffDetails = {
   id: string;

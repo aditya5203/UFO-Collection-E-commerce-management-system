@@ -2,6 +2,7 @@ import { Notification } from "../../../models/Notification.model";
 import { User } from "../../../models/User.model";
 import { getIO } from "../../../socket";
 import { emailService } from "../../../services/email.services";
+import { clientBaseUrl } from "../../../config/runtime";
 
 type NotificationType =
   | "order"
@@ -360,11 +361,7 @@ export const notificationService = {
     if (!users.length) return { sent: 0, failed: 0 };
 
     const resolvedLink = resolveCustomerAutoLink(payload.type, payload.link, {});
-    const clientBase = (process.env.CLIENT_BASE_URL || "http://localhost:3000").replace(
-      /\/+$/,
-      ""
-    );
-    const fullLink = resolvedLink ? `${clientBase}${resolvedLink}` : "";
+    const fullLink = resolvedLink ? `${clientBaseUrl}${resolvedLink}` : "";
     const subject = buildBroadcastEmailSubject(payload.type, payload.title);
     const cta = buildBroadcastEmailCTA(payload.type);
 

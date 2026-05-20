@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -76,8 +78,7 @@ export default function DiscountsPage() {
   const router = useRouter();
 
   const API_BASE =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-    "http://localhost:8080/api";
+    API_URL;
 
   const [available, setAvailable] = React.useState<AvailableCoupon[]>([]);
   const [collected, setCollected] = React.useState<CollectedRow[]>([]);

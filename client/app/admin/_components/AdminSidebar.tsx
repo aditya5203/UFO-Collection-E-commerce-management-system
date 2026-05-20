@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -118,7 +120,7 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 const BASE = (
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
+  API_BASE_URL
 ).replace(/\/+$/, "");
 
 const API_BASE = `${BASE}/api`;

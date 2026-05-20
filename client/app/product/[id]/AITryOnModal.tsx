@@ -1,9 +1,11 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import * as React from "react";
 import Image from "next/image";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+const API_BASE = API_URL;
 
 type Props = {
   open: boolean;

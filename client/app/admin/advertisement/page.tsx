@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import * as React from "react";
 import AdminPageGuard from "../_components/AdminPageGuard";
 import {
@@ -32,9 +34,7 @@ import {
 } from "./_components/advertisementTypes";
 
 const RAW_API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "http://localhost:8080/api";
+  API_URL;
 
 const CLEAN_API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 

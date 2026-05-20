@@ -9,6 +9,10 @@ export const connectDatabase = async (): Promise<void> => {
   }
 
   try {
+    if (!config.mongoUrl) {
+      throw new Error("Missing MONGO_URI environment variable");
+    }
+
     await mongoose.connect(config.mongoUrl);
     isConnected = true;
 
@@ -53,4 +57,3 @@ export const disconnectDatabase = async (): Promise<void> => {
 export const getConnectionStatus = (): boolean => {
   return isConnected && mongoose.connection.readyState === 1;
 };
-

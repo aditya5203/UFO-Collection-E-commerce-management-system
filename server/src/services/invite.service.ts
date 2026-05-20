@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { emailService } from "./email.services";
+import { clientBaseUrl } from "../config/runtime";
 
 function sha256(input: string) {
   return crypto.createHash("sha256").update(input).digest("hex");
@@ -36,8 +37,7 @@ export async function sendAdminInviteEmail(params: {
   invitedByName?: string;
   token: string;
 }) {
-  const clientBase = process.env.CLIENT_BASE_URL || "http://localhost:3000";
-  const inviteUrl = `${clientBase}/accept-invite?token=${encodeURIComponent(
+  const inviteUrl = `${clientBaseUrl}/accept-invite?token=${encodeURIComponent(
     params.token
   )}`;
 
@@ -78,8 +78,7 @@ export async function sendDeliveryInviteEmail(params: {
   invitedByName?: string;
   token: string;
 }) {
-  const clientBase = process.env.CLIENT_BASE_URL || "http://localhost:3000";
-  const inviteUrl = `${clientBase}/accept-invite?token=${encodeURIComponent(
+  const inviteUrl = `${clientBaseUrl}/accept-invite?token=${encodeURIComponent(
     params.token
   )}`;
 

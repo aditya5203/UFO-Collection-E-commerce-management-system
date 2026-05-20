@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { productService } from "../../product/services/product.service";
 import { aiService } from "../services/ai.service";
 import { AppError } from "../../../middleware/error.middleware";
+import { serverBaseUrl } from "../../../config/runtime";
 
 type GarmentCategory = "tops" | "bottoms" | "one-pieces" | "shoes";
 
@@ -29,8 +30,7 @@ function normalizeGarmentCategory(value: any): GarmentCategory {
 }
 
 function buildAbsoluteImageUrl(src: string) {
-  const apiBase = process.env.PUBLIC_API_BASE_URL || "http://localhost:8080";
-  const base = apiBase.replace(/\/$/, "");
+  const base = serverBaseUrl.replace(/\/$/, "");
 
   if (!src) return "";
   if (src.startsWith("http://") || src.startsWith("https://")) return src;

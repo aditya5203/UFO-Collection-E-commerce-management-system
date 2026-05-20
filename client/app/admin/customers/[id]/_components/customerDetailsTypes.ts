@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "@/lib/api";
 import { AdminSettingsResponse } from "../../../_components/adminPermissions";
 
 export type TabKey = "overview" | "orders" | "tickets" | "addresses";
@@ -86,7 +87,7 @@ export type Address = {
 export type AdminSettingsJson = AdminSettingsResponse;
 
 export const API_BASE = (
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
+  API_BASE_URL
 ).replace(/\/+$/, "");
 
 export const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";

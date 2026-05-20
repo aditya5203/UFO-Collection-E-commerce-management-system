@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import CartHeader from "@/components/layout/CartHeader";
@@ -22,8 +24,7 @@ import {
 } from "./_components/profileTypes";
 
 const API =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-  "http://localhost:8080/api";
+  API_URL;
 
 export default function ProfilePage() {
   const router = useRouter();

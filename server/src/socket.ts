@@ -2,6 +2,7 @@ import { Server as HTTPServer } from "http";
 import { Server as SocketIOServer, Socket } from "socket.io";
 import jwt from "jsonwebtoken";
 import { config } from "./config";
+import { allowedClientOrigins } from "./config/runtime";
 
 type SocketUser = {
   userId: string;
@@ -30,14 +31,9 @@ function parseCookies(cookieHeader?: string) {
 }
 
 export function initSocket(server: HTTPServer) {
-  const allowedOrigins = (process.env.CLIENT_BASE_URL || "http://localhost:3000")
-    .split(",")
-    .map((s) => s.trim().replace(/\/$/, ""))
-    .filter(Boolean);
-
   io = new SocketIOServer(server, {
     cors: {
-      origin: allowedOrigins,
+      origin: allowedClientOrigins,
       credentials: true,
     },
   });

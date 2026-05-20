@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { io, Socket } from "socket.io-client";
@@ -13,7 +15,7 @@ import ToastMessage from "./_components/ToastMessage";
 import { Conversation, Msg, ToastType } from "./_components/chatTypes";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 const API = `${API_BASE}/api`;
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
@@ -26,7 +28,7 @@ function getOrderUrl(orderId?: string | null) {
   return `/customerorderdetails/${encodeURIComponent(clean)}`;
 }
 
-export default function LiveAgentChatPage() {
+function LiveAgentChatPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -521,5 +523,13 @@ export default function LiveAgentChatPage() {
 
       <MainFooter />
     </>
+  );
+}
+
+export default function LiveAgentChatPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <LiveAgentChatPageContent />
+    </React.Suspense>
   );
 }

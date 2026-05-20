@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import { io, Socket } from "socket.io-client";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
@@ -225,7 +227,7 @@ type RefundDetailsDraft = {
 };
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 
 const API = `${API_BASE}/api`;
 
@@ -324,7 +326,7 @@ function mergeLiveOrder(prev: Order | null, payload: any): Order | null {
   };
 }
 
-export default function CustomerOrderDetailsPage() {
+function CustomerOrderDetailsPageContent() {
   const router = useRouter();
   const params = useParams<{ orderId: string }>();
   const orderIdFromUrl = params?.orderId ? String(params.orderId) : "";
@@ -976,5 +978,13 @@ export default function CustomerOrderDetailsPage() {
         submitReview={submitReview}
       />
     </>
+  );
+}
+
+export default function CustomerOrderDetailsPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <CustomerOrderDetailsPageContent />
+    </React.Suspense>
   );
 }

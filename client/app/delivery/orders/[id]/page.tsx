@@ -38,7 +38,7 @@ import {
   secondaryBtnClass,
 } from "./_components/deliveryOrderTypes";
 
-export default function DeliveryOrderDetailsPage() {
+function DeliveryOrderDetailsPageContent() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -574,5 +574,13 @@ export default function DeliveryOrderDetailsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DeliveryOrderDetailsPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <DeliveryOrderDetailsPageContent />
+    </React.Suspense>
   );
 }

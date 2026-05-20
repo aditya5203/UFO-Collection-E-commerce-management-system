@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -7,7 +9,7 @@ import CollectionHeader from "@/components/layout/InfoHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 const API = `${API_BASE}/api`;
 
 const shellClass =

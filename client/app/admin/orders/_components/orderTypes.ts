@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "@/lib/api";
 import type { Socket } from "socket.io-client";
 
 export type PaymentStatus = "Paid" | "Pending" | "Failed";
@@ -216,7 +217,7 @@ export type LoadMode = "initial" | "refresh" | "search" | "silent";
 export type AdminSocket = Socket;
 
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 
 export const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 

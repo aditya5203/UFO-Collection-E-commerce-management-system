@@ -1,9 +1,8 @@
 //welcomeEmail.ts
 import { emailService } from "../../../services/email.services";
+import { clientBaseUrl } from "../../../config/runtime";
 
 export async function sendWelcomeEmail(to: string, name: string) {
-  const clientBase = process.env.CLIENT_BASE_URL || "http://localhost:3000";
-
   const subject = "Welcome to UFO Collection";
 
   const html = `
@@ -23,7 +22,7 @@ export async function sendWelcomeEmail(to: string, name: string) {
       </p>
 
       <p>
-        <a href="${clientBase}/collection"
+        <a href="${clientBaseUrl}/collection"
            style="display:inline-block;padding:10px 16px;background:#b49cff;color:#070818;text-decoration:none;border-radius:999px">
           Explore Collection
         </a>

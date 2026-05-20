@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
@@ -221,7 +223,7 @@ export default function DeliveryLayout({
     if (!shouldRunNotificationEffects || isUnauthorizedRef.current) return;
 
     const socketBase = (
-      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080"
+      API_BASE_URL
     ).replace(/\/+$/, "");
 
     let socket: Socket | null = null;

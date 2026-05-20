@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -8,8 +10,7 @@ import CollectionHeader from "@/components/layout/InfoHeader";
 import MainFooter from "@/components/layout/MainFooter";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ||
-  "http://localhost:8080";
+  API_BASE_URL;
 const API = `${API_BASE}/api`;
 
 const STRONG_PASSWORD_REGEX =
@@ -67,7 +68,7 @@ function PasswordToggleButton({
   );
 }
 
-export default function ResetPasswordPage() {
+function ResetPasswordPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
 
@@ -352,5 +353,13 @@ export default function ResetPasswordPage() {
 
       <MainFooter />
     </>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <ResetPasswordPageContent />
+    </React.Suspense>
   );
 }

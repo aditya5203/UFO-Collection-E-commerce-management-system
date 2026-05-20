@@ -1,5 +1,6 @@
 // server/src/modules/payments/services/khalti.service.ts
 import axios, { AxiosError } from "axios";
+import { clientBaseUrl } from "../../../config/runtime";
 
 type KhaltiInit = {
   amount: number; // paisa (Rs. 100 => 10000)
@@ -18,8 +19,9 @@ const KHALTI_BASE_URL = process.env.KHALTI_BASE_URL || "https://a.khalti.com/api
 const KHALTI_SECRET_KEY = process.env.KHALTI_SECRET_KEY || "";
 
 // ✅ IMPORTANT: return back to /payment so frontend can lookup + create order + go ThankYou
-const KHALTI_RETURN_URL = process.env.KHALTI_RETURN_URL || "http://localhost:3000/payment";
-const KHALTI_WEBSITE_URL = process.env.KHALTI_WEBSITE_URL || "http://localhost:3000";
+const KHALTI_RETURN_URL =
+  process.env.KHALTI_RETURN_URL || `${clientBaseUrl}/payment`;
+const KHALTI_WEBSITE_URL = process.env.KHALTI_WEBSITE_URL || clientBaseUrl;
 
 function ensureKey() {
   if (!KHALTI_SECRET_KEY) {

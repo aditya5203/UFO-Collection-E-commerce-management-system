@@ -1,6 +1,7 @@
 // server/src/config/swagger.ts
 import swaggerJsdoc from "swagger-jsdoc";
 import { config } from "./index";
+import { serverBaseUrl } from "./runtime";
 
 const swaggerDefinition = {
   openapi: "3.0.0",
@@ -14,12 +15,9 @@ const swaggerDefinition = {
   },
   servers: [
     {
-      url: `http://localhost:${config.port}`,
-      description: "Development server",
-    },
-    {
-      url: "https://api.ufo-collection.com",
-      description: "Production server",
+      url: serverBaseUrl || `http://localhost:${config.port}`,
+      description:
+        config.nodeEnv === "production" ? "Configured server" : "Development server",
     },
   ],
   components: {

@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import * as React from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -123,8 +125,7 @@ export default function ChangePasswordPage() {
   const router = useRouter();
 
   const API =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-    "http://localhost:8080/api";
+    API_URL;
 
   const [checkingAuth, setCheckingAuth] = React.useState(true);
   const [saving, setSaving] = React.useState(false);

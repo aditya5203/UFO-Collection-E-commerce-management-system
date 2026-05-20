@@ -1,3 +1,4 @@
+import { API_BASE_URL as PUBLIC_API_BASE_URL } from "@/lib/api";
 export type SummaryResponse = {
   success: boolean;
   message?: string;
@@ -67,8 +68,7 @@ export type StatusBarItem = {
   tone: string;
 };
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+export const API_BASE_URL = PUBLIC_API_BASE_URL;
 
 export const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 

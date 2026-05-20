@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL, API_URL } from "@/lib/api";
+
 import * as React from "react";
 import { io, Socket } from "socket.io-client";
 import { useSearchParams } from "next/navigation";
@@ -58,11 +60,10 @@ type TrackingData = {
 };
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-  "http://localhost:8080/api";
+  API_URL;
 
 const SOCKET_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 
 const shellClass = "min-h-[calc(100vh-76px)] bg-[#0a0a0f] text-[#f5f7fb]";
 const containerClass =

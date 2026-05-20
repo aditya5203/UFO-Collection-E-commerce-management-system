@@ -1,10 +1,8 @@
 "use client";
 
-export const DELIVERY_API_BASE =
-  (process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080").replace(
-    /\/+$/,
-    "",
-  ) + "/api";
+import { API_URL } from "@/lib/api";
+
+export const DELIVERY_API_BASE = API_URL;
 
 export const DELIVERY_ENDPOINTS = {
   me: `${DELIVERY_API_BASE}/auth/delivery/me`,

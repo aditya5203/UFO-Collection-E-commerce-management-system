@@ -10,6 +10,7 @@ import swaggerUi from "swagger-ui-express";
 
 import { swaggerSpec } from "./config/swagger";
 import { getConnectionStatus } from "./config/database";
+import { allowedClientOrigins } from "./config/runtime";
 import apiRoutes from "./routes";
 import { errorHandler } from "./middleware/error.middleware";
 
@@ -59,11 +60,6 @@ app.use(
 // ✅ normalize origins so "http://localhost:3000/" matches "http://localhost:3000"
 const normalizeOrigin = (s: string) => s.trim().replace(/\/$/, "");
 
-const origins = (process.env.CLIENT_BASE_URL || "http://localhost:3000")
-  .split(",")
-  .map(normalizeOrigin)
-  .filter(Boolean);
-
 app.use(
   cors({
     origin: (origin, cb) => {
@@ -72,7 +68,7 @@ app.use(
 
       const o = normalizeOrigin(origin);
 
-      if (origins.includes(o)) return cb(null, true);
+      if (allowedClientOrigins.includes(o)) return cb(null, true);
 
       return cb(new Error(`CORS blocked for origin: ${origin}`));
     },

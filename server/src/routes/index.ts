@@ -85,7 +85,10 @@ router.use("/ai", aiRoutes);
 /* -------------------- CUSTOMER (PROTECTED) -------------------- */
 router.use("/addresses", customerAuthMiddleware, addressRoutes);
 router.use("/chat", customerAuthMiddleware, chatRoutes);
+
+// Customer tickets
 router.use("/tickets", customerAuthMiddleware, customerTicketRoutes);
+router.use("/customer-tickets", customerTicketRoutes);
 
 // CUSTOMER DISCOUNTS
 router.use("/discounts", customerAuthMiddleware, discountRoutes.customerRouter);

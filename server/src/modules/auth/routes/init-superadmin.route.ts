@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import { User } from "../../../models/User.model";
 import { config } from "../../../config";
+import { getCookieOptions } from "../../../config/runtime";
 import { AppError } from "../../../middleware/error.middleware";
 
 const router = Router();
@@ -12,22 +13,11 @@ const CUSTOMER_COOKIE = process.env.COOKIE_NAME || "token";
 const ADMIN_COOKIE = process.env.ADMIN_COOKIE_NAME || "adminToken";
 
 function setCookie(res: Response, cookieName: string, token: string) {
-  res.cookie(cookieName, token, {
-    httpOnly: true,
-    secure: config.nodeEnv === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie(cookieName, token, getCookieOptions());
 }
 
 function clearCookie(res: Response, cookieName: string) {
-  res.clearCookie(cookieName, {
-    httpOnly: true,
-    secure: config.nodeEnv === "production",
-    sameSite: "lax",
-    path: "/",
-  });
+  res.clearCookie(cookieName, getCookieOptions());
 }
 
 /**

@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import * as React from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
@@ -16,8 +18,7 @@ type HomeAd = {
 };
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-  "http://localhost:8080/api";
+  API_URL;
 
 const fadeRight = {
   hidden: { opacity: 0, x: 36 },

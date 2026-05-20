@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -59,8 +61,7 @@ function resolveMediaSrc(src: unknown) {
   }
 
   const API_BASE =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-    "http://localhost:8080/api";
+    API_URL;
 
   const API_ORIGIN = API_BASE.replace(/\/api\/?$/, "");
 

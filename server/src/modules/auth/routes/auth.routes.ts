@@ -6,6 +6,7 @@ import {
   deliveryAuthMiddleware,
 } from "../middleware/auth.middleware";
 import passport from "../../../config/passport";
+import { clientBaseUrl } from "../../../config/runtime";
 
 const router = Router();
 
@@ -654,7 +655,7 @@ router.get(
   "/google/callback",
   passport.authenticate("google", {
     session: false,
-    failureRedirect: process.env.CLIENT_BASE_URL || "http://localhost:3000/login",
+    failureRedirect: `${clientBaseUrl}/login`,
   }),
   authController.googleCallback
 );

@@ -1,5 +1,7 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import * as React from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -34,8 +36,7 @@ type Product = {
 };
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-  "http://localhost:8080/api";
+  API_URL;
 
 const shellClass = "bg-[#0a0a0f] text-[#f5f7fb]";
 const containerClass = "mx-auto max-w-[1240px] px-4 sm:px-5 lg:px-6";

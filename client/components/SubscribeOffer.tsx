@@ -1,10 +1,11 @@
 "use client";
 
+import { API_URL } from "@/lib/api";
+
 import * as React from "react";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-  "http://localhost:8080/api";
+  API_URL;
 
 type ToastType = "success" | "error" | "info";
 

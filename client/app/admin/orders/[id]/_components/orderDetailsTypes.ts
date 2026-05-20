@@ -1,5 +1,6 @@
+import { API_BASE_URL } from "@/lib/api";
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 
 export const PLACEHOLDER = "/images/products/placeholder.png";
 
@@ -521,13 +522,23 @@ export function getImageSrc(image: string | undefined | null): string {
       const u = new URL(src);
       const allowed = new Set([
         "res.cloudinary.com",
-        "localhost",
         "lh3.googleusercontent.com",
         "t3.ftcdn.net",
         "images.unsplash.com",
       ]);
 
-      if (!allowed.has(u.hostname)) return PLACEHOLDER;
+      const isApiUploadHost =
+        u.pathname.startsWith("/uploads/") &&
+        API_BASE &&
+        (() => {
+          try {
+            return u.host === new URL(API_BASE).host;
+          } catch {
+            return false;
+          }
+        })();
+
+      if (!allowed.has(u.hostname) && !isApiUploadHost) return PLACEHOLDER;
 
       return src;
     } catch {

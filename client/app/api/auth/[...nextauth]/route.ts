@@ -1,3 +1,4 @@
+import { API_URL } from "@/lib/api";
 import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
@@ -13,7 +14,7 @@ export const authOptions: NextAuthOptions = {
       if (account?.provider === "google" && user.email) {
         try {
           const apiBase =
-            process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+            API_URL;
 
           await fetch(`${apiBase}/auth/google`, {
             method: "POST",

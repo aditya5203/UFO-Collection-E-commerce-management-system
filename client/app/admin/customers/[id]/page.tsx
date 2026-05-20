@@ -37,7 +37,7 @@ import {
   TicketRow,
 } from "./_components/customerDetailsTypes";
 
-export default function CustomerDetailsPage() {
+function CustomerDetailsPageContent() {
   const params = useParams<{ id: string }>();
   const customerId = params?.id;
 
@@ -423,5 +423,13 @@ export default function CustomerDetailsPage() {
         </div>
       </div>
     </AdminPageGuard>
+  );
+}
+
+export default function CustomerDetailsPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <CustomerDetailsPageContent />
+    </React.Suspense>
   );
 }

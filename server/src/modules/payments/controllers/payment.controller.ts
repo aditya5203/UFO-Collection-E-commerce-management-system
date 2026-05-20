@@ -3,8 +3,7 @@
 import { Request, Response, NextFunction } from "express";
 import { esewaService } from "../services/esewa.service";
 import { khaltiService } from "../services/khalti.service";
-
-const FRONTEND_BASE = process.env.FRONTEND_URL || "http://localhost:3000";
+import { clientBaseUrl } from "../../../config/runtime";
 
 export const paymentController = {
   // ======================================================
@@ -90,12 +89,12 @@ export const paymentController = {
     const data = String(_req.query.data || "");
 
     if (!data) {
-      res.redirect(`${FRONTEND_BASE}/payment?status=failed`);
+      res.redirect(`${clientBaseUrl}/payment?status=failed`);
       return;
     }
 
     res.redirect(
-      `${FRONTEND_BASE}/payment?esewa=success&data=${encodeURIComponent(data)}`
+      `${clientBaseUrl}/payment?esewa=success&data=${encodeURIComponent(data)}`
     );
     return;
   },
@@ -104,7 +103,7 @@ export const paymentController = {
   // eSewa FAILURE CALLBACK
   // ======================================================
   esewaFailure: async (_req: Request, res: Response): Promise<void> => {
-    res.redirect(`${FRONTEND_BASE}/payment?status=failed`);
+    res.redirect(`${clientBaseUrl}/payment?status=failed`);
     return;
   },
 

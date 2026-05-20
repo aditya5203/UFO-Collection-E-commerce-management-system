@@ -9,8 +9,7 @@ export const config = Object.freeze({
   nodeEnv: process.env.NODE_ENV || "development",
 
   mongoUrl:
-    process.env.MONGO_URL ||
-    "mongodb+srv://adit:adit123456@cluster0.yizviok.mongodb.net/ufo-collection?appName=Cluster0",
+    process.env.MONGO_URI || process.env.MONGO_URL || "",
 
   jwt: {
     secret: process.env.JWT_SECRET || "dev-secret-key",
@@ -22,5 +21,8 @@ export const config = Object.freeze({
     clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
   },
 
-  clientBaseUrl: process.env.CLIENT_BASE_URL || "http://localhost:3000",
+  clientBaseUrl:
+    process.env.CLIENT_BASE_URL ||
+    process.env.FRONTEND_URL ||
+    (process.env.NODE_ENV === "production" ? "" : "http://localhost:3000"),
 });

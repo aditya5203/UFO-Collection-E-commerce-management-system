@@ -9,6 +9,7 @@ import {
 import mongoose from "mongoose";
 import { initSocket } from "./socket";
 import { connectRedis, disconnectRedis } from "./config/redis";
+import { serverBaseUrl } from "./config/runtime";
 
 const startServer = async () => {
   try {
@@ -33,7 +34,7 @@ const startServer = async () => {
       if (dbStatus) {
         console.log(`📊 Database Name: ${dbName}`);
       }
-      console.log(`📚 Swagger API: http://localhost:${config.port}/ufo-docs`);
+      console.log(`📚 Swagger API: ${serverBaseUrl || `http://localhost:${config.port}`}/ufo-docs`);
       console.log(`🔔 Socket.IO: Enabled`);
       console.log("=".repeat(50) + "\n");
     });

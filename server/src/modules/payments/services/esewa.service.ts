@@ -1,6 +1,7 @@
 // server/src/modules/payments/services/esewa.service.ts
 import crypto from "crypto";
 import axios from "axios";
+import { serverBaseUrl } from "../../../config/runtime";
 
 type EsewaInitiateInput = {
   totalAmount: number; // NPR
@@ -19,10 +20,12 @@ const ESEWA_STATUS_URL =
   process.env.ESEWA_STATUS_URL || "https://rc.esewa.com.np/api/epay/transaction/status/";
 
 const ESEWA_SUCCESS_URL =
-  process.env.ESEWA_SUCCESS_URL || "http://localhost:8080/api/payments/esewa/success";
+  process.env.ESEWA_SUCCESS_URL ||
+  `${serverBaseUrl}/api/payments/esewa/success`;
 
 const ESEWA_FAILURE_URL =
-  process.env.ESEWA_FAILURE_URL || "http://localhost:8080/api/payments/esewa/failure";
+  process.env.ESEWA_FAILURE_URL ||
+  `${serverBaseUrl}/api/payments/esewa/failure`;
 
 export const esewaService = {
   // ✅ transaction_uuid supports alphanumeric + hyphen(-) only
@@ -66,12 +69,6 @@ export const esewaService = {
       signed_field_names,
       signature,
     };
-
-    // ✅ Debug logs (remove later)
-    console.log("ESEWA_PRODUCT_CODE:", product_code);
-    console.log("SIGN STRING:", signingString);
-    console.log("SIGNATURE:", signature);
-    console.log("FIELDS:", fields);
 
     return { formUrl: ESEWA_FORM_URL, fields };
   },

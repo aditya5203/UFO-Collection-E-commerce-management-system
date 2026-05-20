@@ -1,6 +1,7 @@
 // server/src/config/passport.ts
 import passport from "passport";
 import { Strategy as GoogleStrategy, Profile } from "passport-google-oauth20";
+import { serverBaseUrl } from "./runtime";
 
 export const configurePassport = () => {
   passport.use(
@@ -8,9 +9,7 @@ export const configurePassport = () => {
       {
         clientID: process.env.GOOGLE_CLIENT_ID!,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-        // Better: full URL so it matches Google Console
-        callbackURL:
-          `${process.env.SERVER_BASE_URL || "http://localhost:8080"}/api/auth/google/callback`,
+        callbackURL: `${serverBaseUrl}/api/auth/google/callback`,
       },
       async (_accessToken, _refreshToken, profile: Profile, done) => {
         // We just pass the Google profile forward.

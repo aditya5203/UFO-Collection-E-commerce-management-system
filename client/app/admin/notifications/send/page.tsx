@@ -1,6 +1,8 @@
 // client/app/admin/notifications/send/page.tsx
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -36,9 +38,7 @@ type AlertState = {
 };
 
 const RAW_API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:8080";
+  API_BASE_URL;
 
 const CLEAN_API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 

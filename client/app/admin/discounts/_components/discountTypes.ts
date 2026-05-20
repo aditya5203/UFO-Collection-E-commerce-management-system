@@ -1,3 +1,4 @@
+import { API_BASE_URL } from "@/lib/api";
 export type CouponType = "PERCENT" | "FLAT" | "FREESHIP";
 export type CouponScope = "ALL" | "CATEGORY" | "PRODUCT";
 export type CouponStatus = "ACTIVE" | "PAUSED";
@@ -68,7 +69,7 @@ export type DiscountStats = {
 };
 
 const RAW_API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 
 const CLEAN_API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 

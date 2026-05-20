@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import Link from "next/link";
 import AdminPageGuard from "../_components/AdminPageGuard";
@@ -60,7 +62,7 @@ type DeliveryStaff = {
 };
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 const API = `${API_BASE}/api`;
 
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";

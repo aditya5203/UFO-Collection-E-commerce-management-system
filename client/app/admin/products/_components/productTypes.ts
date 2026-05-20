@@ -1,3 +1,4 @@
+import { API_BASE_URL as PUBLIC_API_BASE_URL } from "@/lib/api";
 export type ProductStatus = "Active" | "Inactive";
 export type Gender = "Male" | "Female";
 
@@ -159,8 +160,7 @@ export type ToastState = {
   message: string;
 } | null;
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+export const API_BASE_URL = PUBLIC_API_BASE_URL;
 
 export const PLACEHOLDER = "/images/products/placeholder.png";
 
@@ -191,18 +191,23 @@ export const getImageSrc = (image: string | undefined | null): string => {
 
       const allowedHosts = new Set([
         "res.cloudinary.com",
-        "localhost",
         "lh3.googleusercontent.com",
         "images.unsplash.com",
         "t3.ftcdn.net",
       ]);
 
-      const isLocalUpload =
-        u.hostname === "localhost" &&
-        u.port === "8080" &&
-        u.pathname.startsWith("/uploads/");
+      const isApiUploadHost =
+        u.pathname.startsWith("/uploads/") &&
+        API_BASE_URL &&
+        (() => {
+          try {
+            return u.host === new URL(API_BASE_URL).host;
+          } catch {
+            return false;
+          }
+        })();
 
-      if (!allowedHosts.has(u.hostname) && !isLocalUpload) {
+      if (!allowedHosts.has(u.hostname) && !isApiUploadHost) {
         return PLACEHOLDER;
       }
 

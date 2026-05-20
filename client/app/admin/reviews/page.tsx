@@ -1,6 +1,6 @@
-// client/app/admin/reviews/page.tsx
 "use client";
 
+import { API_BASE_URL as PUBLIC_API_BASE_URL } from "@/lib/api";
 import * as React from "react";
 import Image from "next/image";
 import AdminPageGuard from "../_components/AdminPageGuard";
@@ -11,8 +11,7 @@ import {
   normalizeAdminPermissions,
 } from "../_components/adminPermissions";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+const API_BASE_URL = PUBLIC_API_BASE_URL;
 
 const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 const panelClass =

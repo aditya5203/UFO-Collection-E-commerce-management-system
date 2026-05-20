@@ -1,10 +1,12 @@
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 
 async function safeJson(res: Response) {
   const text = await res.text();
@@ -15,7 +17,7 @@ async function safeJson(res: Response) {
   }
 }
 
-export default function AcceptInvitePage() {
+function AcceptInvitePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -149,5 +151,13 @@ export default function AcceptInvitePage() {
         </form>
       </div>
     </div>
+  );
+}
+
+export default function AcceptInvitePage() {
+  return (
+    <React.Suspense fallback={null}>
+      <AcceptInvitePageContent />
+    </React.Suspense>
   );
 }

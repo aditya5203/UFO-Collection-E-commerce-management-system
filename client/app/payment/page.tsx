@@ -1,5 +1,7 @@
 "use client";
 
+import { API_BASE_URL } from "@/lib/api";
+
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
@@ -75,7 +77,7 @@ type OrderSummaryLS = {
 };
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
+  API_BASE_URL;
 
 const CART_KEY = "ufo_cart";
 const ORDER_SUMMARY_KEY = "ufo_order_summary";
@@ -374,7 +376,7 @@ function PaymentIcon({ method }: { method: PayMethod }) {
   );
 }
 
-export default function PaymentPage() {
+function PaymentPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useI18n();
@@ -1121,5 +1123,13 @@ export default function PaymentPage() {
 
       <MainFooter />
     </>
+  );
+}
+
+export default function PaymentPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <PaymentPageContent />
+    </React.Suspense>
   );
 }
