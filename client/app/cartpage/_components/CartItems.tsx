@@ -15,6 +15,8 @@ type CartItem = {
   colorLabel: string;
   sku?: string;
   price: number;
+  compareAtPrice?: number;
+  discountPercent?: number;
   qty: number;
   image: string;
   stock?: number;
@@ -96,6 +98,9 @@ export default function CartItems({
         const stock = Number(it.stock || 0);
         const qty = Number(it.qty || 0);
         const itemTotal = Number(it.price || 0) * qty;
+        const compareAtPrice = Number(it.compareAtPrice || 0);
+        const compareAtTotal = compareAtPrice * qty;
+        const hasDiscount = compareAtPrice > Number(it.price || 0);
         const imageSrc = it.image || fallbackProductImage;
 
         const itemHasStockIssue = hasKnownStock && (stock <= 0 || qty > stock);
@@ -147,6 +152,18 @@ export default function CartItems({
                   <div className="mt-1 text-[12px] text-[#a7aec4]">
                     {formatNpr(it.price)} × {it.qty} = {formatNpr(itemTotal)}
                   </div>
+
+                  {hasDiscount ? (
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                      <span className="text-[#7f879f] line-through">
+                        {formatNpr(compareAtPrice)}
+                      </span>
+
+                      <span className="font-semibold text-orange-300">
+                        -{Number(it.discountPercent || 0)}%
+                      </span>
+                    </div>
+                  ) : null}
 
                   {it.sku ? (
                     <div className="mt-1 text-[11px] text-[#7f879f]">
@@ -212,6 +229,18 @@ export default function CartItems({
                 <div className="font-semibold text-[#d6c7ff]">
                   {formatNpr(itemTotal)}
                 </div>
+
+                {hasDiscount ? (
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="text-[#7f879f] line-through">
+                      {formatNpr(compareAtTotal)}
+                    </span>
+
+                    <span className="font-semibold text-orange-300">
+                      -{Number(it.discountPercent || 0)}%
+                    </span>
+                  </div>
+                ) : null}
 
                 <div className="mt-1 text-[11px] text-[#a7aec4]">
                   {formatNpr(it.price)} × {it.qty}
@@ -293,8 +322,22 @@ export default function CartItems({
                     </div>
                   ) : null}
 
-                  <div className="font-semibold text-[#d6c7ff]">
-                    {formatNpr(it.price)} × {it.qty} = {formatNpr(itemTotal)}
+                  <div>
+                    <div className="font-semibold text-[#d6c7ff]">
+                      {formatNpr(it.price)} × {it.qty} = {formatNpr(itemTotal)}
+                    </div>
+
+                    {hasDiscount ? (
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span className="text-[#7f879f] line-through">
+                          {formatNpr(compareAtTotal)}
+                        </span>
+
+                        <span className="font-semibold text-orange-300">
+                          -{Number(it.discountPercent || 0)}%
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 

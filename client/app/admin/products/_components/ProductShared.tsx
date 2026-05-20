@@ -5,7 +5,8 @@ import Image from "next/image";
 import {
   ProductStatus,
   ProductVariantForm,
-  SIZE_OPTIONS,
+  CLOTHING_SIZE_OPTIONS,
+  SHOE_SIZE_OPTIONS,
   Size,
   ToastState,
   getImageSrc,
@@ -255,6 +256,7 @@ export function Toast({ toast }: { toast: Exclude<ToastState, null> }) {
 export function VariantInventoryEditor({
   variants,
   name,
+  categoryName,
   onAdd,
   onRemove,
   onChange,
@@ -262,12 +264,19 @@ export function VariantInventoryEditor({
 }: {
   variants: ProductVariantForm[];
   name: string;
+  categoryName: string;
   onAdd: () => void;
   onRemove: (index: number) => void;
   onChange: (index: number, patch: Partial<ProductVariantForm>) => void;
   onGenerateSku: (index: number) => void;
 }) {
   const totalStock = getTotalVariantStock(variants);
+
+  const isShoesCategory = /shoe|shoes|sneaker|footwear/i.test(categoryName);
+
+  const sizeOptions = isShoesCategory
+    ? SHOE_SIZE_OPTIONS
+    : CLOTHING_SIZE_OPTIONS;
 
   const lowStockCount = variants.filter(
     (variant) =>
@@ -304,6 +313,10 @@ export function VariantInventoryEditor({
 
           <span className="rounded-full border border-red-400/20 bg-red-500/15 px-3 py-1.5 text-[11px] font-semibold text-red-300">
             Out: {outOfStockCount}
+          </span>
+
+          <span className="rounded-full border border-[#d6c7ff]/20 bg-[#d6c7ff]/10 px-3 py-1.5 text-[11px] font-semibold text-[#d6c7ff]">
+            {isShoesCategory ? "Shoe Sizes" : "Clothing Sizes"}
           </span>
 
           <button type="button" onClick={onAdd} className={secondaryBtnClass}>
@@ -370,14 +383,18 @@ export function VariantInventoryEditor({
                     title={`Variant size ${index + 1}`}
                     aria-label={`Variant size ${index + 1}`}
                     className={`${inputClass} h-10 min-w-[96px]`}
-                    value={variant.size}
+                    value={
+                      sizeOptions.includes(variant.size)
+                        ? variant.size
+                        : sizeOptions[0]
+                    }
                     onChange={(e) =>
                       onChange(index, {
                         size: e.target.value as Size,
                       })
                     }
                   >
-                    {SIZE_OPTIONS.map((size) => (
+                    {sizeOptions.map((size) => (
                       <option key={size} value={size}>
                         {size}
                       </option>
@@ -409,7 +426,11 @@ export function VariantInventoryEditor({
                       aria-label={`Variant SKU ${index + 1}`}
                       className={`${inputClass} h-10 min-w-[210px]`}
                       value={variant.sku}
-                      placeholder="UFO-HOOD-BLK-M"
+                      placeholder={
+                        isShoesCategory
+                          ? "UFO-SHOE-BLK-42"
+                          : "UFO-HOOD-BLK-M"
+                      }
                       onChange={(e) =>
                         onChange(index, {
                           sku: e.target.value.toUpperCase(),
@@ -464,9 +485,9 @@ export function VariantInventoryEditor({
       </div>
 
       <p className="mt-4 rounded-[16px] border border-[#26293a] bg-white/[0.03] px-4 py-3 text-[12px] leading-6 text-[#a7aec4]">
-        Example: Black + M can have 10 stock, Black + L can have 5 stock, and
-        White + M can have 8 stock. The product total stock is calculated
-        automatically from active variants.
+        {isShoesCategory
+          ? "Example: Black + 42 can have 10 stock, Black + 43 can have 5 stock, and White + 42 can have 8 stock. The product total stock is calculated automatically from active variants."
+          : "Example: Black + M can have 10 stock, Black + L can have 5 stock, and White + M can have 8 stock. The product total stock is calculated automatically from active variants."}
       </p>
     </section>
   );

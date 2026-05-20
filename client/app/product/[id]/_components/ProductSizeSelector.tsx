@@ -1,6 +1,19 @@
 "use client";
 
-type Size = "S" | "M" | "L" | "XL" | "XXL";
+type Size =
+  | "S"
+  | "M"
+  | "L"
+  | "XL"
+  | "XXL"
+  | "38"
+  | "39"
+  | "40"
+  | "41"
+  | "42"
+  | "43"
+  | "44"
+  | "45";
 
 type ProductVariant = {
   id: string;

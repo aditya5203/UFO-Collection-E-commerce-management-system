@@ -25,6 +25,8 @@ type Product = {
   category?: string;
   subCategory?: string;
   price: number;
+  compareAtPrice?: number;
+  discountPercent: number;
   image: string;
   rating?: number;
   reviews?: number;
@@ -85,13 +87,32 @@ function formatMoney(value: unknown) {
 }
 
 function mapProduct(raw: any): Product {
+  const price = normalizeNumber(raw?.price, 0);
+
+  const compareAtPrice =
+    raw?.compareAtPrice == null || raw?.compareAtPrice === ""
+      ? undefined
+      : normalizeNumber(raw?.compareAtPrice, 0);
+
+  const fallbackDiscount =
+    compareAtPrice && compareAtPrice > price
+      ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+      : 0;
+
+  const discountPercent =
+    compareAtPrice && compareAtPrice > price
+      ? normalizeNumber(raw?.discountPercent, fallbackDiscount)
+      : 0;
+
   return {
     id: String(raw?.id || raw?._id || ""),
     sku: String(raw?.sku || ""),
     name: String(raw?.name || "Product"),
     category: String(raw?.category || raw?.subCategory || "Fashion"),
     subCategory: String(raw?.subCategory || raw?.category || ""),
-    price: normalizeNumber(raw?.price, 0),
+    price,
+    compareAtPrice,
+    discountPercent,
     image: resolveMediaSrc(raw?.image),
     rating: normalizeNumber(raw?.rating || raw?.displayRating, 0),
     reviews: normalizeNumber(raw?.reviews || raw?.reviewCount, 0),
@@ -262,6 +283,10 @@ function ProductCard({
   product: Product;
   onClick: () => void;
 }) {
+  const hasDiscount =
+    typeof product.compareAtPrice === "number" &&
+    product.compareAtPrice > product.price;
+
   return (
     <button
       type="button"
@@ -290,6 +315,12 @@ function ProductCard({
               : "New"}
           </div>
 
+          {hasDiscount ? (
+            <div className="absolute right-3 top-3 rounded-full border border-orange-300/25 bg-orange-500/90 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow-[0_10px_30px_rgba(249,115,22,0.3)] backdrop-blur">
+              -{product.discountPercent}%
+            </div>
+          ) : null}
+
           <div className="absolute bottom-3 left-3 right-3 translate-y-2 rounded-full bg-white px-4 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-[#090a12] opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100">
             Quick View
           </div>
@@ -304,12 +335,26 @@ function ProductCard({
             {product.name}
           </div>
 
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <div className="text-[13px] font-semibold text-[#d6c7ff] sm:text-[14px]">
-              {formatMoney(product.price)}
+          <div className="mt-2 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold text-[#d6c7ff] sm:text-[14px]">
+                {formatMoney(product.price)}
+              </div>
+
+              {hasDiscount ? (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px]">
+                  <span className="text-[#7f879f] line-through">
+                    {formatMoney(product.compareAtPrice)}
+                  </span>
+
+                  <span className="font-semibold text-orange-300">
+                    -{product.discountPercent}%
+                  </span>
+                </div>
+              ) : null}
             </div>
 
-            <div className="text-[12px] text-[#a7aec4]">
+            <div className="shrink-0 text-[12px] text-[#a7aec4]">
               ★ {normalizeNumber(product.rating, 0).toFixed(1)}
             </div>
           </div>
@@ -472,7 +517,7 @@ export default function HomePage() {
 
         if (!active) return;
 
-        setLatestProducts(latestMapped.slice(0, 8));
+        setLatestProducts(latestMapped.slice(0, 40));
         setBestSellerProducts(bestSellerMapped.slice(0, 8));
       } catch {
         if (!active) return;

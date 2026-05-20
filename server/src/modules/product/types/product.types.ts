@@ -14,7 +14,15 @@ export type CreateProductDto = {
   name: string;
   slug?: string;
   description?: string;
+
+  // Selling/final price.
   price: number;
+
+  // Actual/MRP price shown with line-through.
+  compareAtPrice?: number;
+
+  // Auto-calculated by backend.
+  discountPercent?: number;
 
   // Old/simple stock system. Kept optional for backward compatibility.
   stock?: number;

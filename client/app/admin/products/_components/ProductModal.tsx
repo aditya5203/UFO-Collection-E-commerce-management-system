@@ -33,6 +33,8 @@ type Props = {
   setDescription: (value: string) => void;
   price: number | "";
   setPrice: (value: number | "") => void;
+  compareAtPrice: number | "";
+  setCompareAtPrice: (value: number | "") => void;
   status: ProductStatus;
   setStatus: (value: ProductStatus) => void;
   gender: Gender;
@@ -72,6 +74,8 @@ export default function ProductModal({
   setDescription,
   price,
   setPrice,
+  compareAtPrice,
+  setCompareAtPrice,
   status,
   setStatus,
   gender,
@@ -95,6 +99,9 @@ export default function ProductModal({
   generateVariantSku,
   onClose,
 }: Props) {
+  const selectedCategoryName =
+    categories.find((c) => c.id === categoryId)?.name || "";
+
   if (!showModal) return null;
 
   return (
@@ -161,13 +168,13 @@ export default function ProductModal({
               />
             </Field>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Field label="Price (Rs) *" htmlFor="product-price">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <Field label="Selling Price (Rs) *" htmlFor="product-price">
                 <input
                   id="product-price"
                   name="productPrice"
-                  title="Product price"
-                  aria-label="Product price"
+                  title="Product selling price"
+                  aria-label="Product selling price"
                   type="number"
                   min={0}
                   className={inputClass}
@@ -176,6 +183,25 @@ export default function ProductModal({
                     setPrice(e.target.value === "" ? "" : Number(e.target.value))
                   }
                   required
+                />
+              </Field>
+
+              <Field label="Actual Price / MRP" htmlFor="product-compare-price">
+                <input
+                  id="product-compare-price"
+                  name="productCompareAtPrice"
+                  title="Actual product price"
+                  aria-label="Actual product price"
+                  type="number"
+                  min={0}
+                  className={inputClass}
+                  value={compareAtPrice}
+                  onChange={(e) =>
+                    setCompareAtPrice(
+                      e.target.value === "" ? "" : Number(e.target.value)
+                    )
+                  }
+                  placeholder="e.g. 7400"
                 />
               </Field>
 
@@ -233,7 +259,21 @@ export default function ProductModal({
                   aria-label="Product category"
                   className={inputClass}
                   value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
+                  onChange={(e) => {
+                    const nextCategoryId = e.target.value;
+                    setCategoryId(nextCategoryId);
+
+                    const nextCategoryName =
+                      categories.find((c) => c.id === nextCategoryId)?.name ||
+                      "";
+
+                    const defaultSize =
+                      /shoe|shoes|sneaker|footwear/i.test(nextCategoryName)
+                        ? "42"
+                        : "M";
+
+                    updateVariant(0, { size: defaultSize as Size });
+                  }}
                   required
                 >
                   <option value="">Select category</option>
@@ -250,6 +290,7 @@ export default function ProductModal({
             <VariantInventoryEditor
               variants={variants}
               name={name}
+              categoryName={selectedCategoryName}
               onAdd={addVariant}
               onRemove={removeVariant}
               onChange={updateVariant}

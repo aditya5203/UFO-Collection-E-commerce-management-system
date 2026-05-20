@@ -3,7 +3,9 @@
 import ProductSizeSelector from "./ProductSizeSelector";
 import ProductColorSelector from "./ProductColorSelector";
 
-type Size = "S" | "M" | "L" | "XL" | "XXL";
+type Size =
+  | "S" | "M" | "L" | "XL" | "XXL"
+  | "38" | "39" | "40" | "41" | "42" | "43" | "44" | "45";
 
 type ProductVariant = {
   id: string;
@@ -18,6 +20,8 @@ type Product = {
   id: string;
   name: string;
   price: number;
+  compareAtPrice?: number;
+  discountPercent: number;
   image: string;
   images?: string[];
   rating?: number;
@@ -46,6 +50,10 @@ const primaryBtnClass =
 
 const secondaryBtnClass =
   "rounded-full border border-white/15 bg-white/5 px-6 py-3 text-[12px] font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-white/10";
+
+function formatNPR(value: number | undefined) {
+  return `Rs. ${Number(value || 0).toLocaleString("en-NP")}`;
+}
 
 export default function ProductInfoPanel({
   product,
@@ -94,6 +102,10 @@ export default function ProductInfoPanel({
   shareProduct: () => void;
   copyProductLink: () => void;
 }) {
+  const hasDiscount =
+    typeof product.compareAtPrice === "number" &&
+    product.compareAtPrice > product.price;
+
   return (
     <div className={`${panelClass} p-5 sm:p-7 lg:p-8`}>
       <div className="text-[11px] uppercase tracking-[0.24em] text-[#a7aec4]">
@@ -113,6 +125,12 @@ export default function ProductInfoPanel({
           {displayReviewCount} reviews
         </span>
 
+        {hasDiscount ? (
+          <span className="rounded-full border border-orange-400/30 bg-orange-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-orange-300">
+            -{product.discountPercent}% OFF
+          </span>
+        ) : null}
+
         {hasVariantInventory ? (
           <span className="rounded-full border border-[#d6c7ff]/30 bg-[#d6c7ff]/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#d6c7ff]">
             Variant stock enabled
@@ -120,8 +138,22 @@ export default function ProductInfoPanel({
         ) : null}
       </div>
 
-      <div className="mt-5 text-[26px] font-semibold text-[#d6c7ff]">
-        Rs. {Number(product.price || 0).toLocaleString("en-NP")}
+      <div className="mt-5">
+        <div className="text-[30px] font-semibold text-[#d6c7ff]">
+          {formatNPR(product.price)}
+        </div>
+
+        {hasDiscount ? (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="text-[16px] font-medium text-[#7f879f] line-through">
+              {formatNPR(product.compareAtPrice)}
+            </span>
+
+            <span className="text-[15px] font-semibold text-orange-300">
+              -{product.discountPercent}%
+            </span>
+          </div>
+        ) : null}
       </div>
 
       <div
@@ -209,7 +241,11 @@ export default function ProductInfoPanel({
           Try On With AI
         </button>
 
-        <button type="button" onClick={shareProduct} className={secondaryBtnClass}>
+        <button
+          type="button"
+          onClick={shareProduct}
+          className={secondaryBtnClass}
+        >
           Share Product
         </button>
       </div>

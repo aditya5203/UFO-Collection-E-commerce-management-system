@@ -37,10 +37,9 @@ import {
   getProductArray,
   getTotalVariantStock,
   mapProduct,
-  panelClass,
-  productVariantsToForm,
   safeJson,
   shellClass,
+  productVariantsToForm,
 } from "./_components/productTypes";
 
 export default function AdminProductsPage() {
@@ -63,6 +62,7 @@ export default function AdminProductsPage() {
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [price, setPrice] = React.useState<number | "">("");
+  const [compareAtPrice, setCompareAtPrice] = React.useState<number | "">("");
   const [status, setStatus] = React.useState<ProductStatus>("Active");
   const [gender, setGender] = React.useState<Gender>("Male");
   const [categoryId, setCategoryId] = React.useState("");
@@ -338,6 +338,7 @@ export default function AdminProductsPage() {
     setName(form.name);
     setDescription(form.description);
     setPrice(form.price);
+    setCompareAtPrice(form.compareAtPrice);
     setStatus(form.status);
     setGender(form.gender);
     setCategoryId(form.categoryId);
@@ -370,6 +371,7 @@ export default function AdminProductsPage() {
     setName(product.name || "");
     setDescription(product.description || "");
     setPrice(product.price);
+    setCompareAtPrice(product.compareAtPrice || "");
     setStatus(product.status);
     setGender(product.gender);
     setCategoryId(product.categoryId || "");
@@ -575,6 +577,8 @@ export default function AdminProductsPage() {
     const cleanName = name.trim();
     const cleanDesc = description.trim();
     const priceNum = typeof price === "string" ? Number(price) : price;
+    const compareAtPriceNum =
+      compareAtPrice === "" ? undefined : Number(compareAtPrice);
 
     if (
       !cleanName ||
@@ -583,6 +587,19 @@ export default function AdminProductsPage() {
       priceNum < 0
     ) {
       showToast("Name and valid price are required.", "error");
+      return;
+    }
+
+    if (
+      compareAtPriceNum != null &&
+      (Number.isNaN(compareAtPriceNum) || compareAtPriceNum < 0)
+    ) {
+      showToast("Actual price must be 0 or more.", "error");
+      return;
+    }
+
+    if (compareAtPriceNum != null && compareAtPriceNum <= priceNum) {
+      showToast("Actual price must be greater than selling price.", "error");
       return;
     }
 
@@ -676,6 +693,7 @@ export default function AdminProductsPage() {
         name: cleanName,
         description: cleanDesc || undefined,
         price: priceNum,
+        compareAtPrice: compareAtPriceNum,
         stock: totalStock,
         status,
         image: image.trim(),
@@ -857,6 +875,8 @@ export default function AdminProductsPage() {
           setDescription={setDescription}
           price={price}
           setPrice={setPrice}
+          compareAtPrice={compareAtPrice}
+          setCompareAtPrice={setCompareAtPrice}
           status={status}
           setStatus={setStatus}
           gender={gender}

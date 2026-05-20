@@ -7,17 +7,22 @@ type RelatedProduct = {
   id: string;
   name: string;
   price: number;
+  compareAtPrice?: number;
+  discountPercent: number;
   image: string;
 };
 
 const panelClass =
   "rounded-[24px] border border-[#26293a] bg-[#11121a] shadow-[0_20px_70px_rgba(0,0,0,0.35)]";
 
-function formatNPR(value: number) {
+function formatNPR(value: number | undefined) {
   return `Rs. ${Number(value || 0).toLocaleString("en-NP")}`;
 }
 
 function RelatedCard({ item }: { item: RelatedProduct }) {
+  const hasDiscount =
+    typeof item.compareAtPrice === "number" && item.compareAtPrice > item.price;
+
   return (
     <Link href={`/product/${item.id}`} className="group block">
       <div className="overflow-hidden rounded-[20px] border border-[#26293a] bg-[#161824] shadow-[0_14px_40px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#4a506b]">
@@ -29,6 +34,12 @@ function RelatedCard({ item }: { item: RelatedProduct }) {
             className="object-cover transition duration-500 group-hover:scale-[1.06]"
             unoptimized={item.image.startsWith("http")}
           />
+
+          {hasDiscount ? (
+            <div className="absolute right-3 top-3 rounded-full border border-orange-300/25 bg-orange-500/90 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow-[0_10px_30px_rgba(249,115,22,0.3)] backdrop-blur">
+              -{item.discountPercent}%
+            </div>
+          ) : null}
         </div>
 
         <div className="p-4">
@@ -36,8 +47,22 @@ function RelatedCard({ item }: { item: RelatedProduct }) {
             {item.name}
           </h3>
 
-          <div className="mt-2 text-[14px] font-semibold text-[#d6c7ff]">
-            {formatNPR(item.price)}
+          <div className="mt-2">
+            <div className="text-[14px] font-semibold text-[#d6c7ff]">
+              {formatNPR(item.price)}
+            </div>
+
+            {hasDiscount ? (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                <span className="text-[#7f879f] line-through">
+                  {formatNPR(item.compareAtPrice)}
+                </span>
+
+                <span className="font-semibold text-orange-300">
+                  -{item.discountPercent}%
+                </span>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

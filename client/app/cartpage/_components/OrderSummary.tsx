@@ -31,6 +31,7 @@ export default function OrderSummary({
   clearAppliedCoupon,
   couponMessage,
   subtotal,
+  itemSavings,
   shippingAmount,
   discountAmount,
   total,
@@ -48,6 +49,7 @@ export default function OrderSummary({
   clearAppliedCoupon: (silent?: boolean) => void;
   couponMessage: string;
   subtotal: number;
+  itemSavings: number;
   shippingAmount: number;
   discountAmount: number;
   total: number;
@@ -55,6 +57,8 @@ export default function OrderSummary({
   proceedToCheckout: () => void;
 }) {
   const { t } = useI18n();
+
+  const totalSavings = Number(itemSavings || 0) + Number(discountAmount || 0);
 
   return (
     <aside className="xl:sticky xl:top-[104px]">
@@ -78,6 +82,12 @@ export default function OrderSummary({
         {hasStockIssue ? (
           <div className="mt-5 rounded-[16px] border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-200">
             {t("cart.stockIssue")}
+          </div>
+        ) : null}
+
+        {itemSavings > 0 ? (
+          <div className="mt-5 rounded-[16px] border border-orange-400/25 bg-orange-500/10 px-4 py-3 text-sm leading-6 text-orange-100">
+            You saved {formatNpr(itemSavings)} from product offers.
           </div>
         ) : null}
 
@@ -152,6 +162,15 @@ export default function OrderSummary({
             <span className="text-right text-white">{formatNpr(subtotal)}</span>
           </div>
 
+          {itemSavings > 0 ? (
+            <div className="flex items-center justify-between gap-4">
+              <span>Product offer savings</span>
+              <span className="text-right text-orange-300">
+                - {formatNpr(itemSavings)}
+              </span>
+            </div>
+          ) : null}
+
           <div className="flex items-center justify-between gap-4">
             <span>{t("cart.shipping")}</span>
             <span className="text-right text-white">
@@ -172,6 +191,12 @@ export default function OrderSummary({
             <span className="text-white">{t("cart.total")}</span>
             <span className="text-right text-white">{formatNpr(total)}</span>
           </div>
+
+          {totalSavings > 0 ? (
+            <div className="rounded-[14px] border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-[13px] font-semibold text-emerald-300">
+              Total savings: {formatNpr(totalSavings)}
+            </div>
+          ) : null}
         </div>
 
         <button

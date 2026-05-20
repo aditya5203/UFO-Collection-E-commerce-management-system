@@ -12,7 +12,21 @@ import ProductInfoPanel from "./_components/ProductInfoPanel";
 import ProductDetailsTabs from "./_components/ProductDetailsTabs";
 import ProductRecommendations from "./_components/ProductRecommendations";
 
-type Size = "S" | "M" | "L" | "XL" | "XXL";
+type Size =
+  | "S"
+  | "M"
+  | "L"
+  | "XL"
+  | "XXL"
+  | "38"
+  | "39"
+  | "40"
+  | "41"
+  | "42"
+  | "43"
+  | "44"
+  | "45";
+
 type ReviewSort = "latest" | "highest" | "lowest";
 
 type ProductVariant = {
@@ -28,6 +42,8 @@ type Product = {
   id: string;
   name: string;
   price: number;
+  compareAtPrice?: number;
+  discountPercent: number;
   image: string;
   images?: string[];
   rating?: number;
@@ -44,6 +60,8 @@ type RelatedProduct = {
   id: string;
   name: string;
   price: number;
+  compareAtPrice?: number;
+  discountPercent: number;
   image: string;
 };
 
@@ -67,6 +85,8 @@ type CartItem = {
   colorLabel: string;
   sku?: string;
   price: number;
+  compareAtPrice?: number;
+ discountPercent?: number;
   qty: number;
   image: string;
   stock?: number;
@@ -80,7 +100,25 @@ type Toast = {
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api";
+
 const DEFAULT_SIZES: Size[] = ["S", "M", "L", "XL", "XXL"];
+
+const ALL_SIZE_OPTIONS: Size[] = [
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "38",
+  "39",
+  "40",
+  "41",
+  "42",
+  "43",
+  "44",
+  "45",
+];
+
 const PRODUCT_PLACEHOLDER = "/images/products/placeholder.png";
 const LAST_PRODUCT_ID_KEY = "last_product_id";
 
@@ -107,12 +145,40 @@ function toStr(v: any, fallback = ""): string {
   return typeof v === "string" ? v : fallback;
 }
 
+function getDiscountData(raw: any) {
+  const price = toNumber(raw?.price, 0);
+
+  const compareAtPrice =
+    raw?.compareAtPrice == null || raw?.compareAtPrice === ""
+      ? undefined
+      : toNumber(raw?.compareAtPrice, 0);
+
+  const fallbackDiscount =
+    compareAtPrice && compareAtPrice > price
+      ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+      : 0;
+
+  const discountPercent =
+    compareAtPrice && compareAtPrice > price
+      ? Math.min(
+          Math.max(Math.round(toNumber(raw?.discountPercent, fallbackDiscount)), 0),
+          100
+        )
+      : 0;
+
+  return {
+    price,
+    compareAtPrice,
+    discountPercent,
+  };
+}
+
 function normalizeSizes(sizes: any): Size[] {
   if (!Array.isArray(sizes)) return DEFAULT_SIZES;
 
   const clean = sizes
     .map((x) => String(x || "").trim().toUpperCase())
-    .filter((x): x is Size => DEFAULT_SIZES.includes(x as Size));
+    .filter((x): x is Size => ALL_SIZE_OPTIONS.includes(x as Size));
 
   return clean.length ? clean : DEFAULT_SIZES;
 }
@@ -124,47 +190,87 @@ function isHexColor(v: string) {
 const COLOR_NAME_TO_HEX: Record<string, string> = {
   black: "#000000",
   white: "#ffffff",
+  "off white": "#f5f5f5",
+  cream: "#f8f4ec",
+  "cream white": "#f8f4ec",
+  ivory: "#fffaf0",
+  beige: "#b89b72",
   red: "#ef4444",
-  blue: "#3b82f6",
+  blue: "#4287f5",
   "light blue": "#8fb6d6",
-  "sky blue": "#93c5fd",
-  "navy blue": "#000080",
-  navy: "#000080",
+  "sky blue": "#89b7e3",
+  "navy blue": "#243b6b",
+  navy: "#243b6b",
   green: "#22c55e",
+  olive: "#6b785e",
+  "olive green": "#6b785e",
   yellow: "#eab308",
-  gray: "#808080",
   grey: "#808080",
+  gray: "#808080",
+  "dark grey": "#2b2d30",
   pink: "#ec4899",
-  purple: "#a855f7",
+  purple: "#9510e8",
   orange: "#f97316",
-  brown: "#92400e",
+  brown: "#7b5a46",
+  burgundy: "#7b1e2b",
 };
 
 const HEX_TO_COLOR_NAME: Record<string, string> = {
   "#000000": "Black",
   "#16191f": "Black",
+  "#2b2b2b": "Charcoal Black",
+  "#302b2b": "Dark Brown",
   "#ffffff": "White",
   "#f5f5f5": "Off White",
+  "#f3f2f2": "White",
+  "#f8f4ec": "Cream White",
+  "#fffaf0": "Ivory",
+  "#fdf6ec": "Beige",
+  "#faf0e6": "Linen",
   "#808080": "Grey",
   "#9ca3af": "Grey",
+  "#8a8f98": "Ash Grey",
+  "#8a8178": "Washed Grey",
+  "#b7b7b7": "Grey",
+  "#2b2d30": "Dark Grey",
+  "#4a4f54": "Grey",
   "#ef4444": "Red",
   "#dc2626": "Dark Red",
+  "#eb4034": "Red",
+  "#9e3d35": "Rust Red",
+  "#7b1e2b": "Burgundy",
+  "#410606": "Dark Maroon",
+  "#be123c": "Rose",
   "#3b82f6": "Blue",
+  "#4287f5": "Blue",
+  "#2f5d8c": "Blue Denim",
   "#60a5fa": "Light Blue",
   "#8fb6d6": "Light Blue",
+  "#89b7e3": "Sky Blue",
   "#93c5fd": "Sky Blue",
   "#000080": "Navy Blue",
+  "#243b6b": "Navy Blue",
+  "#1e2f6f": "Navy Blue",
+  "#1f2e5a": "Navy Blue",
   "#22c55e": "Green",
   "#16a34a": "Dark Green",
+  "#6b7054": "Olive Green",
+  "#6b785e": "Olive Green",
+  "#383428": "Dark Olive",
   "#eab308": "Yellow",
   "#facc15": "Light Yellow",
   "#ec4899": "Pink",
   "#f9a8d4": "Light Pink",
   "#a855f7": "Purple",
+  "#9510e8": "Purple",
   "#f97316": "Orange",
   "#92400e": "Brown",
   "#78350f": "Dark Brown",
-  "#be123c": "Rose",
+  "#7b5a46": "Brown",
+  "#4b2e24": "Chocolate Brown",
+  "#8b4e3b": "Brown",
+  "#c2b59b": "Beige",
+  "#b89b72": "Beige",
   "#334155": "Slate",
 };
 
@@ -186,7 +292,7 @@ function toColorLabel(color: string) {
 
   if (HEX_TO_COLOR_NAME[hex]) return HEX_TO_COLOR_NAME[hex];
 
-  if (isHexColor(clean)) return "Custom Color";
+  if (isHexColor(clean)) return clean.toLowerCase();
 
   return clean
     .split(/[-_\s]+/)
@@ -223,7 +329,7 @@ function normalizeVariant(raw: any): ProductVariant | null {
   const color = toHex(String(raw?.color || ""));
   const size = String(raw?.size || "").trim().toUpperCase() as Size;
 
-  if (!DEFAULT_SIZES.includes(size)) return null;
+  if (!ALL_SIZE_OPTIONS.includes(size)) return null;
 
   return {
     id: String(raw?.id || raw?._id || ""),
@@ -333,10 +439,14 @@ function readRecentlyViewed(): RelatedProduct[] {
 }
 
 function mapProductCard(raw: any): RelatedProduct {
+  const discount = getDiscountData(raw);
+
   return {
     id: String(raw?.id || raw?._id || ""),
     name: toStr(raw?.name, "Unnamed Product"),
-    price: toNumber(raw?.price, 0),
+    price: discount.price,
+    compareAtPrice: discount.compareAtPrice,
+    discountPercent: discount.discountPercent,
     image: getProductImageSrc(raw?.image),
   };
 }
@@ -512,6 +622,7 @@ export default function ProductPage() {
 
         const raw = response?.data ?? response;
         const variants = normalizeVariants(raw?.variants);
+        const discount = getDiscountData(raw);
 
         const mappedStock =
           raw.stock !== undefined ||
@@ -543,7 +654,9 @@ export default function ProductPage() {
         const mapped: Product = {
           id: String(raw.id || raw._id || id),
           name: toStr(raw.name, "Unnamed Product"),
-          price: toNumber(raw.price, 0),
+          price: discount.price,
+          compareAtPrice: discount.compareAtPrice,
+          discountPercent: discount.discountPercent,
           image: getProductImageSrc(raw.image),
           images: normalizeImageList(raw.images),
           rating: toNumber(raw.rating ?? raw.avgRating, 0),
@@ -598,6 +711,8 @@ export default function ProductPage() {
           id: mapped.id,
           name: mapped.name,
           price: mapped.price,
+          compareAtPrice: mapped.compareAtPrice,
+          discountPercent: mapped.discountPercent,
           image: mapped.image,
         };
 
@@ -986,6 +1101,8 @@ export default function ProductPage() {
       colorLabel: selectedColor ? currentColorLabel : "Default",
       sku: selectedVariant?.sku || undefined,
       price: product.price,
+      compareAtPrice: product.compareAtPrice,
+      discountPercent: product.discountPercent,
       qty: 1,
       image: selectedImage || product.image,
       stock: selectedVariantStock,
@@ -1210,4 +1327,4 @@ export default function ProductPage() {
       />
     </>
   );
-} 
+}

@@ -150,6 +150,9 @@ export default function ProductsTable({
             <tbody>
               {filteredProducts.map((product) => {
                 const stats = getVariantStats(product);
+                const hasDiscount =
+                  typeof product.compareAtPrice === "number" &&
+                  product.compareAtPrice > product.price;
 
                 return (
                   <tr
@@ -240,8 +243,24 @@ export default function ProductsTable({
                       </div>
                     </td>
 
-                    <td className="px-5 py-4 font-semibold text-[#d6c7ff]">
-                      {formatPriceNPR(product.price)}
+                    <td className="px-5 py-4">
+                      <div className="space-y-1">
+                        <div className="font-semibold text-[#d6c7ff]">
+                          {formatPriceNPR(product.price)}
+                        </div>
+
+                        {hasDiscount ? (
+                          <div className="flex items-center gap-2 text-[11px]">
+                            <span className="text-[#7f879f] line-through">
+                              {formatPriceNPR(product.compareAtPrice || 0)}
+                            </span>
+
+                            <span className="rounded-full border border-orange-400/20 bg-orange-500/10 px-2 py-0.5 font-semibold text-orange-300">
+                              -{product.discountPercent}%
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
                     </td>
 
                     <td className="px-5 py-4">

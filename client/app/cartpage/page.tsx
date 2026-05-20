@@ -21,6 +21,8 @@ type CartItem = {
   colorLabel: string;
   sku?: string;
   price: number;
+  compareAtPrice?: number;
+  discountPercent?: number;
   qty: number;
   image: string;
   stock?: number;
@@ -127,6 +129,29 @@ function sanitizeCartItems(input: unknown): CartItem[] {
       const productId = String(item?.productId || item?.id || "").trim();
       const variantId = String(item?.variantId || "").trim();
 
+      const price = Math.max(0, Number(item?.price || 0));
+
+      const compareAtPrice =
+        item?.compareAtPrice == null || item?.compareAtPrice === ""
+          ? undefined
+          : Math.max(0, Number(item.compareAtPrice || 0));
+
+      const fallbackDiscount =
+        compareAtPrice && compareAtPrice > price
+          ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+          : 0;
+
+      const discountPercent =
+        compareAtPrice && compareAtPrice > price
+          ? Math.min(
+              Math.max(
+                Math.round(Number(item?.discountPercent || fallbackDiscount)),
+                0
+              ),
+              100
+            )
+          : undefined;
+
       return {
         id: productId,
         productId,
@@ -136,7 +161,9 @@ function sanitizeCartItems(input: unknown): CartItem[] {
         color: String(item?.color || "").trim(),
         colorLabel: String(item?.colorLabel || "").trim(),
         sku: String(item?.sku || "").trim() || undefined,
-        price: Math.max(0, Number(item?.price || 0)),
+        price,
+        compareAtPrice,
+        discountPercent,
         qty: Math.max(1, Math.min(99, Number(item?.qty || 1))),
         image: String(item?.image || "").trim(),
         stock: hasRealStockValue(item?.stock) ? Number(item.stock) : undefined,
@@ -243,6 +270,22 @@ export default function CartPage() {
         (sum, it) => sum + Number(it.price || 0) * Number(it.qty || 0),
         0
       ),
+    [items]
+  );
+
+  const itemSavings = React.useMemo(
+    () =>
+      items.reduce((sum, item) => {
+        const compareAtPrice = Number(item.compareAtPrice || 0);
+        const price = Number(item.price || 0);
+        const qty = Number(item.qty || 0);
+
+        if (compareAtPrice > price) {
+          return sum + (compareAtPrice - price) * qty;
+        }
+
+        return sum;
+      }, 0),
     [items]
   );
 
@@ -461,7 +504,10 @@ export default function CartPage() {
     if (hasKnownStock && stock <= 0) {
       showToast("error", t("cart.selectedVariantOutOfStock"));
     } else if (hasKnownStock && qty > stock) {
-      showToast("error", `${t("cart.onlyLeft")} ${stock} ${t("cart.onlyItemsAvailable")}`);
+      showToast(
+        "error",
+        `${t("cart.onlyLeft")} ${stock} ${t("cart.onlyItemsAvailable")}`
+      );
     }
 
     const next = items.map((it) =>
@@ -558,6 +604,7 @@ export default function CartPage() {
       subtotal,
       shipping: items.length ? shipping : 0,
       discount: discountAmount,
+      itemSavings,
       total,
       currency: "NPR",
       updatedAt: new Date().toISOString(),
@@ -571,6 +618,8 @@ export default function CartPage() {
         colorLabel: item.colorLabel,
         sku: item.sku || null,
         price: item.price,
+        compareAtPrice: item.compareAtPrice ?? null,
+        discountPercent: item.discountPercent ?? 0,
         qty: item.qty,
         image: item.image,
         stock: item.stock ?? null,
@@ -621,6 +670,7 @@ export default function CartPage() {
                 clearAppliedCoupon={clearAppliedCoupon}
                 couponMessage={couponMessage}
                 subtotal={subtotal}
+                itemSavings={itemSavings}
                 shippingAmount={items.length ? shipping : 0}
                 discountAmount={discountAmount}
                 total={total}

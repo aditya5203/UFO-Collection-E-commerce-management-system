@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { Product } from "../../../models/Product.model";
+import { Product, SIZE_OPTIONS } from "../../../models/Product.model";
 import { Order } from "../../../models/Order.model";
 import {
   CreateProductDto,
@@ -8,9 +8,19 @@ import {
 } from "../types/product.types";
 import { generateProductSlug } from "../utils/slug.util";
 import cloudinary from "../../../config/cloudinary";
+import { getCache, setCache, deleteCacheByPattern } from "../../../utils/cache";
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function calculateDiscountPercent(price?: number, compareAtPrice?: number) {
+  const nextPrice = Number(price || 0);
+  const nextCompareAtPrice = Number(compareAtPrice || 0);
+
+  return nextCompareAtPrice > nextPrice && nextPrice >= 0
+    ? Math.round(((nextCompareAtPrice - nextPrice) / nextCompareAtPrice) * 100)
+    : 0;
 }
 
 function normalizeVariantInput(variants: any[] | undefined) {
@@ -39,7 +49,7 @@ function normalizeVariantInput(variants: any[] | undefined) {
         return false;
       }
 
-      if (!["S", "M", "L", "XL", "XXL"].includes(variant.size)) {
+      if (!SIZE_OPTIONS.includes(variant.size as any)) {
         return false;
       }
 
@@ -93,13 +103,13 @@ function buildProductInventory(data: {
   }
 
   const colors = Array.isArray(data.colors)
-    ? data.colors
-        .map((c) => String(c).trim().toLowerCase())
-        .filter(Boolean)
+    ? data.colors.map((c) => String(c).trim().toLowerCase()).filter(Boolean)
     : [];
 
   const sizes = Array.isArray(data.sizes)
-    ? data.sizes.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
+    ? data.sizes
+        .map((s) => String(s).trim().toUpperCase())
+        .filter((s) => SIZE_OPTIONS.includes(s as any))
     : [];
 
   return {
@@ -144,6 +154,11 @@ export const productService = {
   },
 
   async getAllPublic(query: ProductQueryDto) {
+    const cacheKey = `products:public:${JSON.stringify(query)}`;
+
+    const cached = await getCache<any[]>(cacheKey);
+    if (cached) return cached;
+
     const filter: { [key: string]: any } = {
       status: "Active",
     };
@@ -170,13 +185,24 @@ export const productService = {
       filter.categoryId = query.categoryId;
     }
 
-    return Product.find(filter).sort({ createdAt: -1 }).lean().exec();
+    const products = await Product.find(filter)
+      .sort({ createdAt: -1 })
+      .lean()
+      .exec();
+
+    await setCache(cacheKey, products, 300);
+
+    return products;
   },
 
   async getBestSellers(limit = 8) {
     const safeLimit = Math.min(Math.max(Number(limit) || 8, 1), 24);
+    const cacheKey = `products:best-sellers:${safeLimit}`;
 
-    return Order.aggregate([
+    const cached = await getCache<any[]>(cacheKey);
+    if (cached) return cached;
+
+    const products = await Order.aggregate([
       {
         $match: {
           orderStatus: "Delivered",
@@ -228,6 +254,10 @@ export const productService = {
         },
       },
     ]);
+
+    await setCache(cacheKey, products, 300);
+
+    return products;
   },
 
   async getById(id: string) {
@@ -239,16 +269,31 @@ export const productService = {
   async getPublicById(id: string) {
     if (!mongoose.Types.ObjectId.isValid(id)) return null;
 
-    return Product.findOne({
+    const cacheKey = `products:public:id:${id}`;
+
+    const cached = await getCache<any>(cacheKey);
+    if (cached) return cached;
+
+    const product = await Product.findOne({
       _id: id,
       status: "Active",
     })
       .lean()
       .exec();
+
+    await setCache(cacheKey, product, 300);
+
+    return product;
   },
 
   async getRelatedProducts(productId: string, limit = 4) {
     if (!mongoose.Types.ObjectId.isValid(productId)) return [];
+
+    const safeLimit = Math.min(Math.max(Number(limit) || 4, 1), 12);
+    const cacheKey = `products:related:${productId}:${safeLimit}`;
+
+    const cached = await getCache<any[]>(cacheKey);
+    if (cached) return cached;
 
     const currentProduct = await Product.findOne({
       _id: productId,
@@ -269,14 +314,14 @@ export const productService = {
         categoryId: currentProduct.categoryId,
       })
         .sort({ createdAt: -1 })
-        .limit(limit)
+        .limit(safeLimit)
         .lean()
         .exec();
 
       related.push(...categoryMatched);
     }
 
-    if (related.length < limit && currentProduct.gender) {
+    if (related.length < safeLimit && currentProduct.gender) {
       const existingIds = related.map((p) => p._id);
 
       const genderMatched = await Product.find({
@@ -287,14 +332,18 @@ export const productService = {
         gender: currentProduct.gender,
       })
         .sort({ createdAt: -1 })
-        .limit(limit - related.length)
+        .limit(safeLimit - related.length)
         .lean()
         .exec();
 
       related.push(...genderMatched);
     }
 
-    return related.slice(0, limit);
+    const finalRelated = related.slice(0, safeLimit);
+
+    await setCache(cacheKey, finalRelated, 300);
+
+    return finalRelated;
   },
 
   async create(data: CreateProductDto) {
@@ -342,6 +391,11 @@ export const productService = {
       slug,
       description: data.description,
       price: data.price,
+      compareAtPrice: data.compareAtPrice,
+      discountPercent: calculateDiscountPercent(
+        data.price,
+        data.compareAtPrice
+      ),
       stock: inventory.stock,
       status: data.status ?? "Active",
       image: mainImageUrl ?? data.image,
@@ -354,6 +408,8 @@ export const productService = {
     });
 
     await product.save();
+
+    await deleteCacheByPattern("products:*");
 
     return product.toObject();
   },
@@ -380,6 +436,20 @@ export const productService = {
       }
     }
 
+    if (data.price != null || data.compareAtPrice != null) {
+      const existingProduct = await Product.findById(id).lean();
+
+      const nextPrice = Number(data.price ?? existingProduct?.price ?? 0);
+      const nextCompareAtPrice = Number(
+        data.compareAtPrice ?? existingProduct?.compareAtPrice ?? 0
+      );
+
+      update.discountPercent = calculateDiscountPercent(
+        nextPrice,
+        nextCompareAtPrice
+      );
+    }
+
     if (Array.isArray(data.variants)) {
       const inventory = buildProductInventory({
         stock: data.stock,
@@ -394,17 +464,25 @@ export const productService = {
       update.variants = inventory.variants;
     }
 
-    return Product.findByIdAndUpdate(id, update, {
+    const product = await Product.findByIdAndUpdate(id, update, {
       new: true,
       runValidators: true,
     })
       .lean()
       .exec();
+
+    await deleteCacheByPattern("products:*");
+
+    return product;
   },
 
   async remove(id: string) {
     if (!mongoose.Types.ObjectId.isValid(id)) return null;
 
-    return Product.findByIdAndDelete(id).lean().exec();
+    const product = await Product.findByIdAndDelete(id).lean().exec();
+
+    await deleteCacheByPattern("products:*");
+
+    return product;
   },
 };

@@ -2,7 +2,37 @@ import { Schema, model, Document, Types, Model } from "mongoose";
 
 export type ProductStatus = "Active" | "Inactive";
 export type Gender = "Male" | "Female";
-export type Size = "S" | "M" | "L" | "XL" | "XXL";
+
+export type Size =
+  | "S"
+  | "M"
+  | "L"
+  | "XL"
+  | "XXL"
+  | "38"
+  | "39"
+  | "40"
+  | "41"
+  | "42"
+  | "43"
+  | "44"
+  | "45";
+
+export const SIZE_OPTIONS: Size[] = [
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "38",
+  "39",
+  "40",
+  "41",
+  "42",
+  "43",
+  "44",
+  "45",
+];
 
 export interface IProductVariant {
   color: string;
@@ -16,7 +46,11 @@ export interface IProduct extends Document {
   name: string;
   slug: string;
   description?: string;
+
   price: number;
+  compareAtPrice?: number;
+  discountPercent: number;
+
   stock: number;
   status: ProductStatus;
   image: string;
@@ -45,7 +79,7 @@ const productVariantSchema = new Schema<IProductVariant>(
     },
     size: {
       type: String,
-      enum: ["S", "M", "L", "XL", "XXL"],
+      enum: SIZE_OPTIONS,
       required: true,
       set: (value: string) => String(value || "").trim().toUpperCase(),
     },
@@ -94,6 +128,16 @@ const productSchema = new Schema<IProduct>(
       required: true,
       min: 0,
     },
+    compareAtPrice: {
+      type: Number,
+      min: 0,
+    },
+    discountPercent: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
     stock: {
       type: Number,
       required: true,
@@ -140,7 +184,7 @@ const productSchema = new Schema<IProduct>(
     },
     sizes: {
       type: [String],
-      enum: ["S", "M", "L", "XL", "XXL"],
+      enum: SIZE_OPTIONS,
       required: true,
       validate: [
         {
@@ -149,9 +193,7 @@ const productSchema = new Schema<IProduct>(
         },
       ],
       set: (arr: string[]) =>
-        Array.isArray(arr)
-          ? arr.map((s) => s.trim().toUpperCase())
-          : arr,
+        Array.isArray(arr) ? arr.map((s) => s.trim().toUpperCase()) : arr,
     },
     variants: {
       type: [productVariantSchema],
@@ -190,6 +232,14 @@ const productSchema = new Schema<IProduct>(
 );
 
 productSchema.pre("validate", function () {
+  const price = Number(this.price || 0);
+  const compareAtPrice = Number(this.compareAtPrice || 0);
+
+  this.discountPercent =
+    compareAtPrice > price && price >= 0
+      ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+      : 0;
+
   if (Array.isArray(this.variants) && this.variants.length > 0) {
     const activeVariants = this.variants.filter(
       (variant) => variant.isActive !== false

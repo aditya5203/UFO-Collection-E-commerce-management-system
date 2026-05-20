@@ -8,10 +8,14 @@ import {
 } from "./config/database";
 import mongoose from "mongoose";
 import { initSocket } from "./socket";
+import { connectRedis, disconnectRedis } from "./config/redis";
 
 const startServer = async () => {
   try {
     await connectDatabase();
+
+    // Redis cache connection
+    await connectRedis();
 
     const httpServer = createServer(app);
     initSocket(httpServer);
@@ -42,6 +46,8 @@ const startServer = async () => {
 
         try {
           await disconnectDatabase();
+          await disconnectRedis();
+
           console.log("✅ Database disconnected");
           process.exit(0);
         } catch (error) {

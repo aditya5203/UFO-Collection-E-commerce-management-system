@@ -11,6 +11,8 @@ type Product = {
   id: string;
   name: string;
   price: number;
+  compareAtPrice?: number;
+  discountPercent: number;
   image: string;
   customer?: CustomerType;
   subCategory?: string;
@@ -65,6 +67,13 @@ function resolveMediaSrc(src: unknown) {
   return `${API_ORIGIN}/${s.replace(/^\/+/, "")}`;
 }
 
+function formatPrice(value: number | undefined) {
+  return `Rs. ${Number(value || 0).toLocaleString("en-NP", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 function ProductCard({
   product,
   onOutOfStockClick,
@@ -80,6 +89,10 @@ function ProductCard({
   const isOutOfStock = stockCount <= 0;
   const isLowStock = stockCount > 0 && stockCount <= 5;
   const hasValidId = Boolean(product.id);
+
+  const hasDiscount =
+    typeof product.compareAtPrice === "number" &&
+    product.compareAtPrice > product.price;
 
   const card = (
     <motion.div
@@ -119,6 +132,12 @@ function ProductCard({
           ) : null}
         </div>
 
+        {hasDiscount ? (
+          <div className="absolute right-3 top-3 rounded-full border border-orange-300/25 bg-orange-500/90 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-white shadow-[0_10px_30px_rgba(249,115,22,0.3)] backdrop-blur">
+            -{product.discountPercent}%
+          </div>
+        ) : null}
+
         {isOutOfStock ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black/35">
             <span className="rounded-full border border-red-300/40 bg-red-500/20 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-red-100 backdrop-blur">
@@ -143,12 +162,26 @@ function ProductCard({
           {product.name}
         </div>
 
-        <div className="mt-2.5 flex items-center justify-between gap-3">
-          <div className="text-[14px] font-semibold text-[#d6c7ff] sm:text-[15px]">
-            Rs. {Number(product.price || 0).toFixed(2)}
+        <div className="mt-2.5 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[14px] font-semibold text-[#d6c7ff] sm:text-[15px]">
+              {formatPrice(product.price)}
+            </div>
+
+            {hasDiscount ? (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] sm:text-[11px]">
+                <span className="text-[#7f879f] line-through">
+                  {formatPrice(product.compareAtPrice)}
+                </span>
+
+                <span className="font-semibold text-orange-300">
+                  -{product.discountPercent}%
+                </span>
+              </div>
+            ) : null}
           </div>
 
-          <div className="text-[12px] text-[#a7aec4]">
+          <div className="shrink-0 text-[12px] text-[#a7aec4]">
             ★ {Number(product.rating || 0).toFixed(1)}
             <span className="ml-1">({Number(product.reviews || 0)})</span>
           </div>

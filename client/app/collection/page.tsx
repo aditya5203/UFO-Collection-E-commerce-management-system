@@ -27,6 +27,8 @@ type Product = {
   id: string;
   name: string;
   price: number;
+  compareAtPrice?: number;
+  discountPercent: number;
   image: string;
   customer?: CustomerType;
   subCategory?: string;
@@ -46,6 +48,8 @@ type BackendProduct = {
   name?: string;
   title?: string;
   price?: number | string;
+  compareAtPrice?: number | string | null;
+  discountPercent?: number | string | null;
   image?: string;
   imageUrl?: string;
   thumbnail?: string;
@@ -171,6 +175,12 @@ function parseDateSafe(d?: string) {
   return Number.isFinite(t) ? t : 0;
 }
 
+function normalizePrice(value: unknown) {
+  const n = Number(value);
+
+  return Number.isFinite(n) ? n : 0;
+}
+
 function normalizeCustomer(p: BackendProduct): CustomerType | undefined {
   const raw = norm(
     `${p.customer || ""} ${p.customerType || ""} ${p.audience || ""} ${
@@ -219,12 +229,35 @@ function mapBackendProduct(p: BackendProduct): Product {
     0;
 
   const id = String(p.id || p._id || p.slug || "");
+  const price = normalizePrice(p.price);
+
+  const compareAtPrice =
+    p.compareAtPrice == null || p.compareAtPrice === ""
+      ? undefined
+      : normalizePrice(p.compareAtPrice);
+
+  const fallbackDiscount =
+    compareAtPrice && compareAtPrice > price
+      ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
+      : 0;
+
+  const discountPercent =
+    compareAtPrice && compareAtPrice > price
+      ? Math.min(
+          Math.max(
+            Math.round(normalizePrice(p.discountPercent || fallbackDiscount)),
+            0
+          ),
+          100
+        )
+      : 0;
 
   return {
     id,
     name: String(p.name || p.title || "Product"),
-    price:
-      typeof p.price === "string" ? Number(p.price) || 0 : Number(p.price ?? 0),
+    price,
+    compareAtPrice,
+    discountPercent,
     image: resolveMediaSrc(p.image || p.imageUrl || p.thumbnail),
     customer: normalizeCustomer(p),
     subCategory: String(p.subCategory || p.categoryName || p.category || ""),
@@ -248,6 +281,8 @@ function buildProductSearchText(product: Product) {
       product.categoryId,
       ...(product.colors || []),
       product.price ? `rs ${product.price}` : "",
+      product.compareAtPrice ? `mrp ${product.compareAtPrice}` : "",
+      product.discountPercent ? `discount ${product.discountPercent}` : "",
       product.stock ? `stock ${product.stock}` : "",
     ].join(" ")
   );

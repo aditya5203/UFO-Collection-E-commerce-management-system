@@ -3,7 +3,21 @@
 import * as React from "react";
 import { ColorDot } from "./ProductColorSelector";
 
-type Size = "S" | "M" | "L" | "XL" | "XXL";
+type Size =
+  | "S"
+  | "M"
+  | "L"
+  | "XL"
+  | "XXL"
+  | "38"
+  | "39"
+  | "40"
+  | "41"
+  | "42"
+  | "43"
+  | "44"
+  | "45";
+
 type ReviewSort = "latest" | "highest" | "lowest";
 
 type ProductVariant = {
@@ -209,7 +223,10 @@ export default function ProductDetailsTabs({
 
                 <div className="w-full max-w-[520px] space-y-2">
                   {ratingBreakdown.map((row) => (
-                    <div key={row.star} className="flex items-center gap-3 text-xs">
+                    <div
+                      key={row.star}
+                      className="flex items-center gap-3 text-xs"
+                    >
                       <span className="w-10 text-white">{row.star}★</span>
 
                       <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">

@@ -1,6 +1,38 @@
 export type ProductStatus = "Active" | "Inactive";
 export type Gender = "Male" | "Female";
-export type Size = "S" | "M" | "L" | "XL" | "XXL";
+
+export type Size =
+  | "S"
+  | "M"
+  | "L"
+  | "XL"
+  | "XXL"
+  | "38"
+  | "39"
+  | "40"
+  | "41"
+  | "42"
+  | "43"
+  | "44"
+  | "45";
+
+export const CLOTHING_SIZE_OPTIONS: Size[] = ["S", "M", "L", "XL", "XXL"];
+
+export const SHOE_SIZE_OPTIONS: Size[] = [
+  "38",
+  "39",
+  "40",
+  "41",
+  "42",
+  "43",
+  "44",
+  "45",
+];
+
+export const SIZE_OPTIONS: Size[] = [
+  ...CLOTHING_SIZE_OPTIONS,
+  ...SHOE_SIZE_OPTIONS,
+];
 
 export type ProductVariant = {
   id?: string;
@@ -26,6 +58,8 @@ export type Product = {
   slug: string;
   description?: string;
   price: number;
+  compareAtPrice?: number;
+  discountPercent: number;
   stock: number;
   status: ProductStatus;
   image: string;
@@ -54,6 +88,8 @@ export type ApiProduct = {
   slug?: string;
   description?: string;
   price?: number | string;
+  compareAtPrice?: number | string | null;
+  discountPercent?: number | string | null;
   stock?: number | string;
   status?: string;
   image?: string;
@@ -127,8 +163,6 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8080";
 
 export const PLACEHOLDER = "/images/products/placeholder.png";
-
-export const SIZE_OPTIONS: Size[] = ["S", "M", "L", "XL", "XXL"];
 
 export const shellClass = "min-h-screen bg-[#0a0a0f] text-[#f5f7fb]";
 
@@ -209,7 +243,10 @@ export function normalizeGender(gender?: string): Gender {
 
 export function normalizeSizes(values?: string[]): Size[] {
   if (!Array.isArray(values)) return [];
-  return values.filter((v): v is Size => SIZE_OPTIONS.includes(v as Size));
+
+  return values
+    .map((v) => String(v || "").trim().toUpperCase())
+    .filter((v): v is Size => SIZE_OPTIONS.includes(v as Size));
 }
 
 export function normalizeVariant(v: ApiProductVariant): ProductVariant | null {
@@ -242,6 +279,32 @@ export function getProductCategoryId(product: ApiProduct) {
   return "";
 }
 
+export function normalizeCompareAtPrice(value: ApiProduct["compareAtPrice"]) {
+  if (value == null || value === "") return undefined;
+
+  const n = Number(value);
+
+  return Number.isNaN(n) || n <= 0 ? undefined : n;
+}
+
+export function normalizeDiscountPercent(
+  value: ApiProduct["discountPercent"],
+  price: number,
+  compareAtPrice?: number
+) {
+  const fromApi = Number(value || 0);
+
+  if (!Number.isNaN(fromApi) && fromApi > 0) {
+    return Math.min(Math.max(Math.round(fromApi), 0), 100);
+  }
+
+  if (compareAtPrice && compareAtPrice > price) {
+    return Math.round(((compareAtPrice - price) / compareAtPrice) * 100);
+  }
+
+  return 0;
+}
+
 export function mapProduct(p: ApiProduct): Product {
   const variants = Array.isArray(p.variants)
     ? p.variants
@@ -249,12 +312,22 @@ export function mapProduct(p: ApiProduct): Product {
         .filter((v): v is ProductVariant => Boolean(v))
     : [];
 
+  const price = Number(p.price) || 0;
+  const compareAtPrice = normalizeCompareAtPrice(p.compareAtPrice);
+  const discountPercent = normalizeDiscountPercent(
+    p.discountPercent,
+    price,
+    compareAtPrice
+  );
+
   return {
     id: String(p._id || p.id || ""),
     name: String(p.name || "Untitled Product"),
     slug: String(p.slug || "-"),
     description: p.description || "",
-    price: Number(p.price) || 0,
+    price,
+    compareAtPrice,
+    discountPercent,
     stock: Number(p.stock) || 0,
     status: normalizeStatus(p.status),
     image: String(p.image || ""),
@@ -325,6 +398,7 @@ export function emptyForm() {
     name: "",
     description: "",
     price: "" as number | "",
+    compareAtPrice: "" as number | "",
     status: "Active" as ProductStatus,
     gender: "Male" as Gender,
     categoryId: "",
@@ -334,9 +408,7 @@ export function emptyForm() {
   };
 }
 
-export function productVariantsToForm(
-  product: Product
-): ProductVariantForm[] {
+export function productVariantsToForm(product: Product): ProductVariantForm[] {
   if (Array.isArray(product.variants) && product.variants.length > 0) {
     return product.variants.map((v) => ({
       id: v.id,
