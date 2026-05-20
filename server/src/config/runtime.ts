@@ -4,8 +4,8 @@ function normalizeUrl(value: string) {
   return value.trim().replace(/\/+$/, "");
 }
 
-function splitCsv(value: string) {
-  return value
+function splitCsv(value?: string) {
+  return (value || "")
     .split(",")
     .map((item) => normalizeUrl(item))
     .filter(Boolean);
@@ -13,11 +13,15 @@ function splitCsv(value: string) {
 
 const defaultClientBaseUrl =
   config.nodeEnv === "production" ? "" : "http://localhost:3000";
+
 const defaultServerBaseUrl =
   config.nodeEnv === "production" ? "" : "http://localhost:8080";
 
 export const clientBaseUrl = normalizeUrl(
-  process.env.CLIENT_BASE_URL || process.env.FRONTEND_URL || defaultClientBaseUrl
+  process.env.CLIENT_BASE_URL ||
+    process.env.CLIENT_URL ||
+    process.env.FRONTEND_URL ||
+    defaultClientBaseUrl
 );
 
 export const serverBaseUrl = normalizeUrl(
@@ -26,9 +30,17 @@ export const serverBaseUrl = normalizeUrl(
     defaultServerBaseUrl
 );
 
-export const allowedClientOrigins = splitCsv(
-  process.env.CLIENT_BASE_URL || process.env.FRONTEND_URL || defaultClientBaseUrl
-);
+export const allowedClientOrigins = [
+  ...splitCsv(process.env.CLIENT_BASE_URL),
+  ...splitCsv(process.env.CLIENT_URL),
+  ...splitCsv(process.env.FRONTEND_URL),
+  ...splitCsv(process.env.CORS_ORIGIN),
+  ...splitCsv(process.env.CLIENT_URLS),
+  defaultClientBaseUrl,
+  "https://ufo-collection.vercel.app",
+]
+  .filter(Boolean)
+  .map(normalizeUrl);
 
 export function getCookieOptions() {
   const isProd = config.nodeEnv === "production";
