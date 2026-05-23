@@ -31,11 +31,17 @@ const startServer = async () => {
       console.log(`✅ Server: Running on port ${config.port}`);
       console.log(`📍 Environment: ${config.nodeEnv}`);
       console.log(`🔌 Database: ${dbStatus ? "✅ Connected" : "❌ Disconnected"}`);
+
       if (dbStatus) {
         console.log(`📊 Database Name: ${dbName}`);
       }
-      console.log(`📚 Swagger API: ${serverBaseUrl || `http://localhost:${config.port}`}/ufo-docs`);
-      console.log(`🔔 Socket.IO: Enabled`);
+
+      console.log(
+        `📚 Swagger API: ${
+          serverBaseUrl || `http://localhost:${config.port}`
+        }/ufo-docs`
+      );
+      console.log("🔔 Socket.IO: Enabled");
       console.log("=".repeat(50) + "\n");
     });
 
@@ -50,6 +56,7 @@ const startServer = async () => {
           await disconnectRedis();
 
           console.log("✅ Database disconnected");
+          console.log("✅ Redis disconnected");
           process.exit(0);
         } catch (error) {
           console.error("❌ Error during shutdown:", error);
