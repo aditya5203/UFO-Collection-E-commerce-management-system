@@ -17,8 +17,7 @@ import {
   type District,
 } from "../data/nepalLocations";
 
-const API_BASE =
-  API_BASE_URL;
+const API_BASE = API_BASE_URL;
 
 const GOOGLE_MAPS_API_KEY =
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
@@ -329,6 +328,7 @@ export default function CheckoutPage() {
         if (!me) return;
 
         setEmail(String(me.email || ""));
+        setPhone(String(me.phone || ""));
 
         const fullName = String(me.name || "").trim();
         const parts = fullName.split(/\s+/).filter(Boolean);
@@ -370,7 +370,7 @@ export default function CheckoutPage() {
         setAddressLine(def.addressLine || "");
         setStreet(def.street || "");
         setPostalCode(def.postalCode || "");
-        setPhone(def.phone || "");
+        setPhone((prev) => def.phone || prev);
 
         if (
           typeof def.lat === "number" &&
@@ -1089,7 +1089,7 @@ export default function CheckoutPage() {
 
                     <div className="flex items-center justify-between gap-4">
                       <span>
-                        {t("checkout.discount")}{" "}
+                        {t("checkout.discount")} {" "}
                         {orderSummary?.couponCode
                           ? `(${orderSummary.couponCode})`
                           : ""}

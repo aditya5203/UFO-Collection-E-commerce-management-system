@@ -588,11 +588,11 @@ export default function HomeHeader({
             className="relative rounded-full border border-white/10 bg-white/5 p-2 transition hover:bg-white/10"
           >
             <Image
-              src="/images/wishlist.png"
-              width={18}
-              height={18}
-              alt="Cart"
-              className="brightness-0 invert"
+            src="/images/wishlist.png"
+            width={18}
+            height={18}
+           alt="Cart"
+            className="h-[18px] w-[18px] brightness-0 invert"
             />
             {cartCount > 0 ? (
               <span className="absolute -right-1.5 -top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
